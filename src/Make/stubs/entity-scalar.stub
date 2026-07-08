@@ -1,0 +1,3 @@
+{{varDoc}}    #[ORM\Column({{column}})]
+    private {{phpType}} ${{name}}{{default}};
+

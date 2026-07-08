@@ -1,0 +1,20 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use Symfony\Component\HttpFoundation\Request;
+use Milpa\Http\Attributes\Route;
+use Milpa\Interfaces\Di\DIContainerInterface;
+use Milpa\app\Providers\BaseController;
+use Milpa\app\Providers\HttpResponse;
+
+class {{class}} extends BaseController
+{
+    public function __construct(DIContainerInterface $container)
+    {
+        parent::__construct($container);
+    }
+
+{{methods}}}

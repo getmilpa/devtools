@@ -1,0 +1,4 @@
+    #[ORM\ManyToOne(targetEntity: {{target}}::class)]
+    #[ORM\JoinColumn(name: '{{name}}_id', referencedColumnName: 'id', nullable: {{nullableBool}})]
+    private {{phpType}} ${{name}}{{default}};
+

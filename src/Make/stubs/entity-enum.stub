@@ -1,0 +1,3 @@
+    #[ORM\Column(type: 'string'{{nullableArg}}{{lengthArg}})]
+    private {{phpType}} ${{name}}{{default}};
+

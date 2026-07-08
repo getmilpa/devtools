@@ -1,0 +1,40 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use Doctrine\ORM\Mapping as ORM;
+use Milpa\Support\UuidGenerator;
+{{uses}}
+#[ORM\Entity]
+#[ORM\Table(name: '{{table}}')]
+class {{class}}
+{
+    use UuidGenerator;
+
+    #[ORM\Id]
+    #[ORM\GeneratedValue]
+    #[ORM\Column(type: 'integer')]
+    private int $id;
+
+    #[ORM\Column(type: 'string', length: 36, unique: true)]
+    private string $uuid;
+
+{{properties}}
+    public function __construct()
+    {
+        $this->uuid = self::generateUuid();
+    }
+
+    public function getId(): int
+    {
+        return $this->id;
+    }
+
+    public function getUuid(): string
+    {
+        return $this->uuid;
+    }
+
+{{methods}}}

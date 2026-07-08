@@ -1,0 +1,9 @@
+    /**
+     * @param array<string, string> $params
+     */
+    #[Route(path: '{{path}}', method: '{{verb}}', name: '{{routeName}}')]
+    public function {{method}}(Request $request, array $params = []): HttpResponse
+    {
+        return $this->json(['status' => 'ok']);
+    }
+

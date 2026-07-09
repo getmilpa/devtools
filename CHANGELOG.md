@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0](https://github.com/getmilpa/devtools/compare/v0.4.0...v0.5.0) (2026-07-09)
+
+
+### Features
+
+* generators auto-wire into an existing plugin + make:tool --needs ([14c2d45](https://github.com/getmilpa/devtools/commit/14c2d459dc3d761bea7adad15d33cdff097250d3))
+
+
+### Miscellaneous Chores
+
+* release 0.5.0 ([eb89a31](https://github.com/getmilpa/devtools/commit/eb89a317b783e3d0a9b47346b8297551264c8f90))
+
 ## [0.4.0](https://github.com/getmilpa/devtools/compare/v0.3.0...v0.4.0) (2026-07-09)
 
 

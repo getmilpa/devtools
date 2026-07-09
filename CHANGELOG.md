@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/getmilpa/devtools/compare/v0.2.0...v0.3.0) (2026-07-09)
+
+
+### Features
+
+* make:entity runtime-aware — scaffold a persisting entity ([9481687](https://github.com/getmilpa/devtools/commit/9481687285763a9786a74de55ba6e57a8fecc101))
+
+
+### Miscellaneous Chores
+
+* release 0.3.0 ([8791f96](https://github.com/getmilpa/devtools/commit/8791f96a89406e37e8c8d60b0ff93e2b1308f2dc))
+
 ## [0.2.0](https://github.com/getmilpa/devtools/compare/v0.1.0...v0.2.0) (2026-07-09)
 
 

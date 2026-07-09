@@ -1,0 +1,61 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use {{toolNamespace}}\{{toolClass}};
+use Milpa\Attributes\PluginMetadata;
+use Milpa\Interfaces\Di\DIContainerInterface;
+use Milpa\Interfaces\Plugin\PluginInterface;
+use Milpa\Interfaces\Tooling\ToolProviderInterface;
+use Milpa\Interfaces\Tooling\ToolRegistryInterface;
+use Milpa\ToolRuntime\ToolScanner;
+
+#[PluginMetadata(
+    version: '0.1.0',
+    author: 'Your Name',
+    site: 'https://example.com',
+    name: '{{class}}',
+    type: 'Service',
+)]
+final class {{class}} implements PluginInterface, ToolProviderInterface
+{
+    public function __construct(private readonly DIContainerInterface $container)
+    {
+        // PluginInterface fixes the constructor to ($container) — kept as a promoted readonly
+        // property so a future boot() can read config/services from it; tool registration itself
+        // happens in registerTools() below, not boot().
+    }
+
+    public function boot(): void
+    {
+    }
+
+    public function install(): void
+    {
+    }
+
+    public function uninstall(): void
+    {
+    }
+
+    public function enable(): void
+    {
+    }
+
+    public function disable(): void
+    {
+    }
+
+    public function registerTools(ToolRegistryInterface $registry): void
+    {
+        (new ToolScanner($registry))->scan(new {{toolClass}}());
+    }
+
+    /** @return list<string> */
+    public function getPromptSections(): array
+    {
+        return ['{{toolClass}} exposes the {{toolName}} tool.'];
+    }
+}

@@ -1,0 +1,114 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use {{entityNamespace}}\{{entityClass}};
+use Milpa\Data\RepositoryInterface;
+use Milpa\Http\Routing\RouteResult;
+use Nyholm\Psr7\Response;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+
+/**
+ * The 5 REST verbs for {{entityClass}} (`GET|POST /{{table}}`, `GET|PUT|DELETE /{{table}}/{id}` — see
+ * the wiring plugin's routes()), backed by the {@see RepositoryInterface} the wiring plugin's boot()
+ * constructs and registers this controller with. Path parameters (`{id}`) arrive via the PSR-7 request
+ * attribute the kernel's RequestHandler decorates every matched request with — see {@see self::routeId()}
+ * — never as an extra method parameter: milpa/runtime's CallableRequestHandler always invokes a route
+ * handler with the request alone.
+ */
+final class {{class}}
+{
+    /** @param RepositoryInterface<{{entityClass}}> $repository */
+    public function __construct(private readonly RepositoryInterface $repository)
+    {
+    }
+
+    public function index(ServerRequestInterface $request): ResponseInterface
+    {
+        $rows = array_map(
+            static fn ({{entityClass}} $entity): array => $entity->toArray(),
+            $this->repository->all(),
+        );
+
+        return $this->json(200, $rows);
+    }
+
+    public function show(ServerRequestInterface $request): ResponseInterface
+    {
+        $entity = $this->repository->find($this->routeId($request));
+        if ($entity === null) {
+            return $this->json(404, ['error' => 'not found']);
+        }
+
+        return $this->json(200, $entity->toArray());
+    }
+
+    public function create(ServerRequestInterface $request): ResponseInterface
+    {
+        $data = $this->decode($request);
+        $data['id'] = null;
+
+        $id = $this->repository->save({{entityClass}}::fromArray($data));
+        $created = $this->repository->find($id);
+
+        return $this->json(201, $created?->toArray() ?? $data);
+    }
+
+    public function update(ServerRequestInterface $request): ResponseInterface
+    {
+        $id = $this->routeId($request);
+        $existing = $this->repository->find($id);
+        if ($existing === null) {
+            return $this->json(404, ['error' => 'not found']);
+        }
+
+        $data = array_merge($existing->toArray(), $this->decode($request));
+        $data['id'] = $existing->id();
+
+        $this->repository->save({{entityClass}}::fromArray($data));
+        $updated = $this->repository->find($id);
+
+        return $this->json(200, $updated?->toArray() ?? $data);
+    }
+
+    public function delete(ServerRequestInterface $request): ResponseInterface
+    {
+        $id = $this->routeId($request);
+        if ($this->repository->find($id) === null) {
+            return $this->json(404, ['error' => 'not found']);
+        }
+
+        $this->repository->delete($id);
+
+        return new Response(204);
+    }
+
+    /** Reads the `{id}` path parameter the router bound to the matched route — see the class docblock. */
+    private function routeId(ServerRequestInterface $request): int|string
+    {
+        $result = $request->getAttribute(RouteResult::ATTRIBUTE);
+
+        return $result?->parameter('id') ?? '';
+    }
+
+    /** @return array<string, mixed> */
+    private function decode(ServerRequestInterface $request): array
+    {
+        $decoded = json_decode((string) $request->getBody(), true);
+
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /** @param array<string, mixed>|list<array<string, mixed>> $payload */
+    private function json(int $status, array $payload): ResponseInterface
+    {
+        return new Response(
+            $status,
+            ['Content-Type' => 'application/json'],
+            (string) json_encode($payload, JSON_UNESCAPED_UNICODE),
+        );
+    }
+}

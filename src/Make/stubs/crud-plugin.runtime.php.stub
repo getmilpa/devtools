@@ -1,0 +1,95 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use {{entityNamespace}}\{{entityClass}};
+use {{controllerNamespace}}\{{controllerClass}};
+use Milpa\Attributes\PluginMetadata;
+use Milpa\Data\FileRepository;
+use Milpa\Http\HttpMethod;
+use Milpa\Http\Routing\HandlerReference;
+use Milpa\Http\Routing\Route;
+use Milpa\Interfaces\Di\DIContainerInterface;
+use Milpa\Interfaces\Plugin\PluginInterface;
+use Milpa\Runtime\Http\RouteProviderInterface;
+use Milpa\Runtime\Support\RootResolver;
+
+#[PluginMetadata(
+    version: '0.1.0',
+    author: 'Your Name',
+    site: 'https://example.com',
+    name: '{{class}}',
+    type: 'Web',
+)]
+final class {{class}} implements PluginInterface, RouteProviderInterface
+{
+    public function __construct(private readonly DIContainerInterface $container)
+    {
+        // PluginInterface fixes the constructor to ($container) — kept as a promoted readonly
+        // property so boot() can register the {{entityClass}} repository and {{controllerClass}}
+        // into it below.
+    }
+
+    public function boot(): void
+    {
+        $repository = new FileRepository((new RootResolver())->resolve() . '/var/{{table}}.json', {{entityClass}}::class);
+
+        $this->container->registerService({{entityClass}}::class . 'Repository', $repository);
+        $this->container->registerService({{controllerClass}}::class, new {{controllerClass}}($repository));
+    }
+
+    public function install(): void
+    {
+    }
+
+    public function uninstall(): void
+    {
+    }
+
+    public function enable(): void
+    {
+    }
+
+    public function disable(): void
+    {
+    }
+
+    /** @return list<Route> */
+    public function routes(): array
+    {
+        return [
+            new Route(
+                path: '/{{table}}',
+                methods: HttpMethod::GET,
+                name: '{{table}}_index',
+                handler: new HandlerReference({{controllerClass}}::class, 'index'),
+            ),
+            new Route(
+                path: '/{{table}}/{id}',
+                methods: HttpMethod::GET,
+                name: '{{table}}_show',
+                handler: new HandlerReference({{controllerClass}}::class, 'show'),
+            ),
+            new Route(
+                path: '/{{table}}',
+                methods: HttpMethod::POST,
+                name: '{{table}}_create',
+                handler: new HandlerReference({{controllerClass}}::class, 'create'),
+            ),
+            new Route(
+                path: '/{{table}}/{id}',
+                methods: HttpMethod::PUT,
+                name: '{{table}}_update',
+                handler: new HandlerReference({{controllerClass}}::class, 'update'),
+            ),
+            new Route(
+                path: '/{{table}}/{id}',
+                methods: HttpMethod::DELETE,
+                name: '{{table}}_delete',
+                handler: new HandlerReference({{controllerClass}}::class, 'delete'),
+            ),
+        ];
+    }
+}

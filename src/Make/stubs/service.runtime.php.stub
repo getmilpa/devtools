@@ -1,0 +1,26 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+final class {{class}}{{implementsClause}}
+{
+    public function __construct()
+    {
+        // Add constructor-promoted dependencies here as this service grows (e.g.
+        // `private readonly SomeCollaborator $collaborator`), then resolve them from the DI
+        // container wherever this service gets registered — see the plugin boot() wiring.
+    }
+
+    public function handle(mixed $payload): mixed
+    {
+        // TODO: implement {{class}}'s core behavior.
+        return $payload;
+    }
+
+    public function isReady(): bool
+    {
+        return true;
+    }
+}

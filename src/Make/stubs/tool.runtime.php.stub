@@ -1,0 +1,17 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use Milpa\ToolRuntime\Attributes\Tool;
+use Milpa\ToolRuntime\ToolResult;
+
+final class {{class}}
+{
+    #[Tool(name: '{{toolName}}', description: '{{description}}')]
+    public function run(): ToolResult
+    {
+        return ToolResult::success(['ok' => true]);
+    }
+}

@@ -1,0 +1,49 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+{{uses}}use Milpa\Attributes\PluginMetadata;
+use Milpa\Interfaces\Di\DIContainerInterface;
+use Milpa\Interfaces\Plugin\PluginInterface;
+
+#[PluginMetadata(
+    version: '0.1.0',
+    author: 'Your Name',
+    site: 'https://example.com',
+    name: '{{class}}',
+    type: 'Service',
+)]
+final class {{class}} implements PluginInterface
+{
+    public function __construct(private readonly DIContainerInterface $container)
+    {
+        // PluginInterface fixes the constructor to ($container) — kept as a promoted readonly
+        // property so boot() can register the {{serviceClass}} service into it below.
+    }
+
+    public function boot(): void
+    {
+        $this->container->registerService(
+            {{registrationClass}}::class,
+            new {{serviceClass}}(),
+        );
+    }
+
+    public function install(): void
+    {
+    }
+
+    public function uninstall(): void
+    {
+    }
+
+    public function enable(): void
+    {
+    }
+
+    public function disable(): void
+    {
+    }
+}

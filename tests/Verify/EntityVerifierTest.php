@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace Milpa\DevTools\Tests\Verify;
 
 use PHPUnit\Framework\TestCase;
+use Milpa\DevTools\Make\Flavor;
 use Milpa\DevTools\Tests\Fixtures\BadEntity;
+use Milpa\DevTools\Tests\Fixtures\BadRuntimeEntity;
 use Milpa\DevTools\Tests\Fixtures\GoodEntity;
+use Milpa\DevTools\Tests\Fixtures\GoodRuntimeEntity;
 use Milpa\DevTools\Verify\EntityVerifier;
 
 final class EntityVerifierTest extends TestCase
@@ -17,6 +20,48 @@ final class EntityVerifierTest extends TestCase
 
         $this->assertTrue($result->ok(), implode("\n", $result->errors));
         $this->assertSame([], $result->warnings);
+    }
+
+    public function testConventionalRuntimeEntityVerifiesClean(): void
+    {
+        $result = (new EntityVerifier(Flavor::Runtime))->verify(GoodRuntimeEntity::class);
+
+        $this->assertTrue($result->ok(), implode("\n", $result->errors));
+        $this->assertSame([], $result->warnings);
+    }
+
+    public function testRuntimeVerifierFlagsAnEntityMissingEntityInterfaceAndMethods(): void
+    {
+        $result = (new EntityVerifier(Flavor::Runtime))->verify(BadRuntimeEntity::class);
+
+        $this->assertFalse($result->ok());
+        $errors = implode("\n", $result->errors);
+        $this->assertStringContainsString('must implement Milpa\\Data\\EntityInterface', $errors);
+        $this->assertStringContainsString('Missing method toArray()', $errors);
+        $this->assertStringContainsString('Missing method fromArray()', $errors);
+    }
+
+    /** A legacy Doctrine entity run through the RUNTIME verifier must be rejected, not silently accepted. */
+    public function testRuntimeVerifierRejectsADoctrineEntity(): void
+    {
+        $result = (new EntityVerifier(Flavor::Runtime))->verify(GoodEntity::class);
+
+        $this->assertFalse($result->ok());
+        $errors = implode("\n", $result->errors);
+        $this->assertStringContainsString('must implement Milpa\\Data\\EntityInterface', $errors);
+        $this->assertStringContainsString('must not carry #[ORM\\Entity]', $errors);
+    }
+
+    /**
+     * A runtime entity run through the LEGACY (default) verifier must be rejected, not silently
+     * accepted — the inverse of {@see testRuntimeVerifierRejectsADoctrineEntity}.
+     */
+    public function testLegacyVerifierRejectsARuntimeEntity(): void
+    {
+        $result = (new EntityVerifier())->verify(GoodRuntimeEntity::class);
+
+        $this->assertFalse($result->ok());
+        $this->assertStringContainsString('Missing #[ORM\\Entity] attribute', implode("\n", $result->errors));
     }
 
     public function testFlagsEachRealViolationOnABadEntity(): void

@@ -1,0 +1,36 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use Milpa\Data\EntityInterface;
+{{uses}}
+final readonly class {{class}} implements EntityInterface
+{
+    public function __construct(
+{{ctorParams}}
+    ) {
+    }
+
+    public function id(): int|string|null
+    {
+        return $this->id;
+    }
+
+    /** @return array<string,mixed> */
+    public function toArray(): array
+    {
+        return [
+{{toArrayEntries}}
+        ];
+    }
+
+    /** @param array<string,mixed> $row */
+    public static function fromArray(array $row): static
+    {
+        return new self(
+{{fromArrayArgs}}
+        );
+    }
+}

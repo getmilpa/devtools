@@ -4,41 +4,57 @@ declare(strict_types=1);
 
 namespace Milpa\DevTools\Make\Generators;
 
+use Milpa\DevTools\Make\ConventionDetector;
 use Milpa\DevTools\Make\FieldParser;
 use Milpa\DevTools\Make\FieldSpec;
+use Milpa\DevTools\Make\Flavor;
 use Milpa\DevTools\Make\GenerationContext;
 use Milpa\DevTools\Make\GenerationResult;
 use Milpa\DevTools\Make\GeneratorInterface;
 use Milpa\DevTools\Make\PlannedFile;
 use Milpa\DevTools\Make\StubRenderer;
+use Milpa\DevTools\Support\ComposerAutoload;
 use Milpa\DevTools\Support\DoctrineAvailability;
 
 /**
- * Generates a Doctrine entity from the `--fields` DSL following the framework's conventions
- * (strict types, id + uuid via {@see \Milpa\Support\UuidGenerator}, typed accessors,
- * enum-as-string columns, ManyToOne relations). Emits one file under the plugin's `Entities/`.
+ * Generates an entity in one of two conventions — see {@see Flavor} — auto-detected per app root by
+ * {@see ConventionDetector} (override with `GenerationContext`'s `flavor` option, e.g.
+ * `--flavor=runtime`), mirroring exactly how {@see ControllerGenerator} picks its convention:
  *
- * `doctrine/orm` is an optional dependency of `milpa/devtools` (see `composer.json`'s `suggest`) —
- * this is the ONLY generator that needs it, and {@see generate()} fails fast with
- * {@see DoctrineAvailability::MESSAGE} when it is not installed, instead of emitting a file the host
- * cannot actually use.
+ * - **Legacy**: a Doctrine entity from the `--fields` DSL following the framework's conventions
+ *   (strict types, id + uuid via {@see \Milpa\Support\UuidGenerator}, typed accessors,
+ *   enum-as-string columns, ManyToOne relations). `doctrine/orm` is an optional dependency of
+ *   `milpa/devtools` (see `composer.json`'s `suggest`) — this is the only path that needs it, and
+ *   {@see generate()} fails fast with {@see DoctrineAvailability::MESSAGE} when it is not installed,
+ *   instead of emitting a file the host cannot actually use.
+ * - **Runtime**: a plain `final readonly class` implementing `milpa/data`'s
+ *   `Milpa\Data\EntityInterface` (`id()`/`toArray()`/`fromArray()`, no Doctrine attributes) — the
+ *   `milpa/runtime` + skeleton convention. An orphaned entity class has nothing to persist it, so
+ *   this path ALSO wires a booting plugin whose `boot()` registers a `Milpa\Data\FileRepository` for
+ *   the entity into the DI container — a minimal `PluginInterface` implementation is generated
+ *   alongside the entity when the target plugin area doesn't exist yet, or the exact registration
+ *   snippet to add by hand is returned via {@see GenerationResult::$guidance} when it does — see
+ *   {@see self::wireRepository()}, which mirrors {@see ControllerGenerator::wireRoute()}.
  */
 final class EntityGenerator implements GeneratorInterface
 {
     private string $stubs;
-    private bool $doctrineAvailable;
 
     /**
      * @param bool|null $doctrineAvailable override for testing; `null` (the default) auto-detects via
-     *                                     {@see DoctrineAvailability::isAvailable()}
+     *                                     {@see DoctrineAvailability::isAvailable()} — checked LAZILY,
+     *                                     only inside {@see generateLegacy()}, so a bare
+     *                                     `new EntityGenerator()` used for the RUNTIME path never
+     *                                     triggers Doctrine autoloading (mirrors the guarantee
+     *                                     {@see ControllerGenerator}'s runtime path already has).
      */
     public function __construct(
         private readonly FieldParser $parser = new FieldParser(),
         private readonly StubRenderer $renderer = new StubRenderer(),
-        ?bool $doctrineAvailable = null,
+        private readonly ConventionDetector $detector = new ConventionDetector(),
+        private readonly ?bool $doctrineAvailable = null,
     ) {
         $this->stubs = \dirname(__DIR__) . '/stubs';
-        $this->doctrineAvailable = $doctrineAvailable ?? DoctrineAvailability::isAvailable();
     }
 
     /** The `<what>` token this generator answers to: `'entity'`. */
@@ -47,15 +63,25 @@ final class EntityGenerator implements GeneratorInterface
         return 'entity';
     }
 
+    /** Renders the entity (+ repository wiring for runtime) per the detected/overridden {@see Flavor}. */
+    public function generate(GenerationContext $context): GenerationResult
+    {
+        $flavor = $this->detector->detect($context->root, $context->option('flavor'));
+
+        return $flavor === Flavor::Runtime
+            ? $this->generateRuntime($context)
+            : $this->generateLegacy($context);
+    }
+
     /**
-     * Parses `--fields`, renders the entity class, and returns it paired with its `entity` verify
-     * target.
+     * Parses `--fields`, renders the Doctrine entity class, and returns it paired with its `entity`
+     * verify target.
      *
      * @throws \RuntimeException When `doctrine/orm` is not installed (see {@see DoctrineAvailability}).
      */
-    public function generate(GenerationContext $context): GenerationResult
+    private function generateLegacy(GenerationContext $context): GenerationResult
     {
-        if (!$this->doctrineAvailable) {
+        if (!($this->doctrineAvailable ?? DoctrineAvailability::isAvailable())) {
             throw new \RuntimeException(DoctrineAvailability::MESSAGE);
         }
 
@@ -98,7 +124,182 @@ final class EntityGenerator implements GeneratorInterface
             files: [new PlannedFile($path, $contents)],
             verifyKind: 'entity',
             verifyTarget: $namespace . '\\' . $context->name,
+            flavor: Flavor::Legacy,
         );
+    }
+
+    /**
+     * Parses `--fields`, renders the plain `Milpa\Data\EntityInterface` entity class (+ repository
+     * wiring), and returns it paired with its `entity` verify target.
+     *
+     * @throws \InvalidArgumentException When a field is named `id` (collides with the stub's
+     *                                   built-in `$id`), or is a `belongsTo` relation — `milpa/data`
+     *                                   has no relation concept yet, so a runtime entity cannot
+     *                                   express one; store the related id as a plain scalar field
+     *                                   instead, or use `--flavor=legacy`.
+     */
+    private function generateRuntime(GenerationContext $context): GenerationResult
+    {
+        $fields = $this->parser->parse($context->option('fields') ?? '');
+        [$appNamespace, $appDir] = ComposerAutoload::primaryNamespace($context->root) ?? ['App', 'src'];
+        $appDir = trim($appDir, '/');
+
+        $entityNamespace = $appNamespace . '\\Plugins\\' . $context->plugin . '\\Entities';
+        $entityPath = $context->root . '/' . $appDir . '/Plugins/' . $context->plugin
+            . '/Entities/' . $context->name . '.php';
+
+        // `$id` is always the first constructor param, mirroring milpa/data's own `Post`-shaped
+        // fixture (`Milpa\Data\Tests\Fixtures\TestEntity`) — every array is seeded with the `id`
+        // line so an empty `--fields` DSL still renders a valid (if minimal) entity, with no
+        // dangling blank line to reconcile (see StubRenderer's plain str_replace semantics).
+        $ctorLines = ['        public int|string|null $id,'];
+        $toArrayLines = ["            'id' => \$this->id,"];
+        $fromArrayLines = ["            \$row['id'] ?? null,"];
+        $uses = [];
+
+        foreach ($fields as $field) {
+            if (strtolower($field->name) === 'id') {
+                throw new \InvalidArgumentException(
+                    "field '{$field->name}' collides with the entity stub's built-in \${$field->name} — choose a different name",
+                );
+            }
+
+            if ($field->kind === 'belongsTo') {
+                throw new \InvalidArgumentException(
+                    "field '{$field->name}': belongsTo relations aren't supported by runtime entities "
+                    . "yet (milpa/data has no relation concept) — store the related id as a plain "
+                    . "scalar field (e.g. '{$field->name}:int'), or use --flavor=legacy",
+                );
+            }
+
+            if ($field->kind === 'enum') {
+                $enum = (string) $field->target;
+                $uses[] = 'use ' . $appNamespace . '\\Plugins\\' . $context->plugin . '\\Enums\\' . $enum . ';';
+                $type = ($field->nullable ? '?' : '') . $enum;
+
+                $ctorLines[] = "        public {$type} \${$field->name},";
+                $toArrayLines[] = $field->nullable
+                    ? "            '{$field->name}' => \$this->{$field->name}?->value,"
+                    : "            '{$field->name}' => \$this->{$field->name}->value,";
+                $fromArrayLines[] = $field->nullable
+                    ? "            \$row['{$field->name}'] !== null ? {$enum}::from(\$row['{$field->name}']) : null,"
+                    : "            {$enum}::from(\$row['{$field->name}']),";
+
+                continue;
+            }
+
+            $phpType = $this->phpType($field);
+            $type = ($field->nullable ? '?' : '') . $phpType;
+            $ctorLines[] = "        public {$type} \${$field->name},";
+
+            if ($phpType === 'DateTime') {
+                $uses[] = 'use DateTime;';
+                $toArrayLines[] = $field->nullable
+                    ? "            '{$field->name}' => \$this->{$field->name}?->format(DATE_ATOM),"
+                    : "            '{$field->name}' => \$this->{$field->name}->format(DATE_ATOM),";
+                $fromArrayLines[] = $field->nullable
+                    ? "            \$row['{$field->name}'] !== null ? new DateTime(\$row['{$field->name}']) : null,"
+                    : "            new DateTime(\$row['{$field->name}']),";
+
+                continue;
+            }
+
+            $toArrayLines[] = "            '{$field->name}' => \$this->{$field->name},";
+            $fromArrayLines[] = "            \$row['{$field->name}'],";
+        }
+
+        $contents = $this->renderer->render($this->stubs . '/entity.runtime.php.stub', [
+            'namespace' => $entityNamespace,
+            'class' => $context->name,
+            'uses' => $uses === [] ? '' : implode("\n", array_unique($uses)) . "\n",
+            'ctorParams' => implode("\n", $ctorLines),
+            'toArrayEntries' => implode("\n", $toArrayLines),
+            'fromArrayArgs' => implode("\n", $fromArrayLines),
+        ]);
+
+        $files = [new PlannedFile($entityPath, $contents)];
+
+        ['file' => $pluginFile, 'guidance' => $guidance] = $this->wireRepository(
+            $context,
+            $appNamespace,
+            $appDir,
+            $entityNamespace,
+        );
+        if ($pluginFile !== null) {
+            $files[] = $pluginFile;
+        }
+
+        return new GenerationResult(
+            files: $files,
+            verifyKind: 'entity',
+            verifyTarget: $entityNamespace . '\\' . $context->name,
+            flavor: Flavor::Runtime,
+            guidance: $guidance,
+        );
+    }
+
+    /**
+     * Decides how the generated entity reaches a booting `Milpa\Data\FileRepository` — the
+     * load-bearing part of the runtime path, since an orphaned entity class has nothing to persist
+     * it (see the class docblock). Mirrors {@see ControllerGenerator::wireRoute()} exactly, one
+     * concern swapped for the other (route registration -> repository registration):
+     *
+     * - No `PluginInterface` plugin exists yet at the target area's conventional path
+     *   (`{appDir}/Plugins/{plugin}/{plugin}.php`) -> generate a minimal one whose `boot()`
+     *   registers a `FileRepository($root . '/var/<table>.json', Entity::class)` into the DI
+     *   container under the id `Entity::class . 'Repository'`, plus guidance to register the new
+     *   plugin class in `config/plugins.php`.
+     * - One already exists -> it is NOT edited (same deterministic-write rationale as the
+     *   controller path). The exact `boot()` registration snippet to add by hand is returned
+     *   instead.
+     *
+     * Existence is checked on the FILESYSTEM only (`is_file()`), not via reflection/autoloading —
+     * safe to call from a `--dry-run` before anything is installed/autoloadable, and consistent
+     * with {@see ControllerGenerator::wireRoute()}.
+     *
+     * @return array{file: ?PlannedFile, guidance: string}
+     */
+    private function wireRepository(
+        GenerationContext $context,
+        string $appNamespace,
+        string $appDir,
+        string $entityNamespace,
+    ): array {
+        $table = $context->option('table') ?? strtolower($context->name) . 's';
+
+        $pluginNamespace = $appNamespace . '\\Plugins\\' . $context->plugin;
+        $pluginPath = $context->root . '/' . $appDir . '/Plugins/' . $context->plugin . '/' . $context->plugin . '.php';
+        $pluginFqcn = $pluginNamespace . '\\' . $context->plugin;
+        $repositoryId = "{$context->name}::class . 'Repository'";
+
+        if (is_file($pluginPath)) {
+            $snippet = "\$this->container->registerService(\n"
+                . "    {$repositoryId},\n"
+                . "    new FileRepository((new RootResolver())->resolve() . '/var/{$table}.json', {$context->name}::class),\n"
+                . ');';
+
+            $guidance = "A plugin already exists at {$pluginPath} — it is left untouched (editing "
+                . "existing host code is outside this generator's deterministic write model). Add "
+                . "`use {$entityNamespace}\\{$context->name};`, `use Milpa\\Data\\FileRepository;` and "
+                . "`use Milpa\\Runtime\\Support\\RootResolver;` imports and this to its boot():\n\n{$snippet}\n\n"
+                . "Resolve it later via \$container->get({$repositoryId}).";
+
+            return ['file' => null, 'guidance' => $guidance];
+        }
+
+        $pluginContents = $this->renderer->render($this->stubs . '/entity-plugin.runtime.php.stub', [
+            'namespace' => $pluginNamespace,
+            'class' => $context->plugin,
+            'entityNamespace' => $entityNamespace,
+            'entityClass' => $context->name,
+            'table' => $table,
+        ]);
+
+        $guidance = "New plugin — register it so the kernel boots it: add {$pluginFqcn}::class to the "
+            . 'list returned by config/plugins.php. Its boot() wires a FileRepository for '
+            . "{$context->name}; resolve it later via \$container->get({$repositoryId}).";
+
+        return ['file' => new PlannedFile($pluginPath, $pluginContents), 'guidance' => $guidance];
     }
 
     private function property(FieldSpec $field): string

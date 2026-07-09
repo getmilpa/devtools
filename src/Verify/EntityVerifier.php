@@ -5,25 +5,36 @@ declare(strict_types=1);
 namespace Milpa\DevTools\Verify;
 
 use Doctrine\ORM\Mapping as ORM;
+use Milpa\Data\EntityInterface;
+use Milpa\DevTools\Make\Flavor;
 use Milpa\DevTools\Support\DoctrineAvailability;
 use ReflectionClass;
 use ReflectionProperty;
 
 /**
- * Verifies a class follows the Milpa host-app Doctrine entity convention: `#[ORM\Entity]` (+
- * `#[ORM\Table]`), an `#[ORM\Id]`/`#[ORM\GeneratedValue]` identity, private-only properties, typed
- * `#[ORM\Column]`s with nullable coherence between the column and the PHP type, initialized
- * to-many collections, an `#[ORM\PreUpdate]` + `#[ORM\HasLifecycleCallbacks]` pair when `updatedAt`
- * is present, and that Doctrine's no-constructor hydration path actually works (nullable properties
- * readable right after `newInstanceWithoutConstructor()`).
+ * Verifies a class follows one of the two entity conventions {@see Flavor} names, chosen at
+ * construction time (default {@see Flavor::Legacy}, matching this class's behavior before F3 — every
+ * existing caller that builds `new EntityVerifier()` with no argument is unaffected), mirroring
+ * exactly how {@see ControllerVerifier} picks its convention:
  *
- * `doctrine/orm` is an OPTIONAL dependency of `milpa/devtools` (see `composer.json`'s `suggest`) —
- * this is the only verifier that needs it. {@see verify()} returns a failed
- * {@see VerificationResult} carrying {@see DoctrineAvailability::MESSAGE} when it is not installed,
- * the same non-throwing shape as every other verification failure this class reports (e.g. "class
- * not found" below), rather than crashing deep inside attribute reflection. Ported 1:1 from
- * `scripts/verify-entity.php` (reflection checks only; CLI arg parsing/formatting lives in the thin
- * shim).
+ * - {@see Flavor::Legacy}: the Milpa host-app Doctrine entity convention — `#[ORM\Entity]` (+
+ *   `#[ORM\Table]`), an `#[ORM\Id]`/`#[ORM\GeneratedValue]` identity, private-only properties, typed
+ *   `#[ORM\Column]`s with nullable coherence between the column and the PHP type, initialized
+ *   to-many collections, an `#[ORM\PreUpdate]` + `#[ORM\HasLifecycleCallbacks]` pair when
+ *   `updatedAt` is present, and that Doctrine's no-constructor hydration path actually works
+ *   (nullable properties readable right after `newInstanceWithoutConstructor()`). `doctrine/orm` is
+ *   an OPTIONAL dependency of `milpa/devtools` (see `composer.json`'s `suggest`) — this is the only
+ *   path that needs it. {@see verify()} returns a failed {@see VerificationResult} carrying
+ *   {@see DoctrineAvailability::MESSAGE} when it is not installed, the same non-throwing shape as
+ *   every other verification failure this class reports (e.g. "class not found" below), rather than
+ *   crashing deep inside attribute reflection. Ported 1:1 from `scripts/verify-entity.php`
+ *   (reflection checks only; CLI arg parsing/formatting lives in the thin shim).
+ * - {@see Flavor::Runtime}: `milpa/data`'s plain-entity convention — implements
+ *   `Milpa\Data\EntityInterface` (`id()`/`toArray()`/`fromArray()`), no Doctrine attributes. Unlike
+ *   the legacy path there is no column/nullability/hydration bookkeeping to check — persistence
+ *   lives entirely behind `Milpa\Data\RepositoryInterface`, outside this class. `milpa/data` is a
+ *   hard `require` of `milpa/devtools` (unlike the optional `doctrine/orm`), so no availability
+ *   guard is needed for this path.
  */
 final class EntityVerifier implements VerifierInterface
 {
@@ -33,14 +44,24 @@ final class EntityVerifier implements VerifierInterface
      * @param bool|null $doctrineAvailable override for testing; `null` (the default) auto-detects via
      *                                     {@see DoctrineAvailability::isAvailable()}
      */
-    public function __construct(?bool $doctrineAvailable = null)
-    {
+    public function __construct(
+        private readonly Flavor $flavor = Flavor::Legacy,
+        ?bool $doctrineAvailable = null,
+    ) {
         $this->doctrineAvailable = $doctrineAvailable ?? DoctrineAvailability::isAvailable();
     }
 
-    /** Reflects `$fqcn` and checks it against the host-app Doctrine entity convention described above. */
+    /** Reflects `$fqcn` and checks it against the constructor-selected {@see Flavor}'s convention. */
     public function verify(string $fqcn): VerificationResult
     {
+        if ($this->flavor === Flavor::Runtime) {
+            if (!class_exists($fqcn)) {
+                return new VerificationResult($fqcn, ["class not found: {$fqcn} — make sure the FQCN is correct and autoloadable"]);
+            }
+
+            return $this->verifyRuntime($fqcn);
+        }
+
         if (!$this->doctrineAvailable) {
             return new VerificationResult($fqcn, [DoctrineAvailability::MESSAGE]);
         }
@@ -49,6 +70,11 @@ final class EntityVerifier implements VerifierInterface
             return new VerificationResult($fqcn, ["class not found: {$fqcn} — make sure the FQCN is correct and autoloadable"]);
         }
 
+        return $this->verifyLegacy($fqcn);
+    }
+
+    private function verifyLegacy(string $fqcn): VerificationResult
+    {
         $errors = [];
         $warnings = [];
 
@@ -196,5 +222,53 @@ final class EntityVerifier implements VerifierInterface
         }
 
         return new VerificationResult($reflection->getShortName(), $errors, $warnings);
+    }
+
+    /**
+     * Checks the RUNTIME convention: a plain class implementing {@see EntityInterface}
+     * (`id()`/`toArray()`/`fromArray()`, `fromArray()` static), carrying no Doctrine attributes —
+     * the `milpa/data` convention {@see \Milpa\DevTools\Make\Generators\EntityGenerator}'s runtime
+     * path scaffolds. Unlike {@see verifyLegacy()} there is no column/nullability/hydration
+     * bookkeeping to check — persistence lives entirely behind `Milpa\Data\RepositoryInterface`,
+     * outside this class.
+     */
+    private function verifyRuntime(string $fqcn): VerificationResult
+    {
+        $errors = [];
+        $warnings = [];
+
+        $reflection = new ReflectionClass($fqcn);
+        $file = $reflection->getFileName();
+        $source = $file !== false ? file_get_contents($file) : false;
+
+        if ($source !== false && !str_contains($source, 'declare(strict_types=1)')) {
+            $errors[] = 'Missing declare(strict_types=1) at top of file';
+        }
+
+        if (!$reflection->implementsInterface(EntityInterface::class)) {
+            $errors[] = 'Runtime entities must implement ' . EntityInterface::class
+                . ' — that is the runtime convention; pass --flavor=legacy for a Doctrine entity instead';
+        }
+
+        if ($reflection->getAttributes(ORM\Entity::class) !== []) {
+            $errors[] = 'Runtime entities must not carry #[ORM\\Entity] — that is the legacy convention; '
+                . 'pass --flavor=legacy, or drop the attribute';
+        }
+
+        foreach (['id', 'toArray', 'fromArray'] as $methodName) {
+            if (!$reflection->hasMethod($methodName)) {
+                $errors[] = "Missing method {$methodName}() required by " . EntityInterface::class;
+            }
+        }
+
+        if ($reflection->hasMethod('fromArray') && !$reflection->getMethod('fromArray')->isStatic()) {
+            $errors[] = 'fromArray() must be a static method';
+        }
+
+        if ($reflection->hasMethod('id') && $reflection->getMethod('id')->isStatic()) {
+            $errors[] = 'id() must not be static';
+        }
+
+        return new VerificationResult($reflection->getShortName() . ' — runtime entity', $errors, $warnings);
     }
 }

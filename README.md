@@ -33,9 +33,14 @@ composer require milpa/devtools
 
 ## Quick example: generate, then read what you got
 
-`EntityGenerator` turns the `--fields` DSL `coa:make entity` accepts into a fully-formed Doctrine
-entity — as a string, in memory, with zero disk I/O of its own (that's `WriteGuard`'s job, so a
-caller can inspect, diff, or dry-run a generation before anything touches the filesystem):
+`EntityGenerator`/`ControllerGenerator` both target **two conventions** — a Doctrine `Milpa\app`
+legacy host, or a plain `milpa/data`/PSR-7 `milpa/runtime` host — auto-detected per app root by
+`ConventionDetector` (override with `GenerationContext`'s `flavor` option, e.g. `--flavor=runtime`).
+The full split, exact CLI syntax for each host, and the `--fields` DSL live in
+[`docs/DEVTOOLS-MAKE.md`](../../docs/DEVTOOLS-MAKE.md) of the host monorepo; this README's example
+below shows the **legacy** flavor. Either way it's a string, in memory, with zero disk I/O of its
+own (that's `WriteGuard`'s job, so a caller can inspect, diff, or dry-run a generation before
+anything touches the filesystem):
 
 ```php
 use Milpa\DevTools\Make\GenerationContext;
@@ -180,7 +185,7 @@ checking generated output against that same convention.
 
 | Namespace | What it provides |
 |-----------|-------------------|
-| `Milpa\DevTools\Make` | `GeneratorInterface`, `GenerationContext`/`GenerationResult`/`PlannedFile`, `ControllerGenerator`/`EntityGenerator`, `FieldParser`/`FieldSpec` (the `--fields` DSL: `name:type[:mods]`, `?` prefix for nullable, `enum:<Enum>`, `<name>:belongsTo:<Target>`), `StubRenderer`, `WriteGuard`, `VerifyRunner` |
+| `Milpa\DevTools\Make` | `GeneratorInterface`, `GenerationContext`/`GenerationResult`/`PlannedFile`, `ControllerGenerator`/`EntityGenerator` (each targets `Flavor::Runtime` or `Flavor::Legacy`, picked by `ConventionDetector`), `FieldParser`/`FieldSpec` (the `--fields` DSL: `name:type[:mods]`, `?` prefix for nullable, `enum:<Enum>`, `<name>:belongsTo:<Target>` — legacy-only), `StubRenderer`, `WriteGuard`, `VerifyRunner` |
 | `Milpa\DevTools\Verify` | `VerifierInterface`, `VerificationResult`, `ControllerVerifier`, `EntityVerifier` |
 | `Milpa\DevTools\Validators` | `PluginManifestValidator`, `CapabilityGraphValidator`, `ProviderImplementsValidator`, `BoundaryValidator` (+ `BoundaryRule`/`BoundaryRuleResult`/`BoundaryReport`) and each validator's typed result |
 | `Milpa\DevTools\Support` | `RootResolver`/`RootNotFoundException`, `ClassNameExtractor` (file path → FQCN, no autoloading — lets a CLI accept either) |
@@ -192,10 +197,16 @@ every validator's exact error messages are documented at the source and in the
 ## Requirements
 
 - PHP **≥ 8.3**
-- No runtime `milpa/*` dependencies — `milpa/core` appears only in `require-dev` (docs tooling).
-- [`doctrine/orm`](https://packagist.org/packages/doctrine/orm) **^3** — a genuine dependency:
-  `EntityVerifier` reflects real `#[ORM\Column]`/`#[ORM\JoinColumn]` attributes, it doesn't just
-  pattern-match their names
+- [`milpa/data`](https://packagist.org/packages/milpa/data) — a genuine runtime `require`: the
+  runtime entity path (`Milpa\Data\EntityInterface`/`FileRepository`) is always loadable once
+  `milpa/devtools` itself is composer-installed. `milpa/core` still appears only in `require-dev`
+  (docs tooling).
+- [`doctrine/orm`](https://packagist.org/packages/doctrine/orm) **^3** — **optional** (`suggest`,
+  not `require`): only the **legacy** entity path needs it — `EntityGenerator::generateLegacy()` and
+  `EntityVerifier`'s legacy branch reflect real `#[ORM\Column]`/`#[ORM\JoinColumn]` attributes, they
+  don't just pattern-match their names. Generating/verifying a legacy entity without it installed
+  fails fast with one clear message instead of a crash deep in attribute reflection. The controller
+  path (either flavor) and the runtime entity path never touch Doctrine.
 - `composer-runtime-api` **^2.2** — the documented way to depend on `Composer\InstalledVersions`,
   which `RootResolver` uses as its second resolution tier
 

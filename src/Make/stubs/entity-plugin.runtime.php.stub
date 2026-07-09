@@ -1,0 +1,52 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use {{entityNamespace}}\{{entityClass}};
+use Milpa\Attributes\PluginMetadata;
+use Milpa\Data\FileRepository;
+use Milpa\Interfaces\Di\DIContainerInterface;
+use Milpa\Interfaces\Plugin\PluginInterface;
+use Milpa\Runtime\Support\RootResolver;
+
+#[PluginMetadata(
+    version: '0.1.0',
+    author: 'Your Name',
+    site: 'https://example.com',
+    name: '{{class}}',
+    type: 'Service',
+)]
+final class {{class}} implements PluginInterface
+{
+    public function __construct(private readonly DIContainerInterface $container)
+    {
+        // PluginInterface fixes the constructor to ($container) — kept as a promoted readonly
+        // property so boot() can register the {{entityClass}} repository into it below.
+    }
+
+    public function boot(): void
+    {
+        $this->container->registerService(
+            {{entityClass}}::class . 'Repository',
+            new FileRepository((new RootResolver())->resolve() . '/var/{{table}}.json', {{entityClass}}::class),
+        );
+    }
+
+    public function install(): void
+    {
+    }
+
+    public function uninstall(): void
+    {
+    }
+
+    public function enable(): void
+    {
+    }
+
+    public function disable(): void
+    {
+    }
+}

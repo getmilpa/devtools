@@ -5,7 +5,8 @@
   "license": "Apache-2.0",
   "require": {
     "php": ">=8.3",
-    "composer-runtime-api": "^2.2"
+    "composer-runtime-api": "^2.2",
+    "milpa/data": "^0.1"
   },
   "require-dev": {
     "phpunit/phpunit": "^11.5",

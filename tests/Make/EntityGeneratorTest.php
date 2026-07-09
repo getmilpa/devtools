@@ -12,6 +12,11 @@ final class EntityGeneratorTest extends TestCase
 {
     // Generators only ever compose $root into a returned path STRING (see PlannedFile) — they never
     // read/write it — so a synthetic value is honest here (no real "host app" exists in this suite).
+    // Every context below pins 'flavor' => 'legacy' explicitly: this class exercises the LEGACY
+    // (Doctrine) convention specifically — see EntityGeneratorRuntimeTest for the runtime one — and
+    // since F3 auto-detects the flavor from the (real) filesystem under $root when no override is
+    // given (mirroring ControllerGenerator/ConventionDetector), a nonexistent synthetic root would
+    // otherwise be genuinely ambiguous and default to Flavor::Runtime — not what these tests are about.
     private string $root = '/fake/host';
 
     public function testGeneratesEntityWithScalarEnumAndRelation(): void
@@ -19,7 +24,7 @@ final class EntityGeneratorTest extends TestCase
         $ctx = new GenerationContext(
             plugin: 'WorkflowEnginePlugin',
             name: 'Widget',
-            options: ['fields' => 'title:string:120, ?note:text, state:enum:GatePassageStatus, gate:belongsTo:GateDefinition', 'table' => 'workflow_widgets'],
+            options: ['fields' => 'title:string:120, ?note:text, state:enum:GatePassageStatus, gate:belongsTo:GateDefinition', 'table' => 'workflow_widgets', 'flavor' => 'legacy'],
             root: $this->root,
         );
 
@@ -60,7 +65,7 @@ final class EntityGeneratorTest extends TestCase
         $ctx = new GenerationContext(
             plugin: 'WorkflowEnginePlugin',
             name: 'Widget',
-            options: ['fields' => 'metadata:json, ?extra:json'],
+            options: ['fields' => 'metadata:json, ?extra:json', 'flavor' => 'legacy'],
             root: $this->root,
         );
 
@@ -84,7 +89,7 @@ final class EntityGeneratorTest extends TestCase
         $ctx = new GenerationContext(
             plugin: 'WorkflowEnginePlugin',
             name: 'Widget',
-            options: ['fields' => '?state:enum:GatePassageStatus'],
+            options: ['fields' => '?state:enum:GatePassageStatus', 'flavor' => 'legacy'],
             root: $this->root,
         );
 
@@ -113,7 +118,7 @@ final class EntityGeneratorTest extends TestCase
         $ctx = new GenerationContext(
             plugin: 'WorkflowEnginePlugin',
             name: 'Widget',
-            options: ['fields' => 'id:int'],
+            options: ['fields' => 'id:int', 'flavor' => 'legacy'],
             root: $this->root,
         );
 
@@ -121,13 +126,18 @@ final class EntityGeneratorTest extends TestCase
         (new EntityGenerator())->generate($ctx);
     }
 
-    /** @see testReservedFieldNameIdIsRejected */
+    /**
+     * @see testReservedFieldNameIdIsRejected
+     *
+     * `uuid` is reserved LEGACY-only — the Doctrine stub has a built-in `$uuid` property, the
+     * runtime one does not (see EntityGeneratorRuntimeTest).
+     */
     public function testReservedFieldNameUuidIsRejectedCaseInsensitively(): void
     {
         $ctx = new GenerationContext(
             plugin: 'WorkflowEnginePlugin',
             name: 'Widget',
-            options: ['fields' => 'UUID:string'],
+            options: ['fields' => 'UUID:string', 'flavor' => 'legacy'],
             root: $this->root,
         );
 
@@ -147,7 +157,7 @@ final class EntityGeneratorTest extends TestCase
         $ctx = new GenerationContext(
             plugin: 'WorkflowEnginePlugin',
             name: 'Widget',
-            options: ['fields' => 'title:string'],
+            options: ['fields' => 'title:string', 'flavor' => 'legacy'],
             root: $this->root,
         );
 

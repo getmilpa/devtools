@@ -41,18 +41,20 @@ final class VerifyRunner
     /**
      * Runs the `$kind` verifier ('controller'|'entity') against `$fqcn` and returns its outcome.
      *
-     * @param Flavor|null $flavor the {@see Flavor} to verify a `'controller'` against — typically
+     * @param Flavor|null $flavor the {@see Flavor} to verify a `'controller'` or `'entity'` against
+     *                            (both {@see ControllerVerifier} and {@see EntityVerifier} pick their
+     *                            convention this same way as of F3) — typically
      *                            {@see GenerationResult::$flavor} from the same `generate()` call
-     *                            that produced `$fqcn`; ignored for `'entity'`, and `null` (the
-     *                            default) preserves this method's pre-F1 behavior of using the
-     *                            constructor's fixed `'controller'` verifier ({@see Flavor::Legacy})
+     *                            that produced `$fqcn`; `null` (the default) preserves this method's
+     *                            pre-F1 behavior of using the constructor's fixed verifiers (both
+     *                            default to {@see Flavor::Legacy})
      *
      * @return array{ok: bool, output: string}
      */
     public function run(string $kind, string $fqcn, string $root, ?Flavor $flavor = null): array
     {
-        $verifier = $kind === 'controller' && $flavor !== null
-            ? new ControllerVerifier($flavor)
+        $verifier = $flavor !== null
+            ? $this->verifierFor($kind, $flavor)
             : ($this->verifiers[$kind] ?? null);
 
         if ($verifier === null) {
@@ -62,5 +64,15 @@ final class VerifyRunner
         $result = $verifier->verify($fqcn);
 
         return ['ok' => $result->ok(), 'output' => $result->render()];
+    }
+
+    /** Builds a fresh, `$flavor`-selected verifier for `$kind`; falls back to the cached default when `$kind` is unknown. */
+    private function verifierFor(string $kind, Flavor $flavor): ?VerifierInterface
+    {
+        return match ($kind) {
+            'controller' => new ControllerVerifier($flavor),
+            'entity' => new EntityVerifier($flavor),
+            default => $this->verifiers[$kind] ?? null,
+        };
     }
 }

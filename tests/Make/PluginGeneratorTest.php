@@ -62,6 +62,7 @@ final class PluginGeneratorTest extends TestCase
         $this->assertStringContainsString('use Milpa\\Interfaces\\Di\\DIContainerInterface;', $code);
         $this->assertStringContainsString('use Milpa\\Interfaces\\Plugin\\PluginInterface;', $code);
         $this->assertStringContainsString('final class BoardPlugin implements PluginInterface', $code);
+        $this->assertStringContainsString('ToolProviderInterface', $code);
         $this->assertStringNotContainsString('RouteProviderInterface', $code);
         $this->assertStringContainsString("name: 'BoardPlugin',", $code);
         $this->assertStringContainsString('public function boot(): void', $code);
@@ -69,6 +70,14 @@ final class PluginGeneratorTest extends TestCase
         $this->assertStringContainsString('public function uninstall(): void', $code);
         $this->assertStringContainsString('public function enable(): void', $code);
         $this->assertStringContainsString('public function disable(): void', $code);
+        $this->assertStringContainsString('public function registerTools(ToolRegistryInterface $registry): void', $code);
+        $this->assertStringContainsString('public function getPromptSections(): array', $code);
+
+        // F1: the wiring-marker anchors a follow-up make:service/make:tool auto-wires into (see
+        // MarkerInserterTest / ServiceGeneratorTest::testExistingMarkedPluginAutoWiresAtTheServicesMarker()).
+        $this->assertStringContainsString('// {coa:services}', $code);
+        $this->assertStringContainsString('// {coa:tools}', $code);
+        $this->assertStringContainsString('// {coa:tool-prompts}', $code);
 
         $this->assertPhpLints($code);
 
@@ -225,6 +234,26 @@ final class PluginGeneratorTest extends TestCase
         $plugin->enable();
         $plugin->disable();
         $plugin->uninstall();
+
+        // F1: the standalone stub ALSO genuinely implements ToolProviderInterface from the start
+        // (carrying the {coa:tools}/{coa:tool-prompts} markers a follow-up make:tool auto-wires
+        // into) — milpa/core (ToolProviderInterface's package) is a require-dev dependency of
+        // milpa/devtools, so — unlike RouteProviderInterface (milpa/runtime, not a dependency here,
+        // see the class docblock) — this is genuinely `require`-able and instantiable here, not just
+        // lint-checkable.
+        $this->assertTrue($reflection->implementsInterface('Milpa\\Interfaces\\Tooling\\ToolProviderInterface'));
+        $toolRegistry = new class () implements \Milpa\Interfaces\Tooling\ToolRegistryInterface {
+            public function register(
+                string $name,
+                string $description,
+                array $inputSchema,
+                callable $callback,
+                ?\Milpa\ValueObjects\Tooling\ToolOptions $options = null,
+            ): void {
+            }
+        };
+        $plugin->registerTools($toolRegistry);
+        $this->assertSame([], $plugin->getPromptSections(), 'no tool wired yet — the {coa:tool-prompts} marker is the only entry');
 
         $this->addToAssertionCount(1);
     }

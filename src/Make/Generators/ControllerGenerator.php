@@ -9,6 +9,8 @@ use Milpa\DevTools\Make\Flavor;
 use Milpa\DevTools\Make\GenerationContext;
 use Milpa\DevTools\Make\GenerationResult;
 use Milpa\DevTools\Make\GeneratorInterface;
+use Milpa\DevTools\Make\MarkerInserter;
+use Milpa\DevTools\Make\Markers;
 use Milpa\DevTools\Make\PlannedFile;
 use Milpa\DevTools\Make\StubRenderer;
 use Milpa\DevTools\Support\ComposerAutoload;
@@ -54,6 +56,7 @@ final class ControllerGenerator implements GeneratorInterface
     public function __construct(
         private readonly StubRenderer $renderer = new StubRenderer(),
         private readonly ConventionDetector $detector = new ConventionDetector(),
+        private readonly MarkerInserter $markers = new MarkerInserter(),
     ) {
         $this->stubs = \dirname(__DIR__) . '/stubs';
     }
@@ -152,10 +155,16 @@ final class ControllerGenerator implements GeneratorInterface
      *   (`{appDir}/Plugins/{plugin}/{plugin}.php`) → generate a minimal one, wired to the new
      *   controller, plus guidance to register it in `config/plugins.php` (a plain PHP array file —
      *   editing it deterministically is out of {@see \Milpa\DevTools\Make\WriteGuard}'s model, so
-     *   that registration stays a manual step).
-     * - One already exists → it is NOT edited (parsing/rewriting arbitrary host PHP is exactly the
-     *   fragile AST surgery this generator's deterministic `PlannedFile`/`WriteGuard` model exists
-     *   to avoid). The exact `Route` snippet to add by hand is returned instead.
+     *   that registration stays a manual step). It now ALSO carries the
+     *   {@see \Milpa\DevTools\Make\Markers::ROUTES} anchor for a later run.
+     * - One already exists AND carries the anchor (F1) → the `Route` entry is INSERTED at the marker
+     *   via {@see \Milpa\DevTools\Make\MarkerInserter} — `$file` becomes the merged plugin, marked
+     *   {@see \Milpa\DevTools\Make\PlannedFile::$merge} so {@see \Milpa\DevTools\Make\WriteGuard} does
+     *   not require `--force` to write it.
+     * - One already exists but carries no anchor → unchanged pre-F1 behavior: it is NOT edited
+     *   (parsing/rewriting arbitrary host PHP is exactly the fragile AST surgery this generator's
+     *   deterministic `PlannedFile`/`WriteGuard` model exists to avoid). The exact `Route` snippet to
+     *   add by hand is returned instead.
      *
      * Existence is checked on the FILESYSTEM only (`is_file()`), not via reflection/autoloading —
      * consistent with the rest of this deterministic generate step, and safe to call from a
@@ -176,8 +185,25 @@ final class ControllerGenerator implements GeneratorInterface
         $pluginNamespace = $appNamespace . '\\Plugins\\' . $context->plugin;
         $pluginPath = $context->root . '/' . $appDir . '/Plugins/' . $context->plugin . '/' . $context->plugin . '.php';
         $pluginFqcn = $pluginNamespace . '\\' . $context->plugin;
+        $controllerFqcn = $controllerNamespace . '\\' . $context->name;
 
         if (is_file($pluginPath)) {
+            $existing = (string) file_get_contents($pluginPath);
+            if ($this->markers->hasMarker($existing, Markers::ROUTES)) {
+                $routeSnippet = "new \\Milpa\\Http\\Routing\\Route(\n"
+                    . "    path: '{$path}',\n"
+                    . "    methods: \\Milpa\\Http\\HttpMethod::GET,\n"
+                    . "    name: '{$routeName}',\n"
+                    . "    handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'index'),\n"
+                    . '),';
+
+                $merged = $this->markers->insertBefore($existing, Markers::ROUTES, $routeSnippet, $context->flag('force'));
+
+                $guidance = "Auto-wired into the existing plugin at {$pluginPath} (// {" . Markers::ROUTES . '} marker found).';
+
+                return ['file' => new PlannedFile($pluginPath, $merged, merge: true), 'guidance' => $guidance];
+            }
+
             $snippet = "new Route(\n"
                 . "    path: '{$path}',\n"
                 . "    methods: HttpMethod::GET,\n"

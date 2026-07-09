@@ -227,6 +227,97 @@ final class CrudGeneratorTest extends TestCase
         $this->assertStringContainsString("path: '/board_tasks/{id}',", $plugin->contents);
     }
 
+    /**
+     * F1: an EXISTING plugin carrying BOTH the `// {coa:services}` and `// {coa:routes}` anchors gets
+     * the repository+controller registration AND all 5 REST routes INSERTED at their respective
+     * markers — the exact "make:plugin-first" greenhouse scenario ({@see PluginGenerator}'s standalone
+     * stub carries `// {coa:services}` from `make:plugin` onward; a plugin scaffolded by
+     * {@see ControllerGenerator}/{@see CrudGenerator} itself also carries `// {coa:routes}`).
+     */
+    public function testExistingPluginWithBothMarkersAutoWiresServicesAndRoutes(): void
+    {
+        $pluginDir = $this->root . '/src/Plugins/BoardPlugin';
+        mkdir($pluginDir, 0o775, true);
+        $marked = "<?php\n\nfinal class BoardPlugin\n{\n    public function boot(): void\n    {\n        // {coa:services}\n    }\n\n"
+            . "    public function routes(): array\n    {\n        return [\n            // {coa:routes}\n        ];\n    }\n}\n";
+        file_put_contents($pluginDir . '/BoardPlugin.php', $marked);
+
+        $ctx = new GenerationContext(
+            plugin: 'BoardPlugin',
+            name: 'Task',
+            options: ['flavor' => 'runtime', 'fields' => 'title:string'],
+            root: $this->root,
+        );
+
+        $result = (new CrudGenerator())->generate($ctx);
+
+        $this->assertCount(3, $result->files, 'entity + controller + the MERGED plugin');
+        $mergedPlugin = $this->fileNamed($result->files, 'BoardPlugin.php');
+        $this->assertTrue($mergedPlugin->merge);
+
+        $code = $mergedPlugin->contents;
+        $this->assertStringContainsString("Task::class . 'Repository'", $code);
+        $this->assertStringContainsString('new \\App\\Plugins\\BoardPlugin\\Controllers\\TaskController($repository)', $code);
+        $this->assertStringContainsString("path: '/tasks',", $code);
+        $this->assertStringContainsString("path: '/tasks/{id}',", $code);
+        foreach (['index', 'show', 'create', 'update', 'delete'] as $method) {
+            $this->assertStringContainsString(
+                "new \\Milpa\\Http\\Routing\\HandlerReference(\\App\\Plugins\\BoardPlugin\\Controllers\\TaskController::class, '{$method}')",
+                $code,
+            );
+        }
+        $this->assertSame(1, substr_count($code, '// {coa:services}'));
+        $this->assertSame(1, substr_count($code, '// {coa:routes}'));
+        $this->assertPhpLints($code);
+
+        $this->assertNotNull($result->guidance);
+        $guidance = (string) $result->guidance;
+        $this->assertStringContainsString('Auto-wired', $guidance);
+        // EntityGenerator's own "add this to its boot() by hand" advice would now be STALE (the
+        // registration was just auto-wired) and read as self-contradictory next to "Auto-wired" —
+        // it must be suppressed, not merely present alongside a conflicting claim.
+        $this->assertStringNotContainsString('add this to its boot()', $guidance);
+
+        // idempotent-safe re-run: applying the merged plugin back and re-running must not duplicate.
+        file_put_contents($pluginDir . '/BoardPlugin.php', $code);
+        $result2 = (new CrudGenerator())->generate($ctx);
+        $mergedAgain = $this->fileNamed($result2->files, 'BoardPlugin.php');
+        $this->assertSame($code, $mergedAgain->contents, 're-running the same make:crud must not duplicate the wiring');
+    }
+
+    /**
+     * A plugin carrying ONLY the services marker (e.g. hand-upgraded from a plain `make:service`
+     * wiring plugin, which never implements RouteProviderInterface) auto-wires the repository+
+     * controller registration but falls back to guidance for the routes half — never silently drops
+     * either concern.
+     */
+    public function testExistingPluginWithOnlyTheServicesMarkerAutoWiresServicesAndGuidesRoutes(): void
+    {
+        $pluginDir = $this->root . '/src/Plugins/BoardPlugin';
+        mkdir($pluginDir, 0o775, true);
+        $marked = "<?php\n\nfinal class BoardPlugin\n{\n    public function boot(): void\n    {\n        // {coa:services}\n    }\n}\n";
+        file_put_contents($pluginDir . '/BoardPlugin.php', $marked);
+
+        $ctx = new GenerationContext(
+            plugin: 'BoardPlugin',
+            name: 'Task',
+            options: ['flavor' => 'runtime', 'fields' => 'title:string'],
+            root: $this->root,
+        );
+
+        $result = (new CrudGenerator())->generate($ctx);
+        $mergedPlugin = $this->fileNamed($result->files, 'BoardPlugin.php');
+
+        $this->assertTrue($mergedPlugin->merge);
+        $this->assertStringContainsString("Task::class . 'Repository'", $mergedPlugin->contents);
+        $this->assertPhpLints($mergedPlugin->contents);
+
+        $guidance = (string) $result->guidance;
+        $this->assertStringContainsString('Auto-wired', $guidance);
+        $this->assertStringContainsString('coa:routes', $guidance);
+        $this->assertStringContainsString('by hand', $guidance);
+    }
+
     public function testExistingPluginIsNotEditedAndGetsCombinedGuidanceInstead(): void
     {
         $pluginDir = $this->root . '/src/Plugins/BoardPlugin';

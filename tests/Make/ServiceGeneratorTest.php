@@ -181,6 +181,105 @@ final class ServiceGeneratorTest extends TestCase
         $this->assertStringContainsString('use App\\Plugins\\BoardPlugin\\Services\\WorkflowService;', $guidance);
     }
 
+    /**
+     * F1: an EXISTING plugin that carries the `// {coa:services}` marker gets the registration
+     * INSERTED at the anchor instead of only a guidance snippet — the load-bearing fix for the
+     * greenhouse "~57 lines hand-merged" friction. Mirrors {@see PluginGenerator}'s own standalone
+     * stub, which carries this exact marker from `make:plugin` onward.
+     */
+    public function testExistingMarkedPluginAutoWiresAtTheServicesMarker(): void
+    {
+        $pluginDir = $this->root . '/src/Plugins/BoardPlugin';
+        mkdir($pluginDir, 0o775, true);
+        $marked = "<?php\n\nfinal class BoardPlugin\n{\n    public function boot(): void\n    {\n        // {coa:services}\n    }\n}\n";
+        file_put_contents($pluginDir . '/BoardPlugin.php', $marked);
+
+        $ctx = new GenerationContext(
+            plugin: 'BoardPlugin',
+            name: 'WorkflowService',
+            options: ['flavor' => 'runtime'],
+            root: $this->root,
+        );
+
+        $result = (new ServiceGenerator())->generate($ctx);
+
+        $this->assertCount(2, $result->files, 'the service class + the MERGED plugin (not a 3rd, separately-planned plugin file)');
+        $this->assertSame('WorkflowService.php', basename($result->files[0]->path));
+        $mergedPlugin = $this->fileNamed($result->files, 'BoardPlugin.php');
+        $this->assertTrue($mergedPlugin->merge);
+    }
+
+    public function testExistingMarkedPluginInsertsTheRegistrationAtTheAnchorNotDuplicated(): void
+    {
+        $pluginDir = $this->root . '/src/Plugins/BoardPlugin';
+        mkdir($pluginDir, 0o775, true);
+        $marked = "<?php\n\nfinal class BoardPlugin\n{\n    public function boot(): void\n    {\n        // {coa:services}\n    }\n}\n";
+        file_put_contents($pluginDir . '/BoardPlugin.php', $marked);
+
+        $ctx = new GenerationContext(
+            plugin: 'BoardPlugin',
+            name: 'WorkflowService',
+            options: ['flavor' => 'runtime'],
+            root: $this->root,
+        );
+
+        $result = (new ServiceGenerator())->generate($ctx);
+        $mergedPlugin = $this->fileNamed($result->files, 'BoardPlugin.php');
+
+        $this->assertTrue($mergedPlugin->merge, 'a marker-based merge must not require --force to write');
+        $code = $mergedPlugin->contents;
+        $this->assertStringContainsString(
+            "\$this->container->registerService(\n            \\App\\Plugins\\BoardPlugin\\Services\\WorkflowService::class,\n            new \\App\\Plugins\\BoardPlugin\\Services\\WorkflowService(),\n        );",
+            $code,
+        );
+        // the anchor is preserved — a later make:service run can insert at it again.
+        $this->assertSame(1, substr_count($code, '// {coa:services}'));
+        $this->assertPhpLints($code);
+
+        $this->assertNotNull($result->guidance);
+        $this->assertStringContainsString('Auto-wired', (string) $result->guidance);
+        $this->assertStringContainsString('coa:services', (string) $result->guidance);
+
+        // idempotent-safe: re-running against the JUST-MERGED plugin does not duplicate the insertion.
+        file_put_contents($pluginDir . '/BoardPlugin.php', $code);
+        $result2 = (new ServiceGenerator())->generate($ctx);
+        $mergedAgain = $this->fileNamed($result2->files, 'BoardPlugin.php');
+        $this->assertSame($code, $mergedAgain->contents, 're-running the same make:service must not duplicate the registration');
+        $this->assertSame(1, substr_count($mergedAgain->contents, 'new \\App\\Plugins\\BoardPlugin\\Services\\WorkflowService()'));
+    }
+
+    /** `--force` re-inserts even though the exact same registration is already present. */
+    public function testForceReinsertsIntoAMarkedPluginEvenWhenAlreadyWired(): void
+    {
+        $pluginDir = $this->root . '/src/Plugins/BoardPlugin';
+        mkdir($pluginDir, 0o775, true);
+        $marked = "<?php\n\nfinal class BoardPlugin\n{\n    public function boot(): void\n    {\n        // {coa:services}\n    }\n}\n";
+        file_put_contents($pluginDir . '/BoardPlugin.php', $marked);
+
+        $ctx = new GenerationContext(
+            plugin: 'BoardPlugin',
+            name: 'WorkflowService',
+            options: ['flavor' => 'runtime'],
+            root: $this->root,
+        );
+
+        $result = (new ServiceGenerator())->generate($ctx);
+        $once = $this->fileNamed($result->files, 'BoardPlugin.php')->contents;
+        file_put_contents($pluginDir . '/BoardPlugin.php', $once);
+
+        $forcedCtx = new GenerationContext(
+            plugin: 'BoardPlugin',
+            name: 'WorkflowService',
+            options: ['flavor' => 'runtime', 'force' => true],
+            root: $this->root,
+        );
+        $result2 = (new ServiceGenerator())->generate($forcedCtx);
+        $twice = $this->fileNamed($result2->files, 'BoardPlugin.php')->contents;
+
+        $this->assertNotSame($once, $twice);
+        $this->assertSame(2, substr_count($twice, 'new \\App\\Plugins\\BoardPlugin\\Services\\WorkflowService()'));
+    }
+
     public function testExistingPluginWithInterfaceFlagListsBothImportsInGuidance(): void
     {
         $pluginDir = $this->root . '/src/Plugins/BoardPlugin';

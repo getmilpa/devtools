@@ -130,6 +130,74 @@ final class ControllerGeneratorRuntimeTest extends TestCase
         $this->assertStringContainsString('use App\\Plugins\\BlogPlugin\\Controllers\\PostController;', $guidance);
     }
 
+    /**
+     * F1: an EXISTING plugin that carries the `// {coa:routes}` marker gets its `Route` entry
+     * INSERTED at the anchor instead of only a guidance snippet — mirrors
+     * {@see ServiceGeneratorTest::testExistingMarkedPluginInsertsTheRegistrationAtTheAnchorNotDuplicated()}
+     * for the routes concern.
+     */
+    public function testExistingMarkedPluginInsertsTheRouteAtTheAnchorNotDuplicated(): void
+    {
+        $pluginDir = $this->root . '/src/Plugins/BlogPlugin';
+        mkdir($pluginDir, 0o775, true);
+        $marked = "<?php\n\nfinal class BlogPlugin\n{\n    public function routes(): array\n    {\n        return [\n            // {coa:routes}\n        ];\n    }\n}\n";
+        file_put_contents($pluginDir . '/BlogPlugin.php', $marked);
+
+        $ctx = new GenerationContext(
+            plugin: 'BlogPlugin',
+            name: 'PostController',
+            options: ['flavor' => 'runtime', 'path' => '/posts'],
+            root: $this->root,
+        );
+
+        $result = (new ControllerGenerator())->generate($ctx);
+
+        $this->assertCount(2, $result->files, 'the controller class + the MERGED plugin');
+        $mergedPlugin = $this->fileNamed($result->files, 'BlogPlugin.php');
+        $this->assertTrue($mergedPlugin->merge);
+
+        $code = $mergedPlugin->contents;
+        $this->assertStringContainsString("path: '/posts',", $code);
+        $this->assertStringContainsString('methods: \\Milpa\\Http\\HttpMethod::GET,', $code);
+        $this->assertStringContainsString(
+            "handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\App\\Plugins\\BlogPlugin\\Controllers\\PostController::class, 'index'),",
+            $code,
+        );
+        $this->assertSame(1, substr_count($code, '// {coa:routes}'), 'the anchor is preserved for a later run');
+        $this->assertPhpLints($code);
+
+        $this->assertNotNull($result->guidance);
+        $this->assertStringContainsString('Auto-wired', (string) $result->guidance);
+
+        // idempotent-safe re-run.
+        file_put_contents($pluginDir . '/BlogPlugin.php', $code);
+        $result2 = (new ControllerGenerator())->generate($ctx);
+        $mergedAgain = $this->fileNamed($result2->files, 'BlogPlugin.php');
+        $this->assertSame($code, $mergedAgain->contents, 're-running the same make:controller must not duplicate the route');
+    }
+
+    /** A plugin that exists but carries no `// {coa:routes}` marker keeps the pre-F1 guidance-only fallback. */
+    public function testExistingPluginWithoutAMarkerStillFallsBackToGuidance(): void
+    {
+        $pluginDir = $this->root . '/src/Plugins/BlogPlugin';
+        mkdir($pluginDir, 0o775, true);
+        $unmarked = "<?php\n// hand-written plugin — no markers\n";
+        file_put_contents($pluginDir . '/BlogPlugin.php', $unmarked);
+
+        $ctx = new GenerationContext(
+            plugin: 'BlogPlugin',
+            name: 'PostController',
+            options: ['flavor' => 'runtime', 'path' => '/posts'],
+            root: $this->root,
+        );
+
+        $result = (new ControllerGenerator())->generate($ctx);
+
+        $this->assertCount(1, $result->files, 'the controller class only — the unmarked plugin file is untouched');
+        $this->assertSame($unmarked, file_get_contents($pluginDir . '/BlogPlugin.php'));
+        $this->assertStringContainsString('already exists', (string) $result->guidance);
+    }
+
     public function testDefaultPathIsDerivedFromTheControllerName(): void
     {
         $ctx = new GenerationContext(

@@ -7,6 +7,8 @@ namespace {{namespace}};
 use Milpa\Attributes\PluginMetadata;
 use Milpa\Interfaces\Di\DIContainerInterface;
 use Milpa\Interfaces\Plugin\PluginInterface;
+use Milpa\Interfaces\Tooling\ToolProviderInterface;
+use Milpa\Interfaces\Tooling\ToolRegistryInterface;
 
 #[PluginMetadata(
     version: '0.1.0',
@@ -15,16 +17,19 @@ use Milpa\Interfaces\Plugin\PluginInterface;
     name: '{{class}}',
     type: 'Service',
 {{metadataArgs}})]
-final class {{class}} implements PluginInterface
+final class {{class}} implements PluginInterface, ToolProviderInterface
 {
     public function __construct(private readonly DIContainerInterface $container)
     {
         // PluginInterface fixes the constructor to ($container) — kept as a promoted readonly
-        // property so boot() can register this plugin's services/routes/tools into it.
+        // property so boot()/registerTools() below can register into it / resolve collaborators
+        // from it as this plugin grows (a follow-up make:service/make:tool/make:controller/
+        // make:entity targeting this same plugin auto-wires at the // {coa:*} markers below).
     }
 
     public function boot(): void
     {
+        // {coa:services}
     }
 
     public function install(): void
@@ -41,5 +46,18 @@ final class {{class}} implements PluginInterface
 
     public function disable(): void
     {
+    }
+
+    public function registerTools(ToolRegistryInterface $registry): void
+    {
+        // {coa:tools}
+    }
+
+    /** @return list<string> */
+    public function getPromptSections(): array
+    {
+        return [
+            // {coa:tool-prompts}
+        ];
     }
 }

@@ -77,4 +77,31 @@ final class WriteGuardTest extends TestCase
 
         $this->addToAssertionCount(1);
     }
+
+    /**
+     * F1: a marker-based {@see \Milpa\DevTools\Make\MarkerInserter} merge into an existing plugin
+     * (see {@see \Milpa\DevTools\Make\PlannedFile::$merge}) is exactly the case `$merge` exists to
+     * let through without `--force` — it is an idempotent-safe insertion, not an accidental clobber.
+     */
+    public function testExistingFileWithMergeAndNoForceIsOk(): void
+    {
+        $path = $this->dir . '/File.php';
+        $guard = new WriteGuard();
+        $guard->write($path, 'a');
+        $guard->assertWritable($path, false, true);
+
+        $this->addToAssertionCount(1);
+    }
+
+    /** Without `$merge` (the default), the pre-F1 "refuse to clobber without --force" behavior is unchanged. */
+    public function testExistingFileWithoutForceOrMergeStillThrows(): void
+    {
+        $path = $this->dir . '/File.php';
+        $guard = new WriteGuard();
+        $guard->write($path, 'a');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('already exists');
+        $guard->assertWritable($path, false, false);
+    }
 }

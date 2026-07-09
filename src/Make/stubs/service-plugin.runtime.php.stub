@@ -29,6 +29,7 @@ final class {{class}} implements PluginInterface
             {{registrationClass}}::class,
             new {{serviceClass}}(),
         );
+        // {coa:services}
     }
 
     public function install(): void

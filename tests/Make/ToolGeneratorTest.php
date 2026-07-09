@@ -201,6 +201,178 @@ final class ToolGeneratorTest extends TestCase
         $this->assertStringContainsString('ToolProviderInterface', $guidance);
     }
 
+    /**
+     * F1: an EXISTING plugin carrying BOTH the `// {coa:tools}` and `// {coa:tool-prompts}` anchors
+     * gets the scan call AND the prompt-section entry INSERTED at their markers instead of only a
+     * guidance snippet — mirrors {@see ServiceGeneratorTest}'s marker-insertion coverage for the
+     * tools concern.
+     */
+    public function testExistingMarkedPluginInsertsTheScanCallAndPromptAtTheAnchorsNotDuplicated(): void
+    {
+        $pluginDir = $this->root . '/src/Plugins/BoardPlugin';
+        mkdir($pluginDir, 0o775, true);
+        $marked = "<?php\n\nfinal class BoardPlugin\n{\n    public function registerTools(\$registry): void\n    {\n        // {coa:tools}\n    }\n\n"
+            . "    public function getPromptSections(): array\n    {\n        return [\n            // {coa:tool-prompts}\n        ];\n    }\n}\n";
+        file_put_contents($pluginDir . '/BoardPlugin.php', $marked);
+
+        $ctx = new GenerationContext(
+            plugin: 'BoardPlugin',
+            name: 'CompleteTaskTool',
+            options: ['flavor' => 'runtime', 'description' => 'Mark a task done'],
+            root: $this->root,
+        );
+
+        $result = (new ToolGenerator())->generate($ctx);
+
+        $this->assertCount(2, $result->files, 'the tool class + the MERGED plugin');
+        $mergedPlugin = $this->fileNamed($result->files, 'BoardPlugin.php');
+        $this->assertTrue($mergedPlugin->merge);
+
+        $code = $mergedPlugin->contents;
+        $this->assertStringContainsString(
+            '(new \\Milpa\\ToolRuntime\\ToolScanner($registry))->scan(new \\App\\Plugins\\BoardPlugin\\Tools\\CompleteTaskTool());',
+            $code,
+        );
+        $this->assertStringContainsString("'CompleteTaskTool exposes the complete_task tool.',", $code);
+        $this->assertSame(1, substr_count($code, '// {coa:tools}'));
+        $this->assertSame(1, substr_count($code, '// {coa:tool-prompts}'));
+        $this->assertPhpLints($code);
+
+        $this->assertNotNull($result->guidance);
+        $this->assertStringContainsString('Auto-wired', (string) $result->guidance);
+
+        // idempotent-safe re-run.
+        file_put_contents($pluginDir . '/BoardPlugin.php', $code);
+        $result2 = (new ToolGenerator())->generate($ctx);
+        $mergedAgain = $this->fileNamed($result2->files, 'BoardPlugin.php');
+        $this->assertSame($code, $mergedAgain->contents, 're-running the same make:tool must not duplicate the wiring');
+    }
+
+    /** A plugin that exists but carries neither marker keeps the pre-F1 guidance-only fallback. */
+    public function testExistingPluginWithoutMarkersStillFallsBackToGuidance(): void
+    {
+        $pluginDir = $this->root . '/src/Plugins/BoardPlugin';
+        mkdir($pluginDir, 0o775, true);
+        $unmarked = "<?php\n// hand-written plugin — no markers\n";
+        file_put_contents($pluginDir . '/BoardPlugin.php', $unmarked);
+
+        $ctx = new GenerationContext(
+            plugin: 'BoardPlugin',
+            name: 'CompleteTaskTool',
+            options: ['flavor' => 'runtime'],
+            root: $this->root,
+        );
+
+        $result = (new ToolGenerator())->generate($ctx);
+
+        $this->assertCount(1, $result->files, 'the tool class only — the unmarked plugin file is untouched');
+        $this->assertSame($unmarked, file_get_contents($pluginDir . '/BoardPlugin.php'));
+        $this->assertStringContainsString('already exists', (string) $result->guidance);
+    }
+
+    /**
+     * F4: `--needs=Fqcn` gives the generated tool a constructor parameter for it, and every wiring
+     * path (fresh plugin here) resolves it from the container instead of calling a zero-arg `new
+     * {Tool}()`.
+     */
+    public function testNeedsFlagGeneratesAConstructorAndInjectsFromTheContainer(): void
+    {
+        $ctx = new GenerationContext(
+            plugin: 'BoardPlugin',
+            name: 'CompleteTaskTool',
+            options: ['flavor' => 'runtime', 'needs' => 'App\\Plugins\\BoardPlugin\\Entities\\TaskRepository'],
+            root: $this->root,
+        );
+
+        $result = (new ToolGenerator())->generate($ctx);
+        $tool = $this->fileNamed($result->files, 'CompleteTaskTool.php');
+        $code = $tool->contents;
+
+        $this->assertStringContainsString(
+            "public function __construct(\n        private readonly \\App\\Plugins\\BoardPlugin\\Entities\\TaskRepository \$taskRepository,\n    ) {\n    }",
+            $code,
+        );
+        $this->assertPhpLints($code);
+
+        $plugin = $this->fileNamed($result->files, 'BoardPlugin.php');
+        $this->assertStringContainsString(
+            '(new ToolScanner($registry))->scan(new CompleteTaskTool($this->container->get(\\App\\Plugins\\BoardPlugin\\Entities\\TaskRepository::class)));',
+            $plugin->contents,
+        );
+        $this->assertPhpLints($plugin->contents);
+    }
+
+    /** Multiple `--needs=A,B` entries each become their own promoted constructor parameter, in order. */
+    public function testNeedsFlagAcceptsACommaListOfCollaborators(): void
+    {
+        $ctx = new GenerationContext(
+            plugin: 'BoardPlugin',
+            name: 'CompleteTaskTool',
+            options: [
+                'flavor' => 'runtime',
+                'needs' => 'App\\Plugins\\BoardPlugin\\Entities\\TaskRepository, App\\Plugins\\BoardPlugin\\Services\\WorkflowService',
+            ],
+            root: $this->root,
+        );
+
+        $result = (new ToolGenerator())->generate($ctx);
+        $code = $this->fileNamed($result->files, 'CompleteTaskTool.php')->contents;
+
+        $this->assertStringContainsString('private readonly \\App\\Plugins\\BoardPlugin\\Entities\\TaskRepository $taskRepository,', $code);
+        $this->assertStringContainsString('private readonly \\App\\Plugins\\BoardPlugin\\Services\\WorkflowService $workflowService,', $code);
+        $this->assertPhpLints($code);
+
+        $plugin = $this->fileNamed($result->files, 'BoardPlugin.php');
+        $this->assertStringContainsString(
+            '$this->container->get(\\App\\Plugins\\BoardPlugin\\Entities\\TaskRepository::class), '
+            . '$this->container->get(\\App\\Plugins\\BoardPlugin\\Services\\WorkflowService::class)',
+            $plugin->contents,
+        );
+    }
+
+    /** No `--needs` keeps the exact pre-F4 zero-arg shape — no constructor at all. */
+    public function testNoNeedsKeepsTheZeroArgConstructorForm(): void
+    {
+        $ctx = new GenerationContext(
+            plugin: 'BoardPlugin',
+            name: 'CompleteTaskTool',
+            options: ['flavor' => 'runtime'],
+            root: $this->root,
+        );
+
+        $result = (new ToolGenerator())->generate($ctx);
+        $code = $this->fileNamed($result->files, 'CompleteTaskTool.php')->contents;
+
+        $this->assertStringNotContainsString('__construct', $code);
+    }
+
+    /** F4 + F1 together: `--needs` also reaches a marker-based insertion into an existing plugin. */
+    public function testNeedsFlagAlsoReachesTheMarkerInsertionPath(): void
+    {
+        $pluginDir = $this->root . '/src/Plugins/BoardPlugin';
+        mkdir($pluginDir, 0o775, true);
+        $marked = "<?php\n\nfinal class BoardPlugin\n{\n    public function registerTools(\$registry): void\n    {\n        // {coa:tools}\n    }\n\n"
+            . "    public function getPromptSections(): array\n    {\n        return [\n            // {coa:tool-prompts}\n        ];\n    }\n}\n";
+        file_put_contents($pluginDir . '/BoardPlugin.php', $marked);
+
+        $ctx = new GenerationContext(
+            plugin: 'BoardPlugin',
+            name: 'CompleteTaskTool',
+            options: ['flavor' => 'runtime', 'needs' => 'App\\Plugins\\BoardPlugin\\Entities\\TaskRepository'],
+            root: $this->root,
+        );
+
+        $result = (new ToolGenerator())->generate($ctx);
+        $mergedPlugin = $this->fileNamed($result->files, 'BoardPlugin.php');
+
+        $this->assertStringContainsString(
+            '(new \\Milpa\\ToolRuntime\\ToolScanner($registry))->scan(new \\App\\Plugins\\BoardPlugin\\Tools\\CompleteTaskTool'
+            . '($this->container->get(\\App\\Plugins\\BoardPlugin\\Entities\\TaskRepository::class)));',
+            $mergedPlugin->contents,
+        );
+        $this->assertPhpLints($mergedPlugin->contents);
+    }
+
     public function testGuidanceWarnsWhenToolRuntimeIsNotDetectedInTheTargetApp(): void
     {
         $ctx = new GenerationContext(

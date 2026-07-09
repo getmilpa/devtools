@@ -50,12 +50,16 @@ final class {{class}} implements PluginInterface, ToolProviderInterface
 
     public function registerTools(ToolRegistryInterface $registry): void
     {
-        (new ToolScanner($registry))->scan(new {{toolClass}}());
+        (new ToolScanner($registry))->scan(new {{toolClass}}({{toolCtorArgs}}));
+        // {coa:tools}
     }
 
     /** @return list<string> */
     public function getPromptSections(): array
     {
-        return ['{{toolClass}} exposes the {{toolName}} tool.'];
+        return [
+            '{{toolClass}} exposes the {{toolName}} tool.',
+            // {coa:tool-prompts}
+        ];
     }
 }

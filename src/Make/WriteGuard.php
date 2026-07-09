@@ -11,10 +11,18 @@ namespace Milpa\DevTools\Make;
  */
 final class WriteGuard
 {
-    /** Throws unless `$path` is free to write: absent, or `$force` is true. */
-    public function assertWritable(string $path, bool $force): void
+    /**
+     * Throws unless `$path` is free to write: absent, `$force` is true, or `$merge` is true.
+     *
+     * @param bool $merge Set from the originating {@see PlannedFile::$merge} — a MARKER-BASED,
+     *                    idempotent-safe merge into an already-existing plugin file (see
+     *                    {@see MarkerInserter}) is exactly the "safe to overwrite even without
+     *                    `--force`" case this guard exists to distinguish from an accidental
+     *                    clobber of unrelated hand-written content.
+     */
+    public function assertWritable(string $path, bool $force, bool $merge = false): void
     {
-        if (is_file($path) && !$force) {
+        if (is_file($path) && !$force && !$merge) {
             throw new \RuntimeException("{$path} already exists (use --force to overwrite)");
         }
     }

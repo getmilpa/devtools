@@ -17,9 +17,28 @@ use Milpa\DevTools\Support\ComposerAutoload;
  * Generates a STANDALONE plugin: the composition unit `make:controller`/`make:entity` already
  * generate "by rebound" when no plugin exists yet at their target area (see
  * {@see ControllerGenerator::wireRoute()} / {@see EntityGenerator::wireRepository()}), now available
- * explicitly and on its own — a bare `#[PluginMetadata]` + `Milpa\Interfaces\Plugin\PluginInterface`
- * class with an empty `boot()`, ready for a follow-up `make:service`/`make:tool`/`make:controller`/
- * `make:entity` call (targeting this same plugin name) to wire something into it.
+ * explicitly and on its own — a `#[PluginMetadata]` + `Milpa\Interfaces\Plugin\PluginInterface`,
+ * `Milpa\Interfaces\Tooling\ToolProviderInterface` class, ready for a follow-up
+ * `make:service`/`make:tool`/`make:controller`/`make:entity`/`make:crud` call (targeting this same
+ * plugin name) to wire something into it.
+ *
+ * F1: the rendered plugin carries {@see \Milpa\DevTools\Make\Markers}' `// {coa:services}` (inside
+ * `boot()`) and `// {coa:tools}`/`// {coa:tool-prompts}` (inside
+ * `registerTools()`/`getPromptSections()`) anchors from the start — a follow-up composite generator
+ * that finds THIS plugin on disk auto-wires its registration at the matching marker instead of only
+ * emitting guidance (see {@see ServiceGenerator::wireService()}, {@see ToolGenerator::wireToolProvider()},
+ * and {@see \Milpa\DevTools\Make\MarkerInserter}). `Milpa\Runtime\Http\RouteProviderInterface` + a
+ * `// {coa:routes}` anchor is
+ * deliberately NOT part of this stub — `milpa/runtime` is not a `milpa/devtools` dependency (unlike
+ * `milpa/core`, which `ToolProviderInterface` lives in and this package already requires-dev for
+ * other verifiers), so a bare `make:plugin` output that already `implements RouteProviderInterface`
+ * would not be genuinely `require`-able in THIS package's own test process, only lint-checkable — see
+ * {@see \Milpa\DevTools\Tests\Make\CrudGeneratorTest}'s class docblock for the same constraint on its
+ * own route-wiring plugin. `make:controller`/`make:crud`'s OWN "no plugin yet" stubs
+ * (`plugin.runtime.php.stub`/`crud-plugin.runtime.php.stub`) already implement
+ * `RouteProviderInterface` and DO carry the `// {coa:routes}` anchor — a plugin created THAT way (or
+ * hand-upgraded to implement it) is a valid `// {coa:routes}` auto-wire target for
+ * {@see ControllerGenerator}/{@see CrudGenerator}.
  *
  * Unlike {@see ControllerGenerator}/{@see EntityGenerator}, this generator has no separate "target
  * plugin" — the plugin IS the artifact being generated, so only `GenerationContext::$name` is read;

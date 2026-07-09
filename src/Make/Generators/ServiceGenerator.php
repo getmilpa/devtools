@@ -9,6 +9,8 @@ use Milpa\DevTools\Make\Flavor;
 use Milpa\DevTools\Make\GenerationContext;
 use Milpa\DevTools\Make\GenerationResult;
 use Milpa\DevTools\Make\GeneratorInterface;
+use Milpa\DevTools\Make\MarkerInserter;
+use Milpa\DevTools\Make\Markers;
 use Milpa\DevTools\Make\PlannedFile;
 use Milpa\DevTools\Make\StubRenderer;
 use Milpa\DevTools\Support\ComposerAutoload;
@@ -29,10 +31,13 @@ use Milpa\DevTools\Support\ComposerAutoload;
  *   its `boot()` already registering `new Service()` under the service's own class (or its interface,
  *   when `--interface` was used) — plus guidance to register the new plugin class in
  *   `config/plugins.php`.
- * - One already exists -> it is NOT edited (parsing/rewriting arbitrary host PHP is exactly the
- *   fragile AST surgery this generator's deterministic `PlannedFile`/`WriteGuard` model exists to
- *   avoid — see {@see self::wireService()}). The exact `registerService()` snippet to add by hand is
- *   returned via {@see GenerationResult::$guidance} instead.
+ * - One already exists AND carries the {@see \Milpa\DevTools\Make\Markers::SERVICES} anchor (F1) ->
+ *   the registration is INSERTED at that marker via {@see \Milpa\DevTools\Make\MarkerInserter} — a
+ *   deterministic splice at a known anchor, not a rewrite — see {@see self::wireService()}.
+ * - One already exists but carries NO marker (a hand-written plugin, or one predating F1) -> it is
+ *   NOT edited (parsing/rewriting arbitrary host PHP is exactly the fragile AST surgery this
+ *   generator's deterministic `PlannedFile`/`WriteGuard` model exists to avoid). The exact
+ *   `registerService()` snippet to add by hand is returned via {@see GenerationResult::$guidance} instead.
  *
  * Only a RUNTIME convention exists — see {@see generate()} for why LEGACY throws.
  */
@@ -43,6 +48,7 @@ final class ServiceGenerator implements GeneratorInterface
     public function __construct(
         private readonly StubRenderer $renderer = new StubRenderer(),
         private readonly ConventionDetector $detector = new ConventionDetector(),
+        private readonly MarkerInserter $markers = new MarkerInserter(),
     ) {
         $this->stubs = \dirname(__DIR__) . '/stubs';
     }
@@ -96,7 +102,7 @@ final class ServiceGenerator implements GeneratorInterface
         $servicePath = $context->root . '/' . $appDir . '/Plugins/' . $context->plugin
             . '/Services/' . $context->name . '.php';
 
-        $withInterface = $this->wantsInterface($context);
+        $withInterface = $context->flag('interface');
         $interfaceClass = $withInterface ? $context->name . 'Interface' : null;
 
         $serviceContents = $this->renderer->render($this->stubs . '/service.runtime.php.stub', [
@@ -141,7 +147,15 @@ final class ServiceGenerator implements GeneratorInterface
      * Decides how the generated service reaches a booting DI registration — the load-bearing part of
      * this generator, since a freestanding service class does nothing on its own (see the class
      * docblock). Mirrors {@see ControllerGenerator::wireRoute()} / {@see EntityGenerator::wireRepository()}
-     * exactly.
+     * exactly:
+     *
+     * - No `PluginInterface` plugin exists yet -> a fresh one is generated (as before F1), now ALSO
+     *   carrying the {@see Markers::SERVICES} anchor for a later run.
+     * - One exists AND carries the anchor -> the registration is INSERTED at the marker (F1) via
+     *   {@see MarkerInserter} — `$file` becomes the merged plugin, marked {@see PlannedFile::$merge}
+     *   so {@see WriteGuard} does not require `--force` to write it.
+     * - One exists but carries no anchor -> unchanged pre-F1 behavior: guidance only, the file is left
+     *   untouched.
      *
      * Existence is checked on the FILESYSTEM only (`is_file()`), not via reflection/autoloading —
      * consistent with the rest of this deterministic generate step, and safe to call from a
@@ -163,6 +177,24 @@ final class ServiceGenerator implements GeneratorInterface
         $pluginFqcn = $pluginNamespace . '\\' . $context->plugin;
 
         if (is_file($pluginPath)) {
+            $existing = (string) file_get_contents($pluginPath);
+            if ($this->markers->hasMarker($existing, Markers::SERVICES)) {
+                $registrationFqcn = $serviceNamespace . '\\' . $registrationClass;
+                $serviceFqcn = $serviceNamespace . '\\' . $context->name;
+
+                $merged = $this->markers->insertBefore(
+                    $existing,
+                    Markers::SERVICES,
+                    "\$this->container->registerService(\n    \\{$registrationFqcn}::class,\n    new \\{$serviceFqcn}(),\n);",
+                    $context->flag('force'),
+                );
+
+                $guidance = "Auto-wired into the existing plugin at {$pluginPath} (// {" . Markers::SERVICES
+                    . '} marker found). Resolve it later via $container->get(' . $registrationClass . '::class).';
+
+                return ['file' => new PlannedFile($pluginPath, $merged, merge: true), 'guidance' => $guidance];
+            }
+
             $snippet = "\$this->container->registerService(\n"
                 . "    {$registrationClass}::class,\n"
                 . "    new {$context->name}(),\n"
@@ -202,20 +234,5 @@ final class ServiceGenerator implements GeneratorInterface
             . "; resolve it later via \$container->get({$registrationClass}::class).";
 
         return ['file' => new PlannedFile($pluginPath, $pluginContents), 'guidance' => $guidance];
-    }
-
-    /** Reads the `--interface` flag: truthy for `true`/`'1'`/`'true'`/any non-empty string but `'0'`/`'false'`. */
-    private function wantsInterface(GenerationContext $context): bool
-    {
-        $value = $context->options['interface'] ?? false;
-
-        if (\is_bool($value)) {
-            return $value;
-        }
-        if (\is_string($value)) {
-            return !\in_array(strtolower($value), ['', '0', 'false'], true);
-        }
-
-        return (bool) $value;
     }
 }

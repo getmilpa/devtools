@@ -32,6 +32,7 @@ final class {{class}} implements PluginInterface
             {{entityClass}}::class . 'Repository',
             new FileRepository((new RootResolver())->resolve() . '/var/{{table}}.json', {{entityClass}}::class),
         );
+        // {coa:services}
     }
 
     public function install(): void

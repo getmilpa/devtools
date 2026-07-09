@@ -38,6 +38,7 @@ final class {{class}} implements PluginInterface, RouteProviderInterface
 
         $this->container->registerService({{entityClass}}::class . 'Repository', $repository);
         $this->container->registerService({{controllerClass}}::class, new {{controllerClass}}($repository));
+        // {coa:services}
     }
 
     public function install(): void
@@ -90,6 +91,7 @@ final class {{class}} implements PluginInterface, RouteProviderInterface
                 name: '{{table}}_delete',
                 handler: new HandlerReference({{controllerClass}}::class, 'delete'),
             ),
+            // {coa:routes}
         ];
     }
 }

@@ -11,21 +11,34 @@ use Milpa\DevTools\Make\GenerationResult;
 use Milpa\DevTools\Make\GeneratorInterface;
 use Milpa\DevTools\Make\PlannedFile;
 use Milpa\DevTools\Make\StubRenderer;
+use Milpa\DevTools\Support\DoctrineAvailability;
 
 /**
  * Generates a Doctrine entity from the `--fields` DSL following the framework's conventions
  * (strict types, id + uuid via {@see \Milpa\Support\UuidGenerator}, typed accessors,
  * enum-as-string columns, ManyToOne relations). Emits one file under the plugin's `Entities/`.
+ *
+ * `doctrine/orm` is an optional dependency of `milpa/devtools` (see `composer.json`'s `suggest`) —
+ * this is the ONLY generator that needs it, and {@see generate()} fails fast with
+ * {@see DoctrineAvailability::MESSAGE} when it is not installed, instead of emitting a file the host
+ * cannot actually use.
  */
 final class EntityGenerator implements GeneratorInterface
 {
     private string $stubs;
+    private bool $doctrineAvailable;
 
+    /**
+     * @param bool|null $doctrineAvailable override for testing; `null` (the default) auto-detects via
+     *                                     {@see DoctrineAvailability::isAvailable()}
+     */
     public function __construct(
         private readonly FieldParser $parser = new FieldParser(),
         private readonly StubRenderer $renderer = new StubRenderer(),
+        ?bool $doctrineAvailable = null,
     ) {
         $this->stubs = \dirname(__DIR__) . '/stubs';
+        $this->doctrineAvailable = $doctrineAvailable ?? DoctrineAvailability::isAvailable();
     }
 
     /** The `<what>` token this generator answers to: `'entity'`. */
@@ -34,9 +47,18 @@ final class EntityGenerator implements GeneratorInterface
         return 'entity';
     }
 
-    /** Parses `--fields`, renders the entity class, and returns it paired with its `entity` verify target. */
+    /**
+     * Parses `--fields`, renders the entity class, and returns it paired with its `entity` verify
+     * target.
+     *
+     * @throws \RuntimeException When `doctrine/orm` is not installed (see {@see DoctrineAvailability}).
+     */
     public function generate(GenerationContext $context): GenerationResult
     {
+        if (!$this->doctrineAvailable) {
+            throw new \RuntimeException(DoctrineAvailability::MESSAGE);
+        }
+
         $fields = $this->parser->parse($context->option('fields') ?? '');
         $namespace = 'Milpa\\Plugins\\' . $context->plugin . '\\Entities';
         $table = $context->option('table') ?? strtolower($context->name) . 's';

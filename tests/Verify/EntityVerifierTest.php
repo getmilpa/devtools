@@ -37,4 +37,17 @@ final class EntityVerifierTest extends TestCase
         $this->assertFalse($result->ok());
         $this->assertStringContainsString('class not found', $result->errors[0]);
     }
+
+    /**
+     * F1: `doctrine/orm` moved from `require` to `suggest` (see composer.json) — verifying an entity
+     * without it must report a clear, actionable error (not throw, matching this class's existing
+     * "class not found" non-throwing shape) instead of crashing inside attribute reflection.
+     */
+    public function testReturnsAClearErrorWhenDoctrineOrmIsNotInstalled(): void
+    {
+        $result = (new EntityVerifier(doctrineAvailable: false))->verify(GoodEntity::class);
+
+        $this->assertFalse($result->ok());
+        $this->assertStringContainsString('composer require doctrine/orm', implode("\n", $result->errors));
+    }
 }

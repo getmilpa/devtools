@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Milpa\DevTools\Verify;
 
 use Doctrine\ORM\Mapping as ORM;
+use Milpa\DevTools\Support\DoctrineAvailability;
 use ReflectionClass;
 use ReflectionProperty;
 
@@ -16,16 +17,34 @@ use ReflectionProperty;
  * is present, and that Doctrine's no-constructor hydration path actually works (nullable properties
  * readable right after `newInstanceWithoutConstructor()`).
  *
- * This is a real runtime dependency on `doctrine/orm` (see composer.json) — Doctrine is the ORM
- * convention every Milpa host app's generated entities target, exactly like `ControllerVerifier`
- * targets the host's `BaseController`. Ported 1:1 from `scripts/verify-entity.php` (reflection
- * checks only; CLI arg parsing/formatting lives in the thin shim).
+ * `doctrine/orm` is an OPTIONAL dependency of `milpa/devtools` (see `composer.json`'s `suggest`) —
+ * this is the only verifier that needs it. {@see verify()} returns a failed
+ * {@see VerificationResult} carrying {@see DoctrineAvailability::MESSAGE} when it is not installed,
+ * the same non-throwing shape as every other verification failure this class reports (e.g. "class
+ * not found" below), rather than crashing deep inside attribute reflection. Ported 1:1 from
+ * `scripts/verify-entity.php` (reflection checks only; CLI arg parsing/formatting lives in the thin
+ * shim).
  */
 final class EntityVerifier implements VerifierInterface
 {
+    private bool $doctrineAvailable;
+
+    /**
+     * @param bool|null $doctrineAvailable override for testing; `null` (the default) auto-detects via
+     *                                     {@see DoctrineAvailability::isAvailable()}
+     */
+    public function __construct(?bool $doctrineAvailable = null)
+    {
+        $this->doctrineAvailable = $doctrineAvailable ?? DoctrineAvailability::isAvailable();
+    }
+
     /** Reflects `$fqcn` and checks it against the host-app Doctrine entity convention described above. */
     public function verify(string $fqcn): VerificationResult
     {
+        if (!$this->doctrineAvailable) {
+            return new VerificationResult($fqcn, [DoctrineAvailability::MESSAGE]);
+        }
+
         if (!class_exists($fqcn)) {
             return new VerificationResult($fqcn, ["class not found: {$fqcn} — make sure the FQCN is correct and autoloadable"]);
         }

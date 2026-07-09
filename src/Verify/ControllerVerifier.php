@@ -4,35 +4,55 @@ declare(strict_types=1);
 
 namespace Milpa\DevTools\Verify;
 
+use Milpa\DevTools\Make\Flavor;
 use ReflectionClass;
 use ReflectionMethod;
+use ReflectionNamedType;
 
 /**
- * Verifies a class follows the Milpa host-app controller convention: extends the host's
- * `Milpa\app\Providers\BaseController`, calls `parent::__construct()`, and every `#[Route]`-attributed
- * method has an uppercase HTTP verb, a leading-slash path, the `(Request $request, array $params = [])`
- * signature, an `HttpResponse` return type, no debug output, and no (verb, path) collision with a
- * sibling method.
+ * Verifies a class follows one of the two controller conventions {@see Flavor} names, chosen at
+ * construction time (default {@see Flavor::Legacy}, matching this class's behavior before F1 —
+ * every existing caller that builds `new ControllerVerifier()` with no argument is unaffected):
  *
- * This convention — the exact FQCNs `Milpa\app\Providers\BaseController` / `HttpResponse` and the
- * `Milpa\Attributes\Route` attribute — belongs to the generated CODE's target, not to this package:
- * `coa:make controller` scaffolds a class that extends those host classes (see the `.stub` templates
- * under `Make/stubs/`), so this verifier closes the loop by checking the scaffolded output against the
- * same convention. Ported 1:1 from the original `scripts/verify-controller.php` (the reflection checks
- * only — the CLI's file-path→FQCN resolution and stdout formatting live in the thin CLI shim instead).
+ * - {@see Flavor::Legacy}: extends the host's `Milpa\app\Providers\BaseController`, calls
+ *   `parent::__construct()`, and every `#[Route]`-attributed method has an uppercase HTTP verb, a
+ *   leading-slash path, the `(Request $request, array $params = [])` signature, an `HttpResponse`
+ *   return type, no debug output, and no (verb, path) collision with a sibling method. Ported 1:1
+ *   from the original `scripts/verify-controller.php`.
+ * - {@see Flavor::Runtime}: a plain class (NOT extending `BaseController`) with a public
+ *   `index(ServerRequestInterface $request): ResponseInterface` method — no `#[Route]` attribute
+ *   (that is legacy-only routing; runtime routes come from a `RouteProviderInterface` plugin, so a
+ *   `#[Route]` here is flagged as an ignored no-op, not an error), no debug output.
+ *
+ * Every FQCN this class checks against (`Milpa\app\Providers\BaseController`, `Milpa\Attributes\Route`,
+ * `Psr\Http\Message\ServerRequestInterface`, `Psr\Http\Message\ResponseInterface`) belongs to the
+ * generated CODE's target, not to this package — `coa:make controller` scaffolds a class that targets
+ * one of them (see the `.stub` templates under `Make/stubs/`), so this verifier closes the loop by
+ * checking the scaffolded output against the same convention it was generated for.
  */
 final class ControllerVerifier implements VerifierInterface
 {
     private const BASE_CONTROLLER = 'Milpa\\app\\Providers\\BaseController';
     private const ROUTE_ATTRIBUTE = 'Milpa\\Attributes\\Route';
+    private const SERVER_REQUEST_INTERFACE = 'Psr\\Http\\Message\\ServerRequestInterface';
+    private const RESPONSE_INTERFACE = 'Psr\\Http\\Message\\ResponseInterface';
 
-    /** Reflects `$fqcn` and checks it against the host-app controller convention described above. */
+    public function __construct(private readonly Flavor $flavor = Flavor::Legacy)
+    {
+    }
+
+    /** Reflects `$fqcn` and checks it against the constructor-selected {@see Flavor}'s convention. */
     public function verify(string $fqcn): VerificationResult
     {
         if (!class_exists($fqcn)) {
             return new VerificationResult($fqcn, ["class not found: {$fqcn} — make sure the FQCN is correct and autoloadable"]);
         }
 
+        return $this->flavor === Flavor::Runtime ? $this->verifyRuntime($fqcn) : $this->verifyLegacy($fqcn);
+    }
+
+    private function verifyLegacy(string $fqcn): VerificationResult
+    {
         $errors = [];
         $warnings = [];
         $routeCount = 0;
@@ -45,7 +65,7 @@ final class ControllerVerifier implements VerifierInterface
             $errors[] = 'Missing declare(strict_types=1) at top of file';
         }
 
-        if (!$reflection->isSubclassOf(self::BASE_CONTROLLER)) {
+        if (!class_exists(self::BASE_CONTROLLER) || !$reflection->isSubclassOf(self::BASE_CONTROLLER)) {
             $errors[] = 'Class does not extend BaseController (' . self::BASE_CONTROLLER . ')';
         }
 
@@ -121,6 +141,95 @@ final class ControllerVerifier implements VerifierInterface
         }
 
         return new VerificationResult($reflection->getShortName() . " — {$routeCount} route(s) registered", $errors, $warnings);
+    }
+
+    /**
+     * Checks the RUNTIME convention: a plain class (no `BaseController`) with a public
+     * `index(ServerRequestInterface $request): ResponseInterface` method, no debug output. Unlike
+     * {@see verifyLegacy()} there is no `#[Route]`/path/verb bookkeeping to check — runtime routing
+     * lives entirely in a `RouteProviderInterface` plugin, outside this class.
+     */
+    private function verifyRuntime(string $fqcn): VerificationResult
+    {
+        $errors = [];
+        $warnings = [];
+
+        $reflection = new ReflectionClass($fqcn);
+        $file = $reflection->getFileName();
+        $source = $file !== false ? file_get_contents($file) : false;
+
+        if ($source !== false && !str_contains($source, 'declare(strict_types=1)')) {
+            $errors[] = 'Missing declare(strict_types=1) at top of file';
+        }
+
+        if (class_exists(self::BASE_CONTROLLER) && $reflection->isSubclassOf(self::BASE_CONTROLLER)) {
+            $errors[] = 'Runtime controllers must be plain classes — found extends ' . self::BASE_CONTROLLER
+                . ' (that is the legacy convention; pass --flavor=legacy, or drop the parent class)';
+        }
+
+        if (!$reflection->hasMethod('index')) {
+            $errors[] = 'Missing public method index(ServerRequestInterface $request): ResponseInterface';
+
+            return new VerificationResult($reflection->getShortName() . ' — runtime controller', $errors, $warnings);
+        }
+
+        $method = $reflection->getMethod('index');
+        if (!$method->isPublic()) {
+            $errors[] = 'index() must be public';
+        }
+
+        if ($method->getAttributes(self::ROUTE_ATTRIBUTE) !== []) {
+            $warnings[] = 'index(): carries a #[Route] attribute, which is ignored — runtime controllers are '
+                . 'wired via a RouteProviderInterface plugin, not attribute routing';
+        }
+
+        $params = $method->getParameters();
+        if ($params === []) {
+            $errors[] = 'index(): signature must accept a ' . self::SERVER_REQUEST_INTERFACE . ' parameter';
+        } else {
+            $p1Type = $params[0]->getType();
+            $p1TypeName = $p1Type instanceof ReflectionNamedType ? $p1Type->getName() : null;
+            if ($p1TypeName === null || !$this->typeMatches($p1TypeName, self::SERVER_REQUEST_INTERFACE)) {
+                $errors[] = "index(): first parameter must be typed " . self::SERVER_REQUEST_INTERFACE
+                    . " (found '" . ($p1TypeName ?? 'none') . "')";
+            }
+        }
+
+        $returnType = $method->getReturnType();
+        $returnTypeName = $returnType instanceof ReflectionNamedType ? $returnType->getName() : null;
+        if ($returnTypeName === null || !$this->typeMatches($returnTypeName, self::RESPONSE_INTERFACE)) {
+            $errors[] = "index(): return type must implement " . self::RESPONSE_INTERFACE
+                . " (found '" . ($returnTypeName ?? 'none') . "')";
+        }
+
+        if ($source !== false) {
+            $body = $this->slice($source, $method->getStartLine(), $method->getEndLine());
+            if (preg_match('/\b(echo|print|var_dump|var_export|print_r)\s*[(\s]/', $body) === 1) {
+                $errors[] = 'index(): contains debug output (echo/print/var_dump) — use a logger instead';
+            }
+        }
+
+        return new VerificationResult($reflection->getShortName() . ' — runtime controller', $errors, $warnings);
+    }
+
+    /**
+     * Whether `$typeName` IS `$target`, or is-a `$target` (checked via `is_a()` — but only once
+     * `$typeName` is confirmed loadable, so a `$target` interface that happens not to be installed
+     * on the verifying host — e.g. `psr/http-message` missing — never triggers an autoload warning;
+     * it just falls back to the exact-name comparison, which is what the runtime stub itself
+     * produces).
+     */
+    private function typeMatches(string $typeName, string $target): bool
+    {
+        if ($typeName === $target) {
+            return true;
+        }
+
+        if (!class_exists($typeName) && !interface_exists($typeName)) {
+            return false;
+        }
+
+        return is_a($typeName, $target, true);
     }
 
     private function slice(string $source, int $startLine, int $endLine): string

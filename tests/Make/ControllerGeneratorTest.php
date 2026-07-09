@@ -12,6 +12,11 @@ final class ControllerGeneratorTest extends TestCase
 {
     // Generators only ever compose $root into a returned path STRING (see PlannedFile) — they never
     // read/write it — so a synthetic value is honest here (no real "host app" exists in this suite).
+    // Every context below pins 'flavor' => 'legacy' explicitly: this class exercises the LEGACY
+    // convention specifically, and since F1 auto-detects the flavor from the (real) filesystem under
+    // $root when no override is given, a nonexistent synthetic root would otherwise be genuinely
+    // ambiguous and default to Flavor::Runtime (see ConventionDetectorTest) — not what these tests
+    // are about.
     private string $root = '/fake/host';
 
     public function testGeneratesControllerWithRoutedMethods(): void
@@ -19,7 +24,7 @@ final class ControllerGeneratorTest extends TestCase
         $ctx = new GenerationContext(
             plugin: 'MarketingPlugin',
             name: 'PostController',
-            options: ['route' => '/posts', 'methods' => 'index,store'],
+            options: ['route' => '/posts', 'methods' => 'index,store', 'flavor' => 'legacy'],
             root: $this->root,
         );
 
@@ -49,7 +54,7 @@ final class ControllerGeneratorTest extends TestCase
         $ctx = new GenerationContext(
             plugin: 'MarketingPlugin',
             name: 'ArticleController',
-            options: ['route' => '/articles', 'methods' => 'index,show,store,update,destroy'],
+            options: ['route' => '/articles', 'methods' => 'index,show,store,update,destroy', 'flavor' => 'legacy'],
             root: $this->root,
         );
 

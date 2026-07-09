@@ -134,4 +134,25 @@ final class EntityGeneratorTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         (new EntityGenerator())->generate($ctx);
     }
+
+    /**
+     * F1: `doctrine/orm` moved from `require` to `suggest` (see composer.json) — the entity path
+     * must fail with a clear, actionable message instead of a confusing crash when it's absent.
+     * `doctrineAvailable: false` simulates that; the real detection is
+     * {@see \Milpa\DevTools\Support\DoctrineAvailability::isAvailable()}.
+     */
+    public function testThrowsAClearErrorWhenDoctrineOrmIsNotInstalled(): void
+    {
+        $gen = new EntityGenerator(doctrineAvailable: false);
+        $ctx = new GenerationContext(
+            plugin: 'WorkflowEnginePlugin',
+            name: 'Widget',
+            options: ['fields' => 'title:string'],
+            root: $this->root,
+        );
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('composer require doctrine/orm');
+        $gen->generate($ctx);
+    }
 }

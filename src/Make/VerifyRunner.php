@@ -41,11 +41,20 @@ final class VerifyRunner
     /**
      * Runs the `$kind` verifier ('controller'|'entity') against `$fqcn` and returns its outcome.
      *
+     * @param Flavor|null $flavor the {@see Flavor} to verify a `'controller'` against — typically
+     *                            {@see GenerationResult::$flavor} from the same `generate()` call
+     *                            that produced `$fqcn`; ignored for `'entity'`, and `null` (the
+     *                            default) preserves this method's pre-F1 behavior of using the
+     *                            constructor's fixed `'controller'` verifier ({@see Flavor::Legacy})
+     *
      * @return array{ok: bool, output: string}
      */
-    public function run(string $kind, string $fqcn, string $root): array
+    public function run(string $kind, string $fqcn, string $root, ?Flavor $flavor = null): array
     {
-        $verifier = $this->verifiers[$kind] ?? null;
+        $verifier = $kind === 'controller' && $flavor !== null
+            ? new ControllerVerifier($flavor)
+            : ($this->verifiers[$kind] ?? null);
+
         if ($verifier === null) {
             return ['ok' => false, 'output' => "no verifier for kind '{$kind}'"];
         }

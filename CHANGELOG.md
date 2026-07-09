@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/getmilpa/devtools/compare/v0.3.0...v0.4.0) (2026-07-09)
+
+
+### Features
+
+* the full make surface — make:plugin/service/tool/crud ([cc9a3e1](https://github.com/getmilpa/devtools/commit/cc9a3e1c3de6ee3faa6f6911944934fe675a52bb))
+
+
+### Miscellaneous Chores
+
+* release 0.4.0 ([d87b5f7](https://github.com/getmilpa/devtools/commit/d87b5f704b2112dfc4cf3ecf364e435ad94e5092))
+
 ## [0.3.0](https://github.com/getmilpa/devtools/compare/v0.2.0...v0.3.0) (2026-07-09)
 
 

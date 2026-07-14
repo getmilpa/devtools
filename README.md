@@ -198,7 +198,7 @@ every validator's exact error messages are documented at the source and in the
 
 - PHP **≥ 8.3**
 - [`milpa/data`](https://packagist.org/packages/milpa/data) — a genuine runtime `require`: the
-  runtime entity path (`Milpa\Data\EntityInterface`/`FileRepository`) is always loadable once
+  runtime entity path (`Milpa\Data\EntityInterface`/`RepositoryFactory` — the scaffold picks its backend from `storage.driver`: file, sqlite, mysql or memory) is always loadable once
   `milpa/devtools` itself is composer-installed. `milpa/core` still appears only in `require-dev`
   (docs tooling).
 - [`doctrine/orm`](https://packagist.org/packages/doctrine/orm) **^3** — **optional** (`suggest`,
@@ -223,8 +223,8 @@ issues via [SECURITY.md](SECURITY.md), and note that this project follows a
 
 ## License
 
-[Apache-2.0](LICENSE) © TeamX Agency.
+[Apache-2.0](LICENSE) © Rodrigo Vicente - TeamX Agency.
 
 ---
 
-Milpa is designed, built, and maintained by **[TeamX Agency](https://teamx.agency/?utm_source=github&utm_medium=readme&utm_campaign=milpa&utm_content=devtools)**.
+Milpa is designed, built, and maintained by **[Rodrigo Vicente - TeamX Agency](https://teamx.agency/?utm_source=github&utm_medium=readme&utm_campaign=milpa&utm_content=devtools)**.

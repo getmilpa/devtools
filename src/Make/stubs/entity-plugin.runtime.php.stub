@@ -6,9 +6,10 @@ namespace {{namespace}};
 
 use {{entityNamespace}}\{{entityClass}};
 use Milpa\Attributes\PluginMetadata;
-use Milpa\Data\FileRepository;
+use Milpa\Data\RepositoryFactory;
 use Milpa\Interfaces\Di\DIContainerInterface;
 use Milpa\Interfaces\Plugin\PluginInterface;
+use Milpa\Runtime\Config;
 use Milpa\Runtime\Support\RootResolver;
 
 #[PluginMetadata(
@@ -28,9 +29,19 @@ final class {{class}} implements PluginInterface
 
     public function boot(): void
     {
+        // The backend is one config line: add a 'storage' block to config/app.php — driver
+        // 'file', 'sqlite' or 'mysql' (with its 'path' or 'dsn') or 'memory' — and the factory
+        // builds the matching backend behind the same RepositoryInterface. With no 'storage'
+        // block at all, the default below applies: zero config still persists, to a JSON file.
+        $storage = $this->container->get(Config::class)->get('storage', [
+            'driver' => 'file',
+            'path' => (new RootResolver())->resolve() . '/var/{{table}}.json',
+        ]);
+        \assert(\is_array($storage));
+
         $this->container->registerService(
             {{entityClass}}::class . 'Repository',
-            new FileRepository((new RootResolver())->resolve() . '/var/{{table}}.json', {{entityClass}}::class),
+            RepositoryFactory::fromConfig($storage, {{entityClass}}::class),
         );
         // {coa:services}
     }

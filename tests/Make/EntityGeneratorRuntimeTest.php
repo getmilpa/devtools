@@ -6,7 +6,9 @@ namespace Milpa\DevTools\Tests\Make;
 
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
+use Milpa\Data\EntityInterface;
 use Milpa\Data\FileRepository;
+use Milpa\Data\RepositoryFactory;
 use Milpa\DevTools\Make\Flavor;
 use Milpa\DevTools\Make\GenerationContext;
 use Milpa\DevTools\Make\Generators\EntityGenerator;
@@ -95,12 +97,23 @@ final class EntityGeneratorRuntimeTest extends TestCase
         $code = $plugin->contents;
         $this->assertStringContainsString('namespace App\\Plugins\\BlogPlugin;', $code);
         $this->assertStringContainsString('use App\\Plugins\\BlogPlugin\\Entities\\Article;', $code);
-        $this->assertStringContainsString('use Milpa\\Data\\FileRepository;', $code);
+        // Driver-aware storage (T4): boot() builds the repository from the app's `storage` config
+        // through RepositoryFactory instead of hardcoding FileRepository — these pins replaced the
+        // former `use Milpa\Data\FileRepository;` + `new FileRepository(...)` assertions.
+        $this->assertStringContainsString('use Milpa\\Data\\RepositoryFactory;', $code);
+        $this->assertStringContainsString('use Milpa\\Runtime\\Config;', $code);
         $this->assertStringContainsString('use Milpa\\Runtime\\Support\\RootResolver;', $code);
         $this->assertStringContainsString('implements PluginInterface', $code);
         $this->assertStringNotContainsString('RouteProviderInterface', $code);
         $this->assertStringContainsString("Article::class . 'Repository'", $code);
-        $this->assertStringContainsString("new FileRepository((new RootResolver())->resolve() . '/var/articles.json', Article::class)", $code);
+        // The config read follows the skeleton's HelloPlugin idiom: Config bag from the container,
+        // dot-notation key, an inline default that keeps zero-config working (file driver, the
+        // same var/<table>.json location the old hardcoded scaffold used).
+        $this->assertStringContainsString("->get(Config::class)->get('storage', [", $code);
+        $this->assertStringContainsString("'driver' => 'file',", $code);
+        $this->assertStringContainsString("'path' => (new RootResolver())->resolve() . '/var/articles.json',", $code);
+        $this->assertStringContainsString('RepositoryFactory::fromConfig($storage, Article::class)', $code);
+        $this->assertStringNotContainsString('new FileRepository(', $code);
 
         $this->assertPhpLints($code);
 
@@ -135,6 +148,13 @@ final class EntityGeneratorRuntimeTest extends TestCase
         $this->assertStringContainsString('registerService(', $guidance);
         $this->assertStringContainsString("Article::class . 'Repository'", $guidance);
         $this->assertStringContainsString('use App\\Plugins\\BlogPlugin\\Entities\\Article;', $guidance);
+        // Driver-aware storage (T4): the hand-add snippet must carry the same factory + config
+        // wiring the generated plugin gets — snippet and stub must never teach two idioms.
+        $this->assertStringContainsString('RepositoryFactory::fromConfig($storage, Article::class)', $guidance);
+        $this->assertStringContainsString("->get(Config::class)->get('storage', [", $guidance);
+        $this->assertStringContainsString('use Milpa\\Data\\RepositoryFactory;', $guidance);
+        $this->assertStringContainsString('use Milpa\\Runtime\\Config;', $guidance);
+        $this->assertStringNotContainsString('new FileRepository(', $guidance);
     }
 
     public function testDefaultTableIsDerivedFromTheEntityName(): void
@@ -150,6 +170,45 @@ final class EntityGeneratorRuntimeTest extends TestCase
         $plugin = $this->fileNamed($result->files, 'BlogPlugin.php');
 
         $this->assertStringContainsString("/var/articles.json'", $plugin->contents);
+    }
+
+    /**
+     * Cross-package drift guard: the default `storage` array the scaffold inlines (driver `file`,
+     * path under var/) must be a shape the REAL `Milpa\Data\RepositoryFactory` accepts — if either
+     * side ever renames a key or a driver, this fails here, in devtools, where the stub lives.
+     */
+    public function testTheScaffoldDefaultStorageConfigIsAcceptedByTheRealFactory(): void
+    {
+        $entity = new class (null) implements EntityInterface {
+            public function __construct(public int|string|null $id)
+            {
+            }
+
+            public function id(): int|string|null
+            {
+                return $this->id;
+            }
+
+            /** @return array{id: int|string|null} */
+            public function toArray(): array
+            {
+                return ['id' => $this->id];
+            }
+
+            public static function fromArray(array $row): static
+            {
+                /** @var static */
+                return new self($row['id'] ?? null); // @phpstan-ignore return.type (fixture: final-by-use anonymous class)
+            }
+        };
+
+        // The same key names and driver value the generated boot() defaults to.
+        $repo = RepositoryFactory::fromConfig(
+            ['driver' => 'file', 'path' => $this->root . '/var/articles.json'],
+            $entity::class,
+        );
+
+        $this->assertInstanceOf(FileRepository::class, $repo);
     }
 
     public function testRejectsReservedIdFieldName(): void

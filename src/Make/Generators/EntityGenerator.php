@@ -1,5 +1,15 @@
 <?php
 
+/**
+ * This file is part of Milpa DevTools — the generate-verify-inspect developer loop of the Milpa PHP framework.
+ *
+ * (c) Rodrigo Vicente - TeamX Agency — https://teamx.agency <hola@teamx.agency>
+ *
+ * @license Apache-2.0
+ *
+ * @link    https://github.com/getmilpa/devtools
+ */
+
 declare(strict_types=1);
 
 namespace Milpa\DevTools\Make\Generators;
@@ -30,11 +40,13 @@ use Milpa\DevTools\Support\DoctrineAvailability;
  * - **Runtime**: a plain `final readonly class` implementing `milpa/data`'s
  *   `Milpa\Data\EntityInterface` (`id()`/`toArray()`/`fromArray()`, no Doctrine attributes) — the
  *   `milpa/runtime` + skeleton convention. An orphaned entity class has nothing to persist it, so
- *   this path ALSO wires a booting plugin whose `boot()` registers a `Milpa\Data\FileRepository` for
- *   the entity into the DI container — a minimal `PluginInterface` implementation is generated
- *   alongside the entity when the target plugin area doesn't exist yet, or the exact registration
- *   snippet to add by hand is returned via {@see GenerationResult::$guidance} when it does — see
- *   {@see self::wireRepository()}, which mirrors {@see ControllerGenerator::wireRoute()}.
+ *   this path ALSO wires a booting plugin whose `boot()` builds the entity's repository from the
+ *   app's `storage` config via `Milpa\Data\RepositoryFactory` (driver `file|sqlite|mysql|memory` —
+ *   the backend is one config line; defaults to a JSON file under `var/` so zero config still
+ *   persists) and registers it into the DI container — a minimal `PluginInterface` implementation
+ *   is generated alongside the entity when the target plugin area doesn't exist yet, or the exact
+ *   registration snippet to add by hand is returned via {@see GenerationResult::$guidance} when it
+ *   does — see {@see self::wireRepository()}, which mirrors {@see ControllerGenerator::wireRoute()}.
  */
 final class EntityGenerator implements GeneratorInterface
 {
@@ -239,16 +251,18 @@ final class EntityGenerator implements GeneratorInterface
     }
 
     /**
-     * Decides how the generated entity reaches a booting `Milpa\Data\FileRepository` — the
-     * load-bearing part of the runtime path, since an orphaned entity class has nothing to persist
-     * it (see the class docblock). Mirrors {@see ControllerGenerator::wireRoute()} exactly, one
-     * concern swapped for the other (route registration -> repository registration):
+     * Decides how the generated entity reaches a booting repository — the load-bearing part of the
+     * runtime path, since an orphaned entity class has nothing to persist it (see the class
+     * docblock). Mirrors {@see ControllerGenerator::wireRoute()} exactly, one concern swapped for
+     * the other (route registration -> repository registration):
      *
      * - No `PluginInterface` plugin exists yet at the target area's conventional path
-     *   (`{appDir}/Plugins/{plugin}/{plugin}.php`) -> generate a minimal one whose `boot()`
-     *   registers a `FileRepository($root . '/var/<table>.json', Entity::class)` into the DI
-     *   container under the id `Entity::class . 'Repository'`, plus guidance to register the new
-     *   plugin class in `config/plugins.php`.
+     *   (`{appDir}/Plugins/{plugin}/{plugin}.php`) -> generate a minimal one whose `boot()` reads
+     *   the app's `storage` config (the runtime `Config` bag, defaulting to
+     *   `['driver' => 'file', 'path' => $root . '/var/<table>.json']` so zero config still
+     *   persists) and registers `RepositoryFactory::fromConfig($storage, Entity::class)` into the
+     *   DI container under the id `Entity::class . 'Repository'`, plus guidance to register the
+     *   new plugin class in `config/plugins.php`.
      * - One already exists -> it is NOT edited (same deterministic-write rationale as the
      *   controller path). The exact `boot()` registration snippet to add by hand is returned
      *   instead.
@@ -273,16 +287,25 @@ final class EntityGenerator implements GeneratorInterface
         $repositoryId = "{$context->name}::class . 'Repository'";
 
         if (is_file($pluginPath)) {
-            $snippet = "\$this->container->registerService(\n"
+            $snippet = "\$storage = \$this->container->get(Config::class)->get('storage', [\n"
+                . "    'driver' => 'file',\n"
+                . "    'path' => (new RootResolver())->resolve() . '/var/{$table}.json',\n"
+                . "]);\n"
+                . "\\assert(\\is_array(\$storage));\n"
+                . "\n"
+                . "\$this->container->registerService(\n"
                 . "    {$repositoryId},\n"
-                . "    new FileRepository((new RootResolver())->resolve() . '/var/{$table}.json', {$context->name}::class),\n"
+                . "    RepositoryFactory::fromConfig(\$storage, {$context->name}::class),\n"
                 . ');';
 
             $guidance = "A plugin already exists at {$pluginPath} — it is left untouched (editing "
                 . "existing host code is outside this generator's deterministic write model). Add "
-                . "`use {$entityNamespace}\\{$context->name};`, `use Milpa\\Data\\FileRepository;` and "
-                . "`use Milpa\\Runtime\\Support\\RootResolver;` imports and this to its boot():\n\n{$snippet}\n\n"
-                . "Resolve it later via \$container->get({$repositoryId}).";
+                . "`use {$entityNamespace}\\{$context->name};`, `use Milpa\\Data\\RepositoryFactory;`, "
+                . "`use Milpa\\Runtime\\Config;` and `use Milpa\\Runtime\\Support\\RootResolver;` imports "
+                . "and this to its boot():\n\n{$snippet}\n\n"
+                . "The backend is one config line: set storage.driver in config/app.php to file, sqlite, "
+                . "mysql or memory (with its path/dsn); with no storage block the default above persists "
+                . "to var/{$table}.json. Resolve the repository later via \$container->get({$repositoryId}).";
 
             return ['file' => null, 'guidance' => $guidance];
         }
@@ -296,8 +319,11 @@ final class EntityGenerator implements GeneratorInterface
         ]);
 
         $guidance = "New plugin — register it so the kernel boots it: add {$pluginFqcn}::class to the "
-            . 'list returned by config/plugins.php. Its boot() wires a FileRepository for '
-            . "{$context->name}; resolve it later via \$container->get({$repositoryId}).";
+            . "list returned by config/plugins.php. Its boot() builds the {$context->name} repository "
+            . "from the app's 'storage' config via RepositoryFactory — set storage.driver in "
+            . 'config/app.php to file, sqlite, mysql or memory (with its path/dsn); with no storage '
+            . "block it defaults to a JSON file at var/{$table}.json. Resolve it later via "
+            . "\$container->get({$repositoryId}).";
 
         return ['file' => new PlannedFile($pluginPath, $pluginContents), 'guidance' => $guidance];
     }

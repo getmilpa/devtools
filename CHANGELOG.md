@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/getmilpa/devtools/compare/v0.5.0...v0.6.0) (2026-07-14)
+
+
+### Features
+
+* make:entity scaffolds driver-aware storage ([3c5bb66](https://github.com/getmilpa/devtools/commit/3c5bb661f9b77ea2740e09fb0ab329426cf56029))
+
 ## [0.5.0](https://github.com/getmilpa/devtools/compare/v0.4.0...v0.5.0) (2026-07-09)
 
 

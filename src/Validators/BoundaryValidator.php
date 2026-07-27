@@ -21,8 +21,9 @@ use SplFileInfo;
 
 /**
  * A rules-based architectural-boundary gate: each {@see BoundaryRule} scans a directory and reports
- * every non-comment PHP line referencing one of its forbidden namespace prefixes. The ENGINE is
- * generic (any host, any rule set); the RULES are host policy — see {@see BoundaryRule}.
+ * every non-comment PHP line referencing one of its forbidden namespace prefixes or matching one of
+ * its forbidden PCRE patterns. The ENGINE is generic (any host, any rule set); the RULES are host
+ * policy — see {@see BoundaryRule}.
  *
  * Ported 1:1 from the monorepo's `scripts/library/validate-boundaries.php` (B5 / ADR-001 / D9).
  */
@@ -79,10 +80,21 @@ final class BoundaryValidator
                     continue;
                 }
 
+                $matched = false;
                 foreach ($rule->forbidden as $needle) {
                     if (str_contains($line, $needle)) {
                         $violations[] = sprintf('%s:%d  %s', $rel, $i + 1, trim($line));
+                        $matched = true;
                         break;
+                    }
+                }
+
+                if (!$matched) {
+                    foreach ($rule->forbiddenPatterns as $pattern) {
+                        if (preg_match($pattern, $line) === 1) {
+                            $violations[] = sprintf('%s:%d  %s', $rel, $i + 1, trim($line));
+                            break;
+                        }
                     }
                 }
             }

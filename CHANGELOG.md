@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0](https://github.com/getmilpa/devtools/compare/v0.6.0...v0.7.0) (2026-07-28)
+
+
+### Features
+
+* a boundary rule that asks which package owns a class ([915fb1d](https://github.com/getmilpa/devtools/commit/915fb1d56bb0f3d8dd6b5473e28ccbe32dfa5be4))
+* el tablero de la familia y el validador de paridad de metadatos ([b49fa05](https://github.com/getmilpa/devtools/commit/b49fa050d70d22f2e70ca561bdea80cc5f3cd90f))
+
+
+### Bug Fixes
+
+* sacar el tablero de la familia — es del host, no de este paquete ([b18d362](https://github.com/getmilpa/devtools/commit/b18d362c888d1b469b88493d3561933f92c26bb5))
+
 ## [0.6.0](https://github.com/getmilpa/devtools/compare/v0.5.0...v0.6.0) (2026-07-14)
 
 

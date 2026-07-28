@@ -41,6 +41,9 @@ final class Board
      * @throws \InvalidArgumentException si el id ya existe — dos hechos con el mismo nombre hacen
      *                                   que las dependencias apunten a cualquiera de los dos
      */
+    /**
+     * Registers a check, returning the board so declarations read as one expression.
+     */
     public function add(Check $check): self
     {
         if (isset($this->checks[$check->id])) {

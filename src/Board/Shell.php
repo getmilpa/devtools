@@ -30,6 +30,15 @@ class Shell
      *
      * @return string|null null si el proceso no pudo correr o salió distinto de cero
      */
+    /**
+     * Runs a command and returns its output, or null when it could not run.
+     *
+     * Null rather than an empty string on failure: a command that produced nothing and a command
+     * that never ran are different answers, and a check reading the second as the first would
+     * conclude something from an absence it caused.
+     *
+     * @param list<string> $command
+     */
     public function run(array $command): ?string
     {
         $descriptors = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
@@ -46,6 +55,13 @@ class Shell
     }
 
     /** @return string|null null cuando no hubo respuesta utilizable (sin red, 404, timeout) */
+    /**
+     * Fetches a URL, or null when the network did not answer.
+     *
+     * Same distinction as {@see run()}: no answer is not an empty answer, and a board that treated
+     * an unreachable index as an empty one would report a package missing when it is merely
+     * offline.
+     */
     public function fetch(string $url): ?string
     {
         $context = stream_context_create(['http' => [

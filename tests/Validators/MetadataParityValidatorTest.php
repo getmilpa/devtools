@@ -8,7 +8,7 @@ use Milpa\Attributes\PluginMetadata;
 use Milpa\DevTools\Validators\MetadataParityValidator;
 use PHPUnit\Framework\TestCase;
 
-#[PluginMetadata(version: '1.0.0', author: 'TeamX', site: 'https://teamx.agency', name: 'ParityFixture', type: 'Service')]
+#[PluginMetadata(version: '1.0.0', author: 'Acme', site: 'https://teamx.agency', name: 'ParityFixture', type: 'Service')]
 class ParityFixturePlugin
 {
 }
@@ -16,7 +16,7 @@ class ParityFixturePlugin
 /** Fixture carrying a rich `provides` record — used to prove key order inside a record is not divergence. */
 #[PluginMetadata(
     version: '1.0.0',
-    author: 'TeamX',
+    author: 'Acme',
     site: 'https://teamx.agency',
     name: 'ParityRecordFixture',
     type: 'Service',
@@ -61,7 +61,7 @@ final class MetadataParityValidatorTest extends TestCase
             'version' => '1.0.0',
             'type' => 'Service',
             'license' => 'MIT',
-            'authors' => [['name' => 'TeamX', 'email' => '']],
+            'authors' => [['name' => 'Acme', 'email' => '']],
             'milpa' => ['min-version' => '2.0.0', 'php-version' => '>=8.2'],
             'contracts' => ['provides' => [], 'requires' => [], 'suggests' => []],
             'dependencies' => ['plugins' => new \stdClass(), 'composer' => new \stdClass()],

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.8.0](https://github.com/getmilpa/devtools/compare/v0.7.1...v0.8.0) (2026-07-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* the constraint on `milpa/plugin` moves from ^0.3 to ^0.4.
+
+### Features
+
+* require milpa/plugin ^0.4 ([eb10641](https://github.com/getmilpa/devtools/commit/eb10641246849d2d472a5a9540cb1a4b8f6aa3fb))
+
 ## [0.7.1](https://github.com/getmilpa/devtools/compare/v0.7.0...v0.7.1) (2026-07-30)
 
 

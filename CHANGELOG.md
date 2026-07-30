@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/getmilpa/devtools/compare/v0.7.0...v0.7.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* catch up with the family's published versions ([ce3de77](https://github.com/getmilpa/devtools/commit/ce3de7701b924cc8cbf1d892f7f3570967b5e0eb))
+
 ## [0.7.0](https://github.com/getmilpa/devtools/compare/v0.6.0...v0.7.0) (2026-07-28)
 
 

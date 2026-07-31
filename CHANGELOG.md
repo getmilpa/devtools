@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/getmilpa/devtools/compare/v0.9.0...v0.9.1) (2026-07-31)
+
+
+### Bug Fixes
+
+* require milpa/plugin ^0.5 ([4613df5](https://github.com/getmilpa/devtools/commit/4613df57292785c2163d2fc45fb1abf615364797))
+
 ## [0.9.0](https://github.com/getmilpa/devtools/compare/v0.8.0...v0.9.0) (2026-07-30)
 
 

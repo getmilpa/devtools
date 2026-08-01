@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.3](https://github.com/getmilpa/devtools/compare/v0.9.2...v0.9.3) (2026-08-01)
+
+
+### Bug Fixes
+
+* **deps:** el pin de milpa/core deja de ser una jaula de un minor ([c559a25](https://github.com/getmilpa/devtools/commit/c559a2582a803f39d94b978f6fca6f50465c7473))
+
 ## [0.9.2](https://github.com/getmilpa/devtools/compare/v0.9.1...v0.9.2) (2026-07-31)
 
 

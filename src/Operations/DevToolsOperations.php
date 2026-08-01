@@ -69,7 +69,7 @@ final class DevToolsOperations implements CommandProvider
         return [
             new Operation(
                 name: 'validate',
-                description: 'Valida el manifiesto de un plugin y los proveedores que declara',
+                description: 'Validate a plugin manifest and the providers it declares',
                 handler: [ValidateHandler::class, 'handle'],
                 inputSchema: [
                     'type' => 'object',
@@ -85,7 +85,7 @@ final class DevToolsOperations implements CommandProvider
             ),
             new Operation(
                 name: 'make',
-                description: 'Andamia un artefacto del framework (plugin, controller, entity, crud, service o tool) y lo verifica',
+                description: 'Scaffold a framework artifact (plugin, controller, entity, crud, service or tool) and verify it',
                 handler: [MakeHandler::class, 'handle'],
                 inputSchema: [
                     'type' => 'object',
@@ -121,7 +121,7 @@ final class DevToolsOperations implements CommandProvider
             ),
             new Operation(
                 name: 'test',
-                description: 'Corre la suite de pruebas de esta app y devuelve el veredicto',
+                description: 'Run this app test suite and return the verdict',
                 handler: [TestHandler::class, 'handle'],
                 inputSchema: [
                     'type' => 'object',

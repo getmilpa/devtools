@@ -57,7 +57,7 @@
     "milpa": {
       "capability": {
         "id": "devtools",
-        "title": "Andamiaje y diagn\u00f3stico: generar artefactos y explicar el estado sin arrancar",
+        "title": "Scaffolding and diagnosis: generate artifacts and explain the app without booting it",
         "unlocks": [
           "coa doctor"
         ],
@@ -65,7 +65,7 @@
           "dev.generator",
           "dev.doctor"
         ],
-        "briefing": "Puedes andamiar plugins, controllers y entidades con `make`, y diagnosticar con `doctor`."
+        "briefing": "You can scaffold plugins, controllers and entities with `make`, and diagnose with `doctor`."
       }
     }
   }

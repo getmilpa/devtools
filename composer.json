@@ -52,5 +52,21 @@
       "tests/Fixtures/HostStubs.php",
       "tests/Fixtures/SampleContract.php"
     ]
+  },
+  "extra": {
+    "milpa": {
+      "capability": {
+        "id": "devtools",
+        "title": "Andamiaje y diagn\u00f3stico: generar artefactos y explicar el estado sin arrancar",
+        "unlocks": [
+          "coa doctor"
+        ],
+        "provides": [
+          "dev.generator",
+          "dev.doctor"
+        ],
+        "briefing": "Puedes andamiar plugins, controllers y entidades con `make`, y diagnosticar con `doctor`."
+      }
+    }
   }
 }

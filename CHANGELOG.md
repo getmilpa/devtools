@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.5](https://github.com/getmilpa/devtools/compare/v0.9.4...v0.9.5) (2026-08-01)
+
+
+### Bug Fixes
+
+* este paquete declara que aporta ([87a5255](https://github.com/getmilpa/devtools/commit/87a52550509742ff7f40c26b4a610d677810fc31))
+
 ## [0.9.4](https://github.com/getmilpa/devtools/compare/v0.9.3...v0.9.4) (2026-08-01)
 
 

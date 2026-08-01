@@ -145,7 +145,13 @@ final class CrudGeneratorTest extends TestCase
         $this->assertStringContainsString('namespace App\\Plugins\\BoardPlugin;', $code);
         $this->assertStringContainsString('use App\\Plugins\\BoardPlugin\\Entities\\Task;', $code);
         $this->assertStringContainsString('use App\\Plugins\\BoardPlugin\\Controllers\\TaskController;', $code);
-        $this->assertStringContainsString('use Milpa\\Data\\FileRepository;', $code);
+        // RepositoryFactory, not FileRepository: `milpa/data` ships four backends behind one
+        // interface and the factory picks by config. Pinning the generated wiring to JSON files made
+        // the choice for the app, and made `make entity` and `make crud` answer the same question two
+        // different ways — someone who moved to SQLite got quietly opted out by the second command.
+        $this->assertStringContainsString('use Milpa\\Data\\RepositoryFactory;', $code);
+        $this->assertStringContainsString('use Milpa\\Runtime\\Config;', $code);
+        $this->assertStringNotContainsString('FileRepository', $code);
         $this->assertStringContainsString('use Milpa\\Runtime\\Http\\RouteProviderInterface;', $code);
         $this->assertStringContainsString('use Milpa\\Runtime\\Support\\RootResolver;', $code);
         $this->assertStringContainsString('implements PluginInterface, RouteProviderInterface', $code);
@@ -154,7 +160,9 @@ final class CrudGeneratorTest extends TestCase
         // the repository as a constructor arg, so it cannot rely on ambient DI autowiring for an
         // interface-typed dependency (see the generator's class docblock / the F1b report's Fricciones).
         $this->assertStringContainsString("Task::class . 'Repository'", $code);
-        $this->assertStringContainsString("new FileRepository((new RootResolver())->resolve() . '/var/tasks.json', Task::class)", $code);
+        $this->assertStringContainsString("RepositoryFactory::fromConfig(\$storage, Task::class)", $code);
+        $this->assertStringContainsString("->get('storage', [", $code, 'el backend sale de la config de la app');
+        $this->assertStringContainsString("'path' => (new RootResolver())->resolve() . '/var/tasks.json',", $code, 'y sin config sigue persistiendo');
         $this->assertStringContainsString('TaskController::class,', $code);
         $this->assertStringContainsString('new TaskController($repository));', $code);
 

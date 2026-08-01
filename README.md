@@ -9,7 +9,7 @@
 
 # Milpa DevTools
 
-> The **generate-verify-inspect** developer loop for the Milpa PHP framework: deterministic controller/entity scaffolding (the Make engine), boot-time doctors, and architectural validators — capability graphs, plugin manifests, boundary rules — that run **in-process**, with Composer-safe root resolution.
+> The **generate-verify-inspect** developer loop for the Milpa PHP framework: deterministic plugin/controller/entity/CRUD/service/tool scaffolding (the Make engine), boot-time doctors, and architectural validators — capability graphs, plugin manifests, boundary rules — that run **in-process**, with Composer-safe root resolution.
 
 [![CI](https://github.com/getmilpa/devtools/actions/workflows/ci.yml/badge.svg)](https://github.com/getmilpa/devtools/actions/workflows/ci.yml)
 [![Packagist](https://img.shields.io/packagist/v/milpa/devtools.svg)](https://packagist.org/packages/milpa/devtools)
@@ -109,6 +109,80 @@ class Product
 `$result->verifyKind` is `'entity'` and `$result->verifyTarget` is the class's FQCN — the exact two
 values `VerifyRunner::run()` needs to close the loop (see below) once the file is actually written.
 
+## The three atoms a host adopts: `DevToolsOperations`
+
+The engine below is callable on its own, but a Milpa host normally adopts it as **declared
+operations** — one `Operation` each for `validate`, `make` and `test`, enlisted once and materialised
+by every surface the host projects to (terminal, HTTP, TUI, MCP). A host adds `DevToolsOperations` to
+its operation providers and gets `coa make …` *and* a `make` tool its agent can call, from the same
+declaration.
+
+The three are a loop: write it, check it follows the convention, then **run it** to find out whether
+it also does what it was supposed to. Without the third the loop closes on form and never on
+behaviour — an entity can satisfy `EntityInterface` perfectly and still return the wrong field from
+`toArray()`.
+
+```bash
+coa make plugin Inventario Inventario --provides=inventory
+coa make crud Inventario Producto --fields=sku:string,existencia:int
+```
+
+`make` takes `what` from **six** kinds — `plugin`, `controller`, `entity`, `crud`, `service`,
+`tool` — plus the target plugin and the class name. With `what=plugin` the target *is* the artifact,
+so both names are the same value. Everything else is optional and per-kind: `--fields`, `--route`,
+`--methods`, `--table`, `--provides`, `--requires`, `--interface`, `--needs`, `--tool-name`,
+`--description`, `--flavor`.
+
+The result is a value, not a log line:
+
+```php
+[
+    'ok'       => true,
+    'files'    => [
+        ['path' => '…/Plugins/Inventario/Entities/Producto.php',   'action' => 'created'],
+        ['path' => '…/Plugins/Inventario/Controllers/…',           'action' => 'created'],
+        ['path' => '…/Plugins/Inventario/Inventario.php',          'action' => 'merged'],
+    ],
+    'verify'   => ['ok' => true, 'output' => '…'],
+    'guidance' => 'Auto-wired into the existing plugin at … (// {coa:services} marker found). …',
+]
+```
+
+Four actions, and each says something different: `would-create` (a `dry_run` plan, nothing touched),
+`created`, `merged` (grafted into an existing file at its marker — not an overwrite), and
+`rolled-back` (written, then undone because the verify failed). `guidance` is the generator's own
+next step — *"register it in config/plugins.php"*, *"no `// {coa:routes}` marker, add the 5 REST
+routes by hand"* — and it is `null` when the write was rolled back, because pointing someone at
+files that no longer exist is worse than saying nothing.
+
+`make` declares `mutating: true` and does **not** require a signature: its blast radius is already
+bounded by `WriteGuard` (never clobbers without `--force`) and by the rollback. `--force` overwrites
+the artifact; it deliberately does *not* reach `MarkerInserter`, so forcing a regeneration can never
+duplicate a service registration.
+
+### `test` — run the host's suite
+
+```bash
+coa test --filter=ProductoTest
+```
+
+```php
+['ok' => true, 'ran' => true, 'tests' => 12, 'assertions' => 34, 'failures' => 0, 'errors' => 0,
+ 'output' => '…', 'command' => '…/vendor/bin/phpunit --colors=never --filter ProductoTest']
+```
+
+The verdict is PHPUnit's **exit code**, not its text — the same thing a CI reads about the same run.
+`ran` separates "the suite failed" from "the suite could not run" (no phpunit installed, a `path`
+that escapes the project root): two different pieces of news, and confusing them means fixing the
+wrong thing. Counts that cannot be read come back `null`, never `0` — zero tests and could-not-count
+are different answers.
+
+Unlike the other two, `test` declares `surfaces: ['cli', 'tui', 'mcp']`. A web request that fires the
+app's own test suite is a surface nobody asked for: redundant in development, and a way to knock over
+a deployed process from outside. It is also the one place in this package that spawns a subprocess —
+a suite needs its own: inherited autoload state would make the result meaningless, and a fatal in one
+test would take the caller down with it.
+
 ## Composer-safe root resolution: `RootResolver`
 
 Every `coa:*` devtools command needs one thing before it can do anything else: the Milpa **host
@@ -149,7 +223,7 @@ use Milpa\DevTools\Support\RootResolver;
 
 | Layer | Namespace | What it does |
 |-------|-----------|---------------|
-| **Generate** | `Make` | `GeneratorInterface` implementations (`ControllerGenerator`, `EntityGenerator`) render a `.php.stub` template into a `PlannedFile` (path + contents, no I/O yet). `FieldParser` reads the `--fields` DSL; `WriteGuard` refuses to clobber an existing file unless `--force`; `VerifyRunner` closes the loop by running the matching verifier against the freshly written class, in-process. |
+| **Generate** | `Make` | Six `GeneratorInterface` implementations — `PluginGenerator`, `ControllerGenerator`, `EntityGenerator`, `CrudGenerator`, `ServiceGenerator`, `ToolGenerator` — render a `.php.stub` template into a `PlannedFile` (path + contents, no I/O yet). The four composite ones also *graft* their wiring into an existing plugin at its `// {coa:*}` markers (`MarkerInserter`, idempotent: re-running does not duplicate the insertion), planning that file with `PlannedFile::$merge` so `WriteGuard` grafts instead of refusing. `FieldParser` reads the `--fields` DSL; `WriteGuard` refuses to clobber an existing file unless `--force`; `VerifyRunner` closes the loop by running the matching verifier against the freshly written class, in-process. |
 | **Verify** | `Verify` | `ControllerVerifier` / `EntityVerifier` reflect an *already-autoloaded* class and check it against the framework's real runtime conventions — extends `BaseController`, calls `parent::__construct()`, correct `#[ORM\Column]` nullability, no debug output, no duplicate routes, and more. A `VerificationResult` never throws for a violation; it collects `errors` (fail the run) and `warnings` (advisory only). |
 | **Inspect** | `Validators` | `PluginManifestValidator` checks one `milpa.json` against the plugin manifest shape. `CapabilityGraphValidator` checks an entire plugin ecosystem: every hard `requires` must be satisfied by some plugin's `provides`, and the dependency graph must be acyclic (unmet `suggests` degrade, they never fail). `ProviderImplementsValidator` autoloads every declared provider and asserts it really implements what it claims. `BoundaryValidator` runs host-supplied `BoundaryRule`s (which directories may not reference which namespaces) — the engine is generic, the rules are yours. |
 
@@ -185,10 +259,10 @@ checking generated output against that same convention.
 
 | Namespace | What it provides |
 |-----------|-------------------|
-| `Milpa\DevTools\Make` | `GeneratorInterface`, `GenerationContext`/`GenerationResult`/`PlannedFile`, `ControllerGenerator`/`EntityGenerator` (each targets `Flavor::Runtime` or `Flavor::Legacy`, picked by `ConventionDetector`), `FieldParser`/`FieldSpec` (the `--fields` DSL: `name:type[:mods]`, `?` prefix for nullable, `enum:<Enum>`, `<name>:belongsTo:<Target>` — legacy-only), `StubRenderer`, `WriteGuard`, `VerifyRunner` |
+| `Milpa\DevTools\Make` | `GeneratorInterface`, `GenerationContext`/`GenerationResult`/`PlannedFile`, the six generators — `PluginGenerator`, `ControllerGenerator`, `EntityGenerator`, `CrudGenerator`, `ServiceGenerator`, `ToolGenerator` (each targets `Flavor::Runtime` or `Flavor::Legacy`, picked by `ConventionDetector`; `plugin` is runtime-only), `MarkerInserter`/`Markers` (the `// {coa:services}`, `// {coa:routes}`, `// {coa:tools}` anchors composites graft into), `FieldParser`/`FieldSpec` (the `--fields` DSL: `name:type[:mods]`, `?` prefix for nullable, `enum:<Enum>`, `<name>:belongsTo:<Target>` — legacy-only), `StubRenderer`, `WriteGuard`, `VerifyRunner` |
 | `Milpa\DevTools\Verify` | `VerifierInterface`, `VerificationResult`, `ControllerVerifier`, `EntityVerifier` |
 | `Milpa\DevTools\Validators` | `PluginManifestValidator`, `CapabilityGraphValidator`, `ProviderImplementsValidator`, `BoundaryValidator` (+ `BoundaryRule`/`BoundaryRuleResult`/`BoundaryReport`) and each validator's typed result |
-| `Milpa\DevTools\Support` | `RootResolver`/`RootNotFoundException`, `ClassNameExtractor` (file path → FQCN, no autoloading — lets a CLI accept either) |
+| `Milpa\DevTools\Support` | `RootResolver`/`RootNotFoundException`, `ClassNameExtractor` (file path → FQCN, no autoloading — lets a CLI accept either), `ProcessRunner` (the one subprocess this package spawns: output *and* exit code, with a deadline) |
 
 Every public symbol carries a DocBlock; the full field DSL, every generator/verifier check, and
 every validator's exact error messages are documented at the source and in the

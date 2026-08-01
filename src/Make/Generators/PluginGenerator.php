@@ -37,18 +37,19 @@ use Milpa\DevTools\Support\ComposerAutoload;
  * `registerTools()`/`getPromptSections()`) anchors from the start — a follow-up composite generator
  * that finds THIS plugin on disk auto-wires its registration at the matching marker instead of only
  * emitting guidance (see {@see ServiceGenerator::wireService()}, {@see ToolGenerator::wireToolProvider()},
- * and {@see \Milpa\DevTools\Make\MarkerInserter}). `Milpa\Runtime\Http\RouteProviderInterface` + a
- * `// {coa:routes}` anchor is
- * deliberately NOT part of this stub — `milpa/runtime` is not a `milpa/devtools` dependency (unlike
- * `milpa/core`, which `ToolProviderInterface` lives in and this package already requires-dev for
- * other verifiers), so a bare `make:plugin` output that already `implements RouteProviderInterface`
- * would not be genuinely `require`-able in THIS package's own test process, only lint-checkable — see
- * {@see \Milpa\DevTools\Tests\Make\CrudGeneratorTest}'s class docblock for the same constraint on its
- * own route-wiring plugin. `make:controller`/`make:crud`'s OWN "no plugin yet" stubs
- * (`plugin.runtime.php.stub`/`crud-plugin.runtime.php.stub`) already implement
- * `RouteProviderInterface` and DO carry the `// {coa:routes}` anchor — a plugin created THAT way (or
- * hand-upgraded to implement it) is a valid `// {coa:routes}` auto-wire target for
- * {@see ControllerGenerator}/{@see CrudGenerator}.
+ * and {@see \Milpa\DevTools\Make\MarkerInserter}). It carries `Milpa\Runtime\Http\RouteProviderInterface`
+ * and a `// {coa:routes}` anchor too — see below for why that took a second pass.
+ *
+ * The routes anchor was ORIGINALLY left out on a defensible-sounding argument: `milpa/runtime` is not
+ * a `milpa/devtools` dependency (unlike `milpa/core`, where `ToolProviderInterface` lives), so a stub
+ * that `implements RouteProviderInterface` cannot be `require`d in THIS package's own test process,
+ * only lint-checked. What that reasoning optimized for was the convenience of these tests, and what
+ * it cost was paid by every user: a plugin made with `make:plugin` was NOT a valid auto-wire target,
+ * so the very next `make:crud` against it found no anchor and printed five `Route` literals for
+ * someone to paste by hand. The two most natural commands in a row, and the second one degraded
+ * because of a constraint internal to this package. `crud-plugin.runtime.php.stub` had implemented
+ * the interface all along and is lint-checked exactly the same way, which is the proof that the
+ * constraint was never really binding.
  *
  * Unlike {@see ControllerGenerator}/{@see EntityGenerator}, this generator has no separate "target
  * plugin" — the plugin IS the artifact being generated, so only `GenerationContext::$name` is read;
@@ -126,6 +127,19 @@ final class PluginGenerator implements GeneratorInterface
 
         $guidance = "New plugin — register it so the kernel boots it: add {$pluginFqcn}::class to the "
             . 'list returned by config/plugins.php.';
+
+        // Declared `requires:` are named in the guidance, because registering a plugin whose required
+        // capability has no provider does not degrade — the resolver refuses to boot the whole host
+        // (MILPA_CAPABILITY_MISSING). So the two steps this guidance describes are "add the line" and
+        // "make sure something provides these", and omitting the second turns the first into a
+        // landmine: an agent scaffolded a plugin with `requires: database`, followed the guidance to
+        // the letter, and bricked the app it was building in.
+        $requires = $this->parseList($context->option('requires'));
+        if ($requires !== []) {
+            $guidance .= ' It declares requires: ' . implode(', ', $requires)
+                . ' — the host must already have an active plugin or package providing each one, or the '
+                . 'kernel refuses to boot (MILPA_CAPABILITY_MISSING) once you register it.';
+        }
 
         return new GenerationResult(
             files: [new PlannedFile($pluginPath, $contents)],

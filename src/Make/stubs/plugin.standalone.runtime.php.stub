@@ -9,6 +9,7 @@ use Milpa\Interfaces\Di\DIContainerInterface;
 use Milpa\Interfaces\Plugin\PluginInterface;
 use Milpa\Interfaces\Tooling\ToolProviderInterface;
 use Milpa\Interfaces\Tooling\ToolRegistryInterface;
+use Milpa\Runtime\Http\RouteProviderInterface;
 
 #[PluginMetadata(
     version: '0.1.0',
@@ -17,7 +18,7 @@ use Milpa\Interfaces\Tooling\ToolRegistryInterface;
     name: '{{class}}',
     type: 'Service',
 {{metadataArgs}})]
-final class {{class}} implements PluginInterface, ToolProviderInterface
+final class {{class}} implements PluginInterface, RouteProviderInterface, ToolProviderInterface
 {
     public function __construct(private readonly DIContainerInterface $container)
     {
@@ -46,6 +47,22 @@ final class {{class}} implements PluginInterface, ToolProviderInterface
 
     public function disable(): void
     {
+    }
+
+    /**
+     * The routes this plugin publishes.
+     *
+     * Empty on a fresh plugin, and that is fine — what matters is the `// {coa:routes}` anchor: a
+     * follow-up `make:controller`/`make:crud` targeting this plugin grafts its routes here instead of
+     * printing them for you to paste by hand.
+     *
+     * @return list<\Milpa\Http\Routing\Route>
+     */
+    public function routes(): array
+    {
+        return [
+            // {coa:routes}
+        ];
     }
 
     public function registerTools(ToolRegistryInterface $registry): void

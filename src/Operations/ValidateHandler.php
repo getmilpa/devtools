@@ -15,7 +15,11 @@ declare(strict_types=1);
 namespace Milpa\DevTools\Operations;
 
 use Milpa\DevTools\Support\RootResolver;
+use Milpa\Attributes\PluginMetadata;
+use Milpa\DevTools\Support\ComposerAutoload;
+use Milpa\DevTools\Validators\MetadataParityValidator;
 use Milpa\DevTools\Validators\PluginManifestValidator;
+use Milpa\Interfaces\Plugin\PluginInterface;
 use Milpa\DevTools\Validators\ProviderImplementsValidator;
 
 /**
@@ -55,29 +59,159 @@ final class ValidateHandler
             return ['ok' => false, 'target' => '', 'manifest' => '', 'error' => 'falta `target`: el nombre de un plugin o la ruta de un milpa.json'];
         }
 
-        $manifest = is_file($target)
-            ? $target
-            : $this->roots->resolve() . '/plugins/' . $target . '/milpa.json';
+        $root = $this->roots->resolve();
 
-        if (!is_file($manifest)) {
+        // LA CONVENCIÓN SE PREGUNTA, no se asume. Este handler hardcodeaba `plugins/<x>/milpa.json`,
+        // que es la ruta de un host legacy — así que en una app de runtime, la que sale de un
+        // `create-project`, `validate` era un comando que SIEMPRE fallaba: ningún plugin de ahí tiene
+        // manifiesto, porque su fuente de verdad es el atributo `#[PluginMetadata]`. Le pasó lo mismo
+        // que a `make` antes de que aprendiera a preguntar.
+        $manifest = is_file($target) ? $target : $this->manifestDe($root, $target);
+
+        if ($manifest === null) {
+            $clase = $this->claseDe($root, $target);
+            if ($clase !== null) {
+                // Un plugin de runtime SÍ se puede validar: lo que se revisa es el atributo, no un
+                // archivo que esa convención no tiene. Contestar «no hay manifiesto» sería exigirle a
+                // alguien un archivo que su convención no usa.
+                return $this->validarPorAtributo($target, $clase);
+            }
+
             return [
                 'ok' => false,
                 'target' => $target,
-                'manifest' => $manifest,
-                'error' => "no hay manifiesto para '{$target}' (se buscó en {$manifest})",
+                'manifest' => '',
+                'error' => "no encontré el plugin «{$target}»: ni plugins/{$target}/milpa.json ni una "
+                    . 'clase con `#[PluginMetadata]` bajo src/Plugins/',
             ];
         }
 
         $forma = (new PluginManifestValidator())->validate($manifest);
         $proveedores = (new ProviderImplementsValidator())->validate([$manifest]);
 
+        $checks = [
+            'manifest' => ['ok' => $forma->ok(), 'findings' => $forma->errors],
+            'providers' => ['ok' => $proveedores->ok(), 'findings' => $proveedores->violations],
+        ];
+
+        // PARIDAD: que el manifiesto y el atributo digan lo mismo. Estaba implementado y probado desde
+        // antes, y no lo alcanzaba nadie — la tercera vez esta semana que este paquete tenía escrita
+        // una capacidad sin la línea que la enchufa. Y es la que atrapa el desfase más caro: un
+        // `milpa.json` que promete una versión y una clase que declara otra pasan cada uno su propia
+        // revisión, y sólo se contradicen entre sí.
+        $clase = $this->claseDelManifiesto($manifest);
+        if ($clase !== null) {
+            $paridad = (new MetadataParityValidator())->validate($manifest, $clase);
+            $checks['parity'] = ['ok' => $paridad->ok(), 'findings' => $paridad->divergent];
+        }
+
+        $ok = true;
+        foreach ($checks as $check) {
+            $ok = $ok && $check['ok'];
+        }
+
         return [
-            'ok' => $forma->ok() && $proveedores->ok(),
+            'ok' => $ok,
             'target' => $target,
             'manifest' => $manifest,
+            'checks' => $checks,
+        ];
+    }
+
+    /**
+     * El `milpa.json` de un plugin en la convención legacy, o `null` si no lo hay.
+     */
+    private function manifestDe(string $root, string $target): ?string
+    {
+        $ruta = $root . '/plugins/' . $target . '/milpa.json';
+
+        return is_file($ruta) ? $ruta : null;
+    }
+
+    /**
+     * La clase de un plugin en la convención de runtime, o `null`.
+     *
+     * Se busca por convención de ruta y no autocargando a ciegas: `src/Plugins/<X>/<X>.php` es lo que
+     * los generadores de este mismo paquete escriben, así que preguntar por otra cosa sería validar
+     * una convención que nadie produce.
+     */
+    private function claseDe(string $root, string $target): ?string
+    {
+        [$namespace, $dir] = ComposerAutoload::primaryNamespace($root) ?? ['App', 'src'];
+        $archivo = $root . '/' . trim($dir, '/') . '/Plugins/' . $target . '/' . $target . '.php';
+
+        return is_file($archivo) ? $namespace . '\\Plugins\\' . $target . '\\' . $target : null;
+    }
+
+    /**
+     * La clase que un manifiesto dice ser, para poder confrontarla con él.
+     *
+     * @return class-string|null
+     */
+    private function claseDelManifiesto(string $manifest): ?string
+    {
+        $datos = json_decode((string) file_get_contents($manifest), true);
+        if (!\is_array($datos)) {
+            return null;
+        }
+
+        $namespace = \is_string($datos['namespace'] ?? null) ? trim($datos['namespace'], '\\') : '';
+        $entrada = \is_string($datos['entrypoint'] ?? null) ? $datos['entrypoint'] : '';
+        if ($namespace === '' || $entrada === '') {
+            return null;
+        }
+
+        /** @var class-string $clase */
+        $clase = $namespace . '\\' . basename($entrada, '.php');
+
+        return class_exists($clase) ? $clase : null;
+    }
+
+    /**
+     * Valida un plugin de la convención de runtime: su atributo es la fuente de verdad.
+     *
+     * @return array<string, mixed>
+     */
+    private function validarPorAtributo(string $target, string $clase): array
+    {
+        if (!class_exists($clase)) {
+            return [
+                'ok' => false,
+                'target' => $target,
+                'manifest' => '',
+                'error' => "la clase «{$clase}» existe en disco y no se puede cargar (¿autoload? ¿namespace?)",
+            ];
+        }
+
+        $atributos = (new \ReflectionClass($clase))->getAttributes(PluginMetadata::class);
+        if ($atributos === []) {
+            return [
+                'ok' => false,
+                'target' => $target,
+                'manifest' => '',
+                'error' => "«{$clase}» no declara `#[PluginMetadata]`, así que el kernel no la puede bootear",
+            ];
+        }
+
+        $meta = $atributos[0]->newInstance();
+        $hallazgos = [];
+        if (trim($meta->name) === '') {
+            $hallazgos[] = 'el atributo no declara `name`';
+        }
+        if (preg_match('/^\d+\.\d+\.\d+/', $meta->version) !== 1) {
+            $hallazgos[] = "`version` no es semver: «{$meta->version}»";
+        }
+        if (!is_subclass_of($clase, PluginInterface::class)) {
+            $hallazgos[] = "«{$clase}» no implementa PluginInterface";
+        }
+
+        return [
+            'ok' => $hallazgos === [],
+            'target' => $target,
+            'manifest' => '',
+            'convention' => 'runtime',
             'checks' => [
-                'manifest' => ['ok' => $forma->ok(), 'findings' => $forma->errors],
-                'providers' => ['ok' => $proveedores->ok(), 'findings' => $proveedores->violations],
+                'attribute' => ['ok' => $hallazgos === [], 'findings' => $hallazgos],
             ],
         ];
     }

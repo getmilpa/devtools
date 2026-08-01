@@ -63,7 +63,7 @@ final class PluginGeneratorTest extends TestCase
         $this->assertStringContainsString('use Milpa\\Interfaces\\Plugin\\PluginInterface;', $code);
         $this->assertStringContainsString('final class BoardPlugin implements PluginInterface', $code);
         $this->assertStringContainsString('ToolProviderInterface', $code);
-        $this->assertStringNotContainsString('RouteProviderInterface', $code);
+        $this->assertStringContainsString('RouteProviderInterface', $code);
         $this->assertStringContainsString("name: 'BoardPlugin',", $code);
         $this->assertStringContainsString('public function boot(): void', $code);
         $this->assertStringContainsString('public function install(): void', $code);
@@ -78,6 +78,14 @@ final class PluginGeneratorTest extends TestCase
         $this->assertStringContainsString('// {coa:services}', $code);
         $this->assertStringContainsString('// {coa:tools}', $code);
         $this->assertStringContainsString('// {coa:tool-prompts}', $code);
+
+        // And the ROUTES anchor, which this stub lacked at first. Without it a plugin made with
+        // `make:plugin` was not a valid auto-wire target, so the very next `make:crud` against it
+        // printed five Route literals for someone to paste by hand — the two most natural commands in
+        // a row, and the second one degraded. See the generator's docblock for the argument that kept
+        // it out and why it did not hold.
+        $this->assertStringContainsString('// {coa:routes}', $code);
+        $this->assertStringContainsString('public function routes(): array', $code);
 
         $this->assertPhpLints($code);
 
@@ -119,6 +127,48 @@ final class PluginGeneratorTest extends TestCase
         $this->assertStringContainsString("requires: ['auth.session'],", $code);
 
         $this->assertPhpLints($code);
+    }
+
+    /**
+     * A declared `requires:` is NAMED in the guidance, because it is the step that bricks the host.
+     *
+     * Registering a plugin whose required capability has no provider does not degrade — the resolver
+     * refuses to boot the whole app. So "add the line to config/plugins.php" is only half the
+     * instruction, and the half that is missing is the one that fails loudly: an agent scaffolded a
+     * plugin with `requires: database`, followed the guidance exactly, and bricked the app it was
+     * building in.
+     */
+    public function testTheGuidanceNamesTheRequiredCapabilities(): void
+    {
+        $ctx = new GenerationContext(
+            plugin: 'BoardPlugin',
+            name: 'BoardPlugin',
+            options: ['flavor' => 'runtime', 'requires' => 'database, auth.session'],
+            root: $this->root,
+        );
+
+        $guidance = (string) (new PluginGenerator())->generate($ctx)->guidance;
+
+        $this->assertStringContainsString('config/plugins.php', $guidance, 'the first half stays');
+        $this->assertStringContainsString('database', $guidance);
+        $this->assertStringContainsString('auth.session', $guidance);
+        $this->assertStringContainsString('MILPA_CAPABILITY_MISSING', $guidance, 'names the failure it prevents');
+    }
+
+    /** With no `requires:`, the guidance stays short — a warning about nothing teaches nobody. */
+    public function testTheGuidanceStaysShortWithoutRequires(): void
+    {
+        $ctx = new GenerationContext(
+            plugin: 'BoardPlugin',
+            name: 'BoardPlugin',
+            options: ['flavor' => 'runtime', 'provides' => 'board.capability'],
+            root: $this->root,
+        );
+
+        $guidance = (string) (new PluginGenerator())->generate($ctx)->guidance;
+
+        $this->assertStringContainsString('config/plugins.php', $guidance);
+        $this->assertStringNotContainsString('MILPA_CAPABILITY_MISSING', $guidance);
     }
 
     public function testNoProvidesOrRequiresOmitsBothArgumentsCleanly(): void

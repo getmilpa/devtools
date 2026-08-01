@@ -19,7 +19,11 @@ use Milpa\DevTools\Make\Flavor;
 use Milpa\DevTools\Make\GenerationContext;
 use Milpa\DevTools\Make\GeneratorInterface;
 use Milpa\DevTools\Make\Generators\ControllerGenerator;
+use Milpa\DevTools\Make\Generators\CrudGenerator;
 use Milpa\DevTools\Make\Generators\EntityGenerator;
+use Milpa\DevTools\Make\Generators\PluginGenerator;
+use Milpa\DevTools\Make\Generators\ServiceGenerator;
+use Milpa\DevTools\Make\Generators\ToolGenerator;
 use Milpa\DevTools\Make\VerifyRunner;
 use Milpa\DevTools\Make\WriteGuard;
 use Milpa\DevTools\Support\RootResolver;
@@ -55,9 +59,27 @@ final class MakeHandler
     /** @var array<string, GeneratorInterface> */
     private array $generadores = [];
 
+    /**
+     * LOS SEIS que el paquete implementa, no dos.
+     *
+     * Cableaba `controller` y `entity`. Los otros cuatro estaban completos y probados —`CrudGeneratorTest`
+     * y `ToolGeneratorTest` pasan de las quinientas líneas cada una— y no se alcanzaban desde ninguna
+     * superficie: ni terminal, ni HTTP, ni TUI, ni el agente. Ningún gate lo notaba, porque no faltaba
+     * código sino la línea que lo enchufa; y como nunca estuvieron proyectados, un inventario dorado de
+     * lo ofrecido tampoco los habría extrañado. Lo encontró alguien preguntándole al agente por un
+     * plugin nuevo y viendo que no tenía a dónde ir.
+     */
     public function __construct(private readonly RootResolver $roots = new RootResolver())
     {
-        foreach ([new ControllerGenerator(), new EntityGenerator()] as $generador) {
+        $generadores = [
+            new ControllerGenerator(),
+            new EntityGenerator(),
+            new PluginGenerator(),
+            new CrudGenerator(),
+            new ServiceGenerator(),
+            new ToolGenerator(),
+        ];
+        foreach ($generadores as $generador) {
             $this->generadores[$generador->name()] = $generador;
         }
     }
@@ -81,7 +103,7 @@ final class MakeHandler
      *
      * @param array<string, mixed> $input
      *
-     * @return array{ok: bool, files: list<array{path: string, action: string}>, verify: array{ok: bool, output: string}|null, error?: string}
+     * @return array{ok: bool, files: list<array{path: string, action: string}>, verify: array{ok: bool, output: string}|null, guidance: string|null, error?: string}
      */
     public function handle(array $input): array
     {
@@ -97,6 +119,18 @@ final class MakeHandler
             return $this->falla('«plugin» y «name» tienen que casar ^[A-Za-z_][A-Za-z0-9_]*$ — sin diagonales ni puntos');
         }
 
+        // `plugin` es el artefacto DESTINO en cinco de los seis; en `plugin` el destino ES el artefacto,
+        // así que los dos nombran la misma clase y se exige que coincidan. No es ceremonia gratuita: el
+        // esquema no puede decir «obligatorio salvo para este `what`» —lo que la terminal traduce a
+        // posicionales sale de `required`, y aflojarlo haría que `make entity MiPlugin Cosa` perdiera un
+        // argumento en silencio, que es peor que escribir el nombre dos veces—. Ignorar el que sobra
+        // tampoco: una entrada declarada que no se usa es una mentira del esquema.
+        if ($que === 'plugin' && $plugin !== $nombre) {
+            return $this->falla(
+                "para «plugin» los dos argumentos nombran el mismo artefacto — escribe: make plugin {$nombre} {$nombre}",
+            );
+        }
+
         $root = $this->roots->resolve();
 
         // El plugin destino tiene que existir SÓLO en la convención legacy, donde el generador
@@ -108,15 +142,48 @@ final class MakeHandler
         // La primera versión de este handler hardcodeaba `plugins/` porque lo estrenó un host legacy.
         // Le preguntamos al detector, que es quien decide el sabor y a quien los generadores ya le
         // hacen caso.
-        if ((new ConventionDetector())->detect($root) === Flavor::Legacy && !is_dir($root . '/plugins/' . $plugin)) {
+        //
+        // `plugin` queda fuera de esa exigencia: andamiar el plugin ES crear ese directorio, y pedirlo
+        // de antemano sería negarse a hacer lo único que hace. (En legacy el generador se niega solo,
+        // con su propio motivo, que es más específico que éste.)
+        if (
+            $que !== 'plugin'
+            && (new ConventionDetector())->detect($root) === Flavor::Legacy
+            && !is_dir($root . '/plugins/' . $plugin)
+        ) {
             return $this->falla("no existe el directorio del plugin «{$plugin}» en plugins/ — créalo antes de andamiar dentro");
         }
 
         $contexto = new GenerationContext($plugin, $nombre, [
             'fields' => $input['fields'] ?? null,
             'route' => $input['route'] ?? null,
+            // Los generadores de runtime leen `path` donde los de legacy leen `route` — el mismo
+            // concepto con dos nombres, de cuando cada sabor se escribió por su lado. Quien pasa
+            // `route` en una app de runtime merece que se le haga caso en vez de que se le ignore en
+            // silencio, así que uno cae en el otro.
+            'path' => $input['path'] ?? $input['route'] ?? null,
             'methods' => $input['methods'] ?? null,
             'table' => $input['table'] ?? null,
+            'flavor' => $input['flavor'] ?? null,
+            'provides' => $input['provides'] ?? null,
+            'requires' => $input['requires'] ?? null,
+            'interface' => $input['interface'] ?? null,
+            'needs' => $input['needs'] ?? null,
+            'tool-name' => $input['tool_name'] ?? null,
+            'description' => $input['description'] ?? null,
+            // `force` NO viaja, y es a propósito.
+            //
+            // Los generadores compuestos lo leen para otra cosa: reinsertar en un marcador que ya
+            // tiene el fragmento. `MarkerInserter` es idempotente por defecto —compara contra la forma
+            // ya indentada y no repite—, y forzarlo sólo sirve para duplicar. Pasar el mismo `--force`
+            // de la guarda de escritura los ataba: rehacer una entity con `--force` dejaba el plugin
+            // registrando el mismo servicio dos veces, sin que nadie lo pidiera. Medido: cuatro
+            // `registerService` donde había dos.
+            //
+            // Así que este átomo alcanza cinco de las seis opciones de los generadores y deja ésta
+            // fuera. No es un olvido de los que este handler acaba de arreglar: es que sobrescribir un
+            // archivo y duplicar una inserción son dos intenciones, y la segunda no tiene caso de uso
+            // que valga romper la primera.
         ], $root);
 
         $ensayo = ($input['dry_run'] ?? false) === true;
@@ -127,7 +194,14 @@ final class MakeHandler
             $resultado = $this->generadores[$que]->generate($contexto);
             foreach ($resultado->files as $archivo) {
                 if (!$ensayo) {
-                    $guarda->assertWritable($archivo->path, $forzar);
+                    // `$archivo->merge` dice que ese contenido NO es un reemplazo sino el mismo archivo
+                    // con una inserción en su marcador — la promesa del generador de que reaplicarlo no
+                    // duplica nada. `WriteGuard` sabe honrarlo desde que existe; este handler lo tiraba,
+                    // y con eso `make crud` sobre un plugin que ya existe —el caso normal, porque el
+                    // plugin se crea primero— moría diciendo «already exists (use --force to overwrite)».
+                    // Contestarle eso a alguien que sólo quiere agregar un CRUD es empujarlo a pasar
+                    // `--force` sobre un archivo que no quería sobrescribir.
+                    $guarda->assertWritable($archivo->path, $forzar, $archivo->merge);
                 }
             }
         } catch (\Throwable $e) {
@@ -141,7 +215,15 @@ final class MakeHandler
         $nuevos = [];
         foreach ($resultado->files as $archivo) {
             $existia = is_file($archivo->path);
-            $accion = $ensayo ? 'would-create' : ($existia ? 'overwritten' : 'created');
+            // `merged` no es `overwritten`: lo que había sigue ahí y se le agregó el cableado. Llamarle
+            // sobrescrito a una inserción asusta por lo que no pasó, y quien lee el reporte para
+            // decidir si revisa un diff merece saber cuál de las dos fue.
+            $accion = match (true) {
+                $ensayo => 'would-create',
+                $existia && $archivo->merge => 'merged',
+                $existia => 'overwritten',
+                default => 'created',
+            };
             if (!$ensayo) {
                 $guarda->write($archivo->path, $archivo->contents);
                 if (!$existia) {
@@ -153,29 +235,66 @@ final class MakeHandler
 
         $verify = null;
         if (!$ensayo && ($input['no_verify'] ?? false) !== true && $resultado->verifyKind !== null && $resultado->verifyTarget !== null) {
-            $verify = (new VerifyRunner())->run($resultado->verifyKind, $resultado->verifyTarget, $root);
+            // CON el sabor que produjo el archivo. `VerifyRunner` lo acepta y su docblock dice que lo
+            // típico es pasarle el de la misma llamada a `generate()`; este handler lo omitía, así que
+            // los verificadores caían a su default —legacy— y en una app de runtime pedían Doctrine
+            // para revisar una entity que no lo usa (la de runtime implementa `Milpa\Data\EntityInterface`
+            // y no toca un solo atributo de ORM). El verify fallaba SIEMPRE, y como un verify fallido
+            // borra lo recién escrito, andamiar no servía de nada sin `--no-verify`: la compuerta que
+            // existe para que el agente pruebe lo que escribe era justo la que se lo impedía.
+            //
+            // Cuarto valor producido y tirado en este archivo, después de `merge`, `guidance` y el
+            // flavor mismo. El patrón ya tiene nombre en el tablero.
+            $verify = (new VerifyRunner())->run(
+                $resultado->verifyKind,
+                $resultado->verifyTarget,
+                $root,
+                $resultado->flavor,
+            );
         }
 
         $ok = $verify === null || $verify['ok'];
 
         if (!$ok) {
+            $borrados = [];
             foreach ($nuevos as $ruta) {
                 if (is_file($ruta)) {
                     unlink($ruta);
+                    $borrados[$ruta] = true;
+                }
+            }
+
+            // Y el REPORTE dice que se borraron. Decía `created` sobre archivos que este mismo bloque
+            // acababa de deshacer: el veredicto era `ok: false` y la lista contaba otra historia. Un
+            // humano cruza las dos y se da cuenta; un agente lee la lista y anuncia que creó archivos
+            // que no existen —pasó, contra el Ollama de la LAN, en la primera corrida real.
+            foreach ($archivos as $i => $entrada) {
+                if (isset($borrados[$entrada['path']])) {
+                    $archivos[$i]['action'] = 'rolled-back';
                 }
             }
         }
 
-        return ['ok' => $ok, 'files' => $archivos, 'verify' => $verify];
+        // La GUÍA sí llega a quien llamó.
+        //
+        // Los seis generadores la producen —«registra este plugin en config/plugins.php», «agrega el
+        // servicio al boot»— y este handler la tiraba: `GenerationResult::$guidance` no lo leía nadie
+        // en todo el paquete. Con `plugin` cableado eso pasa de desperdicio a defecto: un plugin recién
+        // andamiado que el kernel no bootea hasta que alguien lo declara, y nada que lo diga, es un
+        // artefacto que parece terminado y no lo está. Se omite cuando se deshizo lo escrito: decirle a
+        // alguien cómo seguir con archivos que ya no existen es mandarlo a un lugar vacío.
+        $guia = $ok ? $resultado->guidance : null;
+
+        return ['ok' => $ok, 'files' => $archivos, 'verify' => $verify, 'guidance' => $guia];
     }
 
     /**
      * Una falla es un RESULTADO con veredicto, igual que en los átomos de sólo lectura.
      *
-     * @return array{ok: bool, files: list<array{path: string, action: string}>, verify: null, error: string}
+     * @return array{ok: bool, files: list<array{path: string, action: string}>, verify: null, guidance: null, error: string}
      */
     private function falla(string $motivo): array
     {
-        return ['ok' => false, 'files' => [], 'verify' => null, 'error' => $motivo];
+        return ['ok' => false, 'files' => [], 'verify' => null, 'guidance' => null, 'error' => $motivo];
     }
 }

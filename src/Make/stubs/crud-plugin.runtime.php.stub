@@ -7,12 +7,13 @@ namespace {{namespace}};
 use {{entityNamespace}}\{{entityClass}};
 use {{controllerNamespace}}\{{controllerClass}};
 use Milpa\Attributes\PluginMetadata;
-use Milpa\Data\FileRepository;
+use Milpa\Data\RepositoryFactory;
 use Milpa\Http\HttpMethod;
 use Milpa\Http\Routing\HandlerReference;
 use Milpa\Http\Routing\Route;
 use Milpa\Interfaces\Di\DIContainerInterface;
 use Milpa\Interfaces\Plugin\PluginInterface;
+use Milpa\Runtime\Config;
 use Milpa\Runtime\Http\RouteProviderInterface;
 use Milpa\Runtime\Support\RootResolver;
 
@@ -34,7 +35,17 @@ final class {{class}} implements PluginInterface, RouteProviderInterface
 
     public function boot(): void
     {
-        $repository = new FileRepository((new RootResolver())->resolve() . '/var/{{table}}.json', {{entityClass}}::class);
+        // The backend is one config line: add a 'storage' block to config/app.php — driver
+        // 'file', 'sqlite' or 'mysql' (with its 'path' or 'dsn') or 'memory' — and the factory
+        // builds the matching backend behind the same RepositoryInterface. With no 'storage'
+        // block at all, the default below applies: zero config still persists, to a JSON file.
+        $storage = $this->container->get(Config::class)->get('storage', [
+            'driver' => 'file',
+            'path' => (new RootResolver())->resolve() . '/var/{{table}}.json',
+        ]);
+        \assert(\is_array($storage));
+
+        $repository = RepositoryFactory::fromConfig($storage, {{entityClass}}::class);
 
         $this->container->registerService({{entityClass}}::class . 'Repository', $repository);
         $this->container->registerService({{controllerClass}}::class, new {{controllerClass}}($repository));

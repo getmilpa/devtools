@@ -94,7 +94,15 @@ final class FieldParser
         }
 
         if (!isset(self::SCALARS[$type])) {
-            throw new \InvalidArgumentException("unknown field type '{$type}' for field '{$name}'");
+            // The message NAMES the valid ones. The DSL says `int`/`bool` where Doctrine's column
+            // types say `integer`/`boolean`, so writing the column name is the natural first guess —
+            // an agent scaffolding a CRUD made exactly that guess, and the old message sent it to
+            // read this file instead of letting it retry. An error that lists the alternatives is
+            // the difference between one wasted step and a dead end.
+            throw new \InvalidArgumentException(
+                "unknown field type '{$type}' for field '{$name}' — valid: "
+                . implode(', ', array_keys(self::SCALARS)) . ', or belongsTo:<Entity>',
+            );
         }
 
         [$phpType, $columnType] = self::SCALARS[$type];

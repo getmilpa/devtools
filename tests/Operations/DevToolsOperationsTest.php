@@ -53,7 +53,7 @@ final class DevToolsOperationsTest extends TestCase
             $porNombre[$op->name] = $op;
         }
 
-        self::assertSame(['validate', 'make'], array_keys($porNombre));
+        self::assertSame(['validate', 'make', 'test'], array_keys($porNombre));
 
         self::assertFalse($porNombre['validate']->mutating, 'validar sólo lee');
         self::assertFalse($porNombre['validate']->requiresConfirmation);
@@ -63,6 +63,29 @@ final class DevToolsOperationsTest extends TestCase
             $porNombre['make']->requiresConfirmation,
             'su daño lo acotan WriteGuard y el rollback del verify, más finos que una firma',
         );
+
+        self::assertTrue($porNombre['test']->mutating, 'correr la suite ejecuta el código del proyecto');
+        self::assertFalse($porNombre['test']->requiresConfirmation);
+    }
+
+    /**
+     * `test` NO se ofrece por HTTP.
+     *
+     * Una petición web que dispara la suite de la app es una superficie que nadie quiso: en desarrollo
+     * sobra —ahí está la terminal— y en algo desplegado es una forma de tumbar el proceso desde fuera.
+     * Los otros dos no declaran superficies, o sea que se ofrecen en las cuatro; declarar ésta es una
+     * decisión, y una decisión que se puede borrar sin que nada más se rompa merece su prueba.
+     */
+    public function testTheSuiteIsNotOfferedOverHttp(): void
+    {
+        $porNombre = [];
+        foreach ((new DevToolsOperations())->operations() as $op) {
+            $porNombre[$op->name] = $op;
+        }
+
+        self::assertSame(['cli', 'tui', 'mcp'], $porNombre['test']->surfaces);
+        self::assertNotContains('http', (array) $porNombre['test']->surfaces);
+        self::assertNull($porNombre['make']->surfaces, 'las otras dos se ofrecen en las cuatro');
     }
 
     /**
@@ -80,6 +103,180 @@ final class DevToolsOperationsTest extends TestCase
         self::assertSame(
             ['what', 'plugin', 'name'],
             \array_slice(array_keys($make->inputSchema['properties']), 0, 3),
+        );
+    }
+
+    /**
+     * Los SEIS generadores que el paquete implementa se alcanzan, y el esquema los ofrece.
+     *
+     * Cableaba dos. `plugin`, `crud`, `service` y `tool` estaban completos y probados, y no llegaban a
+     * ninguna superficie — no faltaba código, faltaba la línea que lo enchufa, y por eso ningún gate
+     * lo veía. Esta prueba es esa línea puesta a la vista: si alguien agrega un generador y no lo
+     * cablea, o lo cablea y no lo declara en el enum, las dos listas dejan de casar.
+     */
+    public function testEveryGeneratorThePackageImplementsIsReachableAndOffered(): void
+    {
+        $esperados = ['controller', 'entity', 'plugin', 'crud', 'service', 'tool'];
+
+        $cableados = (new MakeHandler(new RootResolver($this->raiz)))->kinds();
+        sort($cableados);
+        $ordenados = $esperados;
+        sort($ordenados);
+        self::assertSame($ordenados, $cableados, 'los seis se cablean en el handler');
+
+        $make = (new DevToolsOperations())->operations()[1];
+        $ofrecidos = $make->inputSchema['properties']['what']['enum'];
+        sort($ofrecidos);
+        self::assertSame($ordenados, $ofrecidos, 'y los seis se declaran en el esquema');
+    }
+
+    /**
+     * Un plugin suelto se andamia, y el resultado DICE cómo terminar de instalarlo.
+     *
+     * Los seis generadores producen una guía —«registra esto en config/plugins.php»— y este handler la
+     * tiraba: nadie en el paquete leía `GenerationResult::$guidance`. Mientras sólo se ofrecían
+     * `controller` y `entity` era desperdicio; con `plugin` cableado es un defecto, porque un plugin
+     * que el kernel no bootea hasta que alguien lo declara, sin nada que lo diga, parece terminado y
+     * no lo está.
+     */
+    public function testAStandalonePluginIsScaffoldedAndSaysHowToFinishInstallingIt(): void
+    {
+        $r = (new MakeHandler(new RootResolver($this->raiz)))->handle([
+            'what' => 'plugin',
+            'plugin' => 'Facturacion',
+            'name' => 'Facturacion',
+            'provides' => 'facturacion',
+        ]);
+
+        self::assertTrue($r['ok'], (string) ($r['error'] ?? ''));
+        self::assertCount(1, $r['files']);
+        self::assertFileExists($r['files'][0]['path']);
+        self::assertStringContainsString('config/plugins.php', (string) $r['guidance']);
+
+        $escrito = (string) file_get_contents($r['files'][0]['path']);
+        self::assertStringContainsString('class Facturacion', $escrito);
+        self::assertStringContainsString("provides: ['facturacion']", $escrito, 'las capacidades declaradas llegan');
+    }
+
+    /**
+     * Con `plugin`, los dos nombres tienen que ser el mismo — y se dice, no se adivina.
+     *
+     * El destino y el artefacto coinciden, así que uno de los dos sobra. El esquema no puede decir
+     * «obligatorio salvo para este `what`» (lo que la terminal vuelve posicional sale de `required`),
+     * así que la alternativa era ignorar el que sobra: una entrada declarada que no se usa es una
+     * mentira del esquema, y la mentira sale cara cuando quien la lee es un agente.
+     */
+    public function testForAPluginBothNamesMustBeTheSame(): void
+    {
+        $r = (new MakeHandler(new RootResolver($this->raiz)))->handle([
+            'what' => 'plugin',
+            'plugin' => 'UnaCosa',
+            'name' => 'OtraCosa',
+        ]);
+
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('make plugin OtraCosa OtraCosa', (string) $r['error'], 'la negativa trae la línea que sí funciona');
+        self::assertSame([], $r['files'], 'no escribió nada');
+    }
+
+    /**
+     * Un generador compuesto —`tool`— también se alcanza, con sus opciones propias.
+     *
+     * `needs`, `tool-name` y `description` las lee sólo este generador; si el handler no las pasara,
+     * el átomo las declararía en su esquema y no harían nada, que es la forma más silenciosa de
+     * mentir. `tool_name` se escribe con guion bajo en el esquema y con guion en la terminal, igual
+     * que `dry_run`.
+     */
+    public function testACompositeGeneratorIsReachedWithItsOwnOptions(): void
+    {
+        $r = (new MakeHandler(new RootResolver($this->raiz)))->handle([
+            'what' => 'tool',
+            'plugin' => 'UnPlugin',
+            'name' => 'BuscarFacturas',
+            'description' => 'Busca facturas por cliente',
+            'no_verify' => true,
+        ]);
+
+        self::assertTrue($r['ok'], (string) ($r['error'] ?? ''));
+        self::assertNotSame([], $r['files']);
+
+        $escrito = '';
+        foreach ($r['files'] as $archivo) {
+            self::assertFileExists($archivo['path']);
+            $escrito .= (string) file_get_contents($archivo['path']);
+        }
+        self::assertStringContainsString('Busca facturas por cliente', $escrito, 'la descripción que lee un agente llega');
+    }
+
+    /**
+     * Un generador compuesto se INJERTA en un plugin que ya existe, y el reporte no lo llama sobrescrito.
+     *
+     * Los cuatro compuestos planean el archivo del plugin con `PlannedFile::$merge` —«esto no reemplaza,
+     * inserta en el marcador»— y `WriteGuard` sabe honrarlo desde que la bandera existe. Este handler la
+     * tiraba, así que `make crud` sobre el plugin recién creado —el caso normal, porque el plugin va
+     * primero— moría con «already exists (use --force to overwrite)». Contestarle eso a quien sólo
+     * quiere agregar un CRUD lo empuja a forzar un archivo que no quería sobrescribir.
+     */
+    public function testACompositeGrafsItselfIntoAnExistingPluginWithoutForce(): void
+    {
+        $handler = new MakeHandler(new RootResolver($this->raiz));
+
+        $plugin = $handler->handle(['what' => 'plugin', 'plugin' => 'Ventas', 'name' => 'Ventas']);
+        self::assertTrue($plugin['ok'], (string) ($plugin['error'] ?? ''));
+        $rutaPlugin = $plugin['files'][0]['path'];
+
+        $crud = $handler->handle([
+            'what' => 'crud',
+            'plugin' => 'Ventas',
+            'name' => 'Pedido',
+            'fields' => 'folio:string',
+            'no_verify' => true,
+        ]);
+
+        self::assertTrue($crud['ok'], (string) ($crud['error'] ?? ''));
+
+        $acciones = [];
+        foreach ($crud['files'] as $archivo) {
+            $acciones[basename($archivo['path'])] = $archivo['action'];
+        }
+        self::assertSame('merged', $acciones['Ventas.php'], 'injertar no es sobrescribir, y el reporte lo distingue');
+        self::assertStringContainsString('registerService', (string) file_get_contents($rutaPlugin), 'el cableado aterrizó');
+    }
+
+    /**
+     * `--force` sobrescribe el artefacto y NO duplica el cableado.
+     *
+     * Son dos intenciones que compartían una llave: la guarda de escritura la lee como «reemplaza este
+     * archivo» y los generadores compuestos como «reinserta en el marcador aunque ya esté». Pasar la
+     * misma bandera a los dos dejaba el plugin registrando el mismo servicio dos veces por rehacer una
+     * entity — cuatro `registerService` donde había dos, sin que nadie lo pidiera.
+     */
+    public function testForceOverwritesTheArtifactWithoutDuplicatingTheWiring(): void
+    {
+        $handler = new MakeHandler(new RootResolver($this->raiz));
+        $handler->handle(['what' => 'plugin', 'plugin' => 'Almacen', 'name' => 'Almacen']);
+
+        $entrada = [
+            'what' => 'crud',
+            'plugin' => 'Almacen',
+            'name' => 'Caja',
+            'fields' => 'folio:string',
+            'no_verify' => true,
+        ];
+        $primera = $handler->handle($entrada);
+        self::assertTrue($primera['ok'], (string) ($primera['error'] ?? ''));
+
+        $rutaPlugin = $this->raiz . '/src/Plugins/Almacen/Almacen.php';
+        $antes = substr_count((string) file_get_contents($rutaPlugin), 'registerService');
+        self::assertGreaterThan(0, $antes);
+
+        $segunda = $handler->handle($entrada + ['force' => true]);
+        self::assertTrue($segunda['ok'], (string) ($segunda['error'] ?? ''));
+
+        self::assertSame(
+            $antes,
+            substr_count((string) file_get_contents($rutaPlugin), 'registerService'),
+            'forzar la escritura no puede duplicar el registro del servicio',
         );
     }
 
@@ -266,5 +463,84 @@ final class DevToolsOperationsTest extends TestCase
         $segunda = (new MakeHandler(new RootResolver($this->raiz)))->handle($entrada);
         self::assertFalse($segunda['ok']);
         self::assertSame([], $segunda['files'], 'no escribió nada al negarse');
+    }
+
+    /**
+     * Cuando el verify falla y se deshace lo escrito, el REPORTE lo dice.
+     *
+     * Decía `created` sobre archivos que el propio handler acababa de borrar. El veredicto venía en
+     * `ok: false`, así que quien cruzara las dos llaves se daba cuenta —y quien leyera la lista, no.
+     * Un agente contra el Ollama de la LAN leyó la lista y anunció dos archivos creados que no
+     * existían en disco. Una lista que sobrevive al hecho que describe es peor que no traerla.
+     *
+     * El verify corre en un subproceso que resuelve la raíz de ESTE directorio temporal, donde no hay
+     * autoloader: falla siempre, que es justo la rama que se quiere medir.
+     */
+    public function testWhenTheVerifyFailsTheReportSaysWhatWasUndone(): void
+    {
+        $r = (new MakeHandler(new RootResolver($this->raiz)))->handle([
+            'what' => 'entity',
+            'plugin' => 'UnPlugin',
+            'name' => 'Deshecha',
+            'fields' => 'titulo:string',
+        ]);
+
+        self::assertFalse($r['ok'], 'sin autoloader en la raíz, el verify no puede pasar');
+        self::assertNotSame([], $r['files']);
+
+        foreach ($r['files'] as $archivo) {
+            self::assertSame('rolled-back', $archivo['action']);
+            self::assertFileDoesNotExist($archivo['path'], 'lo reportado como deshecho tiene que no estar');
+        }
+
+        // Y la guía se calla: decirle a alguien cómo seguir con archivos que ya no existen es
+        // mandarlo a un lugar vacío.
+        self::assertNull($r['guidance']);
+    }
+
+    /**
+     * `validate` funciona en una app de RUNTIME — antes era un comando que siempre fallaba ahí.
+     *
+     * Hardcodeaba `plugins/<x>/milpa.json`, que es la ruta de un host legacy. En la app que sale de un
+     * `create-project` ningún plugin tiene manifiesto —su fuente de verdad es `#[PluginMetadata]`— así
+     * que `coa validate HelloPlugin` contestaba «no hay manifiesto» sobre el plugin de ejemplo que ese
+     * mismo `create-project` acababa de escribir. Le pasó lo mismo que a `make` antes de aprender a
+     * preguntarle al detector.
+     */
+    public function testValidateWorksOnARuntimePluginWithNoManifest(): void
+    {
+        mkdir($this->raiz . '/src/Plugins/Runtimero', 0777, true);
+        file_put_contents($this->raiz . '/composer.json', json_encode([
+            'autoload' => ['psr-4' => ['Fixture\\' => 'src/']],
+        ]));
+        file_put_contents(
+            $this->raiz . '/src/Plugins/Runtimero/Runtimero.php',
+            "<?php\ndeclare(strict_types=1);\nnamespace Fixture\\Plugins\\Runtimero;\nfinal class Runtimero {}\n",
+        );
+
+        $r = (new ValidateHandler(new RootResolver($this->raiz)))->handle(['target' => 'Runtimero']);
+
+        // No pasa —la clase del fixture no está en el autoload— pero LLEGA a intentar cargarla, que
+        // es lo que antes no ocurría, y el motivo nombra el fallo más común de todos: una clase que se
+        // declara y no se puede cargar. Antes contestaba «no hay manifiesto» sobre una convención que
+        // no usa manifiestos, mandando a alguien a crear un archivo equivocado.
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('no se puede cargar', (string) $r['error']);
+        self::assertStringNotContainsString('no hay manifiesto', (string) $r['error']);
+    }
+
+    /**
+     * Un target que no existe en NINGUNA convención lo dice nombrando las dos.
+     *
+     * Antes decía sólo dónde buscó bajo `plugins/`, que en una app de runtime es un lugar donde nunca
+     * iba a haber nada — mandaba a alguien a crear un archivo que su convención no usa.
+     */
+    public function testAnUnknownTargetNamesBothConventions(): void
+    {
+        $r = (new ValidateHandler(new RootResolver($this->raiz)))->handle(['target' => 'NoExisteEnNinguna']);
+
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('milpa.json', (string) $r['error']);
+        self::assertStringContainsString('PluginMetadata', (string) $r['error']);
     }
 }

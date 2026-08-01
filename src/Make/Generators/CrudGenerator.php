@@ -34,7 +34,7 @@ use Milpa\DevTools\Support\ComposerAutoload;
  * docblock), so a REST resource controller (`index`/`show`/`create`/`update`/`delete`) is a genuinely
  * new shape — {@see self::generateRuntime()} renders it from its own `crud-controller.runtime.php.stub`
  * rather than calling `ControllerGenerator::generate()` at all. Likewise, wiring both a
- * `Milpa\Data\FileRepository` AND 5 routes into one plugin's `boot()`/`routes()` is a shape neither
+ * a `Milpa\Data` repository AND 5 routes into one plugin's `boot()`/`routes()` is a shape neither
  * `entity-plugin.runtime.php.stub` (repository only) nor `plugin.runtime.php.stub` (a single GET
  * route) covers alone, so it gets its own `crud-plugin.runtime.php.stub` too — see
  * {@see self::wireCrudPlugin()}.
@@ -198,7 +198,9 @@ final class CrudGenerator implements GeneratorInterface
      * pattern exactly, combined into ONE plugin file covering BOTH concerns:
      *
      * - No `PluginInterface` plugin exists yet at the target area's conventional path -> a combined
-     *   `crud-plugin.runtime.php.stub` is generated: its `boot()` constructs a `FileRepository` and
+     *   `crud-plugin.runtime.php.stub` is generated: its `boot()` builds the repository through
+     *   `RepositoryFactory::fromConfig()` (so the backend is the app's `storage` config, not a
+     *   hardcoded JSON file) and
      *   registers it AND the controller (already carrying that repository) into the container; its
      *   `routes()` returns all 5 REST routes — now ALSO carrying both
      *   {@see \Milpa\DevTools\Make\Markers::SERVICES}/{@see \Milpa\DevTools\Make\Markers::ROUTES}
@@ -250,7 +252,13 @@ final class CrudGenerator implements GeneratorInterface
                 );
             }
 
-            $bootSnippet = "\$repository = new FileRepository((new RootResolver())->resolve() . '/var/{$table}.json', {$context->name}::class);\n\n"
+            $bootSnippet = "\$storage = \$this->container->get(Config::class)->get('storage', [\n"
+                . "    'driver' => 'file',\n"
+                . "    'path' => (new RootResolver())->resolve() . '/var/{$table}.json',\n"
+                . "]);\n"
+                . "\\assert(\\is_array(\$storage));\n"
+                . "\n"
+                . "\$repository = RepositoryFactory::fromConfig(\$storage, {$context->name}::class);\n\n"
                 . "\$this->container->registerService(\n"
                 . "    {$repositoryId},\n"
                 . "    \$repository,\n"
@@ -274,12 +282,14 @@ final class CrudGenerator implements GeneratorInterface
             $guidance = "A plugin already exists at {$pluginPath} — it is left untouched (editing "
                 . "existing host code is outside this generator's deterministic write model). Add "
                 . "`use {$entityNamespace}\\{$context->name};`, `use {$controllerNamespace}\\{$controllerClass};`, "
-                . '`use Milpa\\Data\\FileRepository;`, `use Milpa\\Http\\HttpMethod;`, '
+                . '`use Milpa\\Data\\RepositoryFactory;`, `use Milpa\\Runtime\\Config;`, `use Milpa\\Http\\HttpMethod;`, '
                 . '`use Milpa\\Http\\Routing\\HandlerReference;`, `use Milpa\\Http\\Routing\\Route;`, '
                 . '`use Milpa\\Runtime\\Http\\RouteProviderInterface;` and `use Milpa\\Runtime\\Support\\RootResolver;` '
                 . "imports, implement RouteProviderInterface if not already, add this to its boot():\n\n{$bootSnippet}\n\n"
                 . "and this to its routes():\n\n{$routesSnippet}\n\n"
-                . "Resolve the repository later via \$container->get({$repositoryId}).";
+                . "The backend is one config line: set storage.driver in config/app.php to file, sqlite, "
+                . "mysql or memory (with its path/dsn); with no storage block the default above persists "
+                . "to var/{$table}.json. Resolve the repository later via \$container->get({$repositoryId}).";
 
             return ['file' => null, 'guidance' => $guidance, 'suppressEntityGuidance' => false];
         }
@@ -295,9 +305,11 @@ final class CrudGenerator implements GeneratorInterface
         ]);
 
         $guidance = "New plugin — register it so the kernel boots it: add {$pluginFqcn}::class to the "
-            . 'list returned by config/plugins.php. Its boot() wires a FileRepository for '
-            . "{$context->name} and registers {$controllerClass}; resolve the repository later via "
-            . "\$container->get({$repositoryId}).";
+            . "list returned by config/plugins.php. Its boot() builds the {$context->name} repository "
+            . "from the app's 'storage' config via RepositoryFactory — set storage.driver in "
+            . 'config/app.php to file, sqlite, mysql or memory (with its path/dsn); with no storage '
+            . "block it defaults to a JSON file at var/{$table}.json — and registers {$controllerClass}. "
+            . "Resolve the repository later via \$container->get({$repositoryId}).";
 
         return ['file' => new PlannedFile($pluginPath, $pluginContents), 'guidance' => $guidance, 'suppressEntityGuidance' => false];
     }
@@ -336,7 +348,19 @@ final class CrudGenerator implements GeneratorInterface
         $missingGuidance = [];
 
         if ($hasServicesMarker) {
-            $bootSnippet = "\$repository = new \\Milpa\\Data\\FileRepository((new \\Milpa\\Runtime\\Support\\RootResolver())->resolve() . '/var/{$table}.json', \\{$entityFqcn}::class);\n\n"
+            // Grafted through RepositoryFactory, exactly like EntityGenerator's own snippet — not a
+            // hardcoded FileRepository. `milpa/data` ships four backends behind one interface and the
+            // factory picks by config; pinning the generated wiring to JSON files made the choice for
+            // the app and, worse, made `make entity` and `make crud` answer the same question two
+            // different ways. Someone who moved to SQLite had to know that the second command had
+            // quietly opted them out.
+            $bootSnippet = "\$storage = \$this->container->get(\\Milpa\\Runtime\\Config::class)->get('storage', [\n"
+                . "    'driver' => 'file',\n"
+                . "    'path' => (new \\Milpa\\Runtime\\Support\\RootResolver())->resolve() . '/var/{$table}.json',\n"
+                . "]);\n"
+                . "\\assert(\\is_array(\$storage));\n"
+                . "\n"
+                . "\$repository = \\Milpa\\Data\\RepositoryFactory::fromConfig(\$storage, \\{$entityFqcn}::class);\n\n"
                 . "\$this->container->registerService(\n"
                 . "    \\{$entityFqcn}::class . 'Repository',\n"
                 . "    \$repository,\n"
@@ -350,8 +374,10 @@ final class CrudGenerator implements GeneratorInterface
             $wiredMarkers[] = Markers::SERVICES;
         } else {
             $missingGuidance[] = "No // {" . Markers::SERVICES . "} marker — add the repository+controller "
-                . "registration to its boot() by hand:\n\n\$repository = new FileRepository((new RootResolver())"
-                . "->resolve() . '/var/{$table}.json', {$context->name}::class);\n\n\$this->container->registerService("
+                . "registration to its boot() by hand:\n\n\$storage = \$this->container->get(Config::class)"
+                . "->get('storage', ['driver' => 'file', 'path' => (new RootResolver())->resolve() . "
+                . "'/var/{$table}.json']);\n\$repository = RepositoryFactory::fromConfig(\$storage, "
+                . "{$context->name}::class);\n\n\$this->container->registerService("
                 . "{$repositoryId}, \$repository);\n\$this->container->registerService({$controllerClass}::class, "
                 . "new {$controllerClass}(\$repository));";
         }

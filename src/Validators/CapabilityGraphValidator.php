@@ -14,13 +14,19 @@ declare(strict_types=1);
 
 namespace Milpa\DevTools\Validators;
 
+use Milpa\Services\CapabilityMatcher;
+
 /**
  * Validates the capability graph across a set of plugin manifests: every hard `requires` must be
  * satisfied by some plugin's `provides`, and the plugin dependency graph must be acyclic. Unprovided
  * `suggests` are reported as a degradation path, never a failure.
  *
  * Reads both capability formats: the typed `capabilities.*` records and the legacy bare-FQCN
- * `contracts.*` arrays; matching is by interface FQCN.
+ * `contracts.*` arrays. Matching is NOT decided here — it comes from {@see CapabilityMatcher}, the
+ * single criterion the resolver and the pre-boot check also consume. This class used to match by
+ * interface FQCN alone, which made it strictly weaker than the engine: it ignored a record
+ * identified only by `id`, and it ignored `oneOf`, so it reported violations the engine never had
+ * (`settlement-q-p17.md`).
  *
  * Ported 1:1 from `scripts/library/validate-capability-graph.php` (B5 / T014) — this class takes the
  * already-resolved list of manifest file paths (the caller globs; kept filesystem-glob-decoupled so
@@ -29,27 +35,34 @@ namespace Milpa\DevTools\Validators;
 final class CapabilityGraphValidator
 {
     /**
+     * @param CapabilityMatcher $matcher The single identity criterion, shared with the resolver
+     *                                   and the pre-boot check.
+     */
+    public function __construct(private readonly CapabilityMatcher $matcher = new CapabilityMatcher())
+    {
+    }
+
+    /**
      * Validates the capability graph across every manifest in `$manifestFiles`.
      *
      * @param list<string> $manifestFiles
      */
     public function validate(array $manifestFiles): CapabilityGraphResult
     {
-        $norm = static fn (string $fqcn): string => ltrim($fqcn, '\\');
-
-        $interfacesFor = static function (array $manifest, string $kind) use ($norm): array {
+        /**
+         * The raw capability entries one manifest declares for a kind, in both formats. They stay
+         * RAW on purpose: reducing a record to its `interface` here is what made this validator
+         * strictly weaker than the resolver — a record identified only by `id`, or a requirement
+         * with `oneOf` alternatives, became invisible and produced a violation the engine never had.
+         *
+         * @return list<string|array<string, mixed>>
+         */
+        $entriesFor = static function (array $manifest, string $kind): array {
             $out = [];
-            if (isset($manifest['capabilities'][$kind]) && is_array($manifest['capabilities'][$kind])) {
-                foreach ($manifest['capabilities'][$kind] as $record) {
-                    if (is_array($record) && isset($record['interface']) && is_string($record['interface'])) {
-                        $out[] = $norm($record['interface']);
-                    }
-                }
-            }
-            if (isset($manifest['contracts'][$kind]) && is_array($manifest['contracts'][$kind])) {
-                foreach ($manifest['contracts'][$kind] as $fqcn) {
-                    if (is_string($fqcn)) {
-                        $out[] = $norm($fqcn);
+            foreach ([$manifest['capabilities'][$kind] ?? null, $manifest['contracts'][$kind] ?? null] as $source) {
+                foreach (is_array($source) ? $source : [] as $entry) {
+                    if (is_string($entry) || is_array($entry)) {
+                        $out[] = $entry;
                     }
                 }
             }
@@ -57,10 +70,10 @@ final class CapabilityGraphValidator
             return $out;
         };
 
-        /** @var array<string, array{provides: list<string>, requires: list<string>, suggests: list<string>, deps: list<string>}> $plugins */
+        /** @var array<string, array{provides: list<string|array<string, mixed>>, requires: list<string|array<string, mixed>>, suggests: list<string|array<string, mixed>>, deps: list<string>}> $plugins */
         $plugins = [];
-        /** @var array<string, list<string>> $providedBy */
-        $providedBy = [];
+        /** @var array<string, true> $provided */
+        $provided = [];
 
         foreach ($manifestFiles as $file) {
             $raw = file_get_contents($file);
@@ -73,7 +86,7 @@ final class CapabilityGraphValidator
             }
 
             $name = is_string($manifest['name'] ?? null) ? $manifest['name'] : $file;
-            $provides = $interfacesFor($manifest, 'provides');
+            $provides = $entriesFor($manifest, 'provides');
             $deps = [];
             if (isset($manifest['dependencies']['plugins']) && is_array($manifest['dependencies']['plugins'])) {
                 foreach (array_keys($manifest['dependencies']['plugins']) as $dep) {
@@ -83,13 +96,15 @@ final class CapabilityGraphValidator
 
             $plugins[$name] = [
                 'provides' => $provides,
-                'requires' => $interfacesFor($manifest, 'requires'),
-                'suggests' => $interfacesFor($manifest, 'suggests'),
+                'requires' => $entriesFor($manifest, 'requires'),
+                'suggests' => $entriesFor($manifest, 'suggests'),
                 'deps' => $deps,
             ];
 
-            foreach ($provides as $interface) {
-                $providedBy[$interface][] = $name;
+            foreach ($provides as $entry) {
+                foreach ($this->matcher->identitiesOffered($entry) as $identity) {
+                    $provided[$identity] = true;
+                }
             }
         }
 
@@ -97,14 +112,14 @@ final class CapabilityGraphValidator
         $degradations = [];
 
         foreach ($plugins as $name => $plugin) {
-            foreach ($plugin['requires'] as $interface) {
-                if (!isset($providedBy[$interface])) {
-                    $violations[] = "unmet require: '{$name}' needs '{$interface}' but no plugin provides it";
+            foreach ($plugin['requires'] as $entry) {
+                if (!$this->isProvided($entry, $provided)) {
+                    $violations[] = "unmet require: '{$name}' needs '{$this->label($entry)}' but no plugin provides it";
                 }
             }
-            foreach ($plugin['suggests'] as $interface) {
-                if (!isset($providedBy[$interface])) {
-                    $degradations[] = "'{$name}' suggests '{$interface}' (absent → runs degraded)";
+            foreach ($plugin['suggests'] as $entry) {
+                if (!$this->isProvided($entry, $provided)) {
+                    $degradations[] = "'{$name}' suggests '{$this->label($entry)}' (absent → runs degraded)";
                 }
             }
         }
@@ -115,6 +130,44 @@ final class CapabilityGraphValidator
         }
 
         return new CapabilityGraphResult(count($plugins), $violations, $degradations);
+    }
+
+    /**
+     * Whether some plugin provides what one `requires`/`suggests` entry asks for — counting `oneOf`
+     * alternatives, which the engine counts and this validator used to ignore.
+     *
+     * @param string|array<string, mixed> $entry
+     * @param array<string, true>         $provided
+     */
+    private function isProvided(string|array $entry, array $provided): bool
+    {
+        $accepted = $this->matcher->identitiesAccepted($entry);
+
+        // An entry with no readable identity is not a violation: teaching a malformed record is
+        // PluginManifestValidator's job, and reporting it twice as two different failures would
+        // send the reader to fix the wrong thing.
+        return $accepted === [] || array_intersect($accepted, array_keys($provided)) !== [];
+    }
+
+    /**
+     * How an entry is named in a message: as it was written, not as it was canonicalized.
+     *
+     * @param string|array<string, mixed> $entry
+     */
+    private function label(string|array $entry): string
+    {
+        if (is_string($entry)) {
+            return $entry;
+        }
+
+        foreach (['id', 'interface'] as $key) {
+            $value = $entry[$key] ?? null;
+            if (is_string($value) && trim($value) !== '') {
+                return trim($value);
+            }
+        }
+
+        return '(sin identidad)';
     }
 
     /**

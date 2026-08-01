@@ -58,4 +58,24 @@ final class FieldParserTest extends TestCase
         $this->expectExceptionMessage("unknown field type 'wat'");
         (new FieldParser())->parse('x:wat');
     }
+
+    /**
+     * And the refusal NAMES the valid types.
+     *
+     * The DSL says `int`/`bool` where Doctrine's column types say `integer`/`boolean`, so the column
+     * name is the natural first guess — an agent scaffolding a CRUD guessed `integer` and the old
+     * message gave it nothing to retry with. `int` appearing in the message is what turns a dead end
+     * into a second attempt.
+     */
+    public function testTheRefusalNamesTheValidTypes(): void
+    {
+        try {
+            (new FieldParser())->parse('cantidad:integer');
+            $this->fail('an unknown type has to be refused');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('int', $e->getMessage());
+            $this->assertStringContainsString('datetime', $e->getMessage());
+            $this->assertStringContainsString('belongsTo', $e->getMessage());
+        }
+    }
 }

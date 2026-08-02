@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.7](https://github.com/getmilpa/devtools/compare/v0.9.6...v0.9.7) (2026-08-02)
+
+
+### Bug Fixes
+
+* widen milpa/command and milpa/plugin pins to accept the 0.5/0.8 minors ([2c2f393](https://github.com/getmilpa/devtools/commit/2c2f393f043e78a0d060f062201e2a86343c4070))
+
 ## [0.9.6](https://github.com/getmilpa/devtools/compare/v0.9.5...v0.9.6) (2026-08-01)
 
 

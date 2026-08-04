@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/getmilpa/devtools/compare/v0.9.9...v0.10.0) (2026-08-04)
+
+
+### Features
+
+* **doctor:** Doctor\Repair — la reparación vive junto al diagnóstico ([a253fe1](https://github.com/getmilpa/devtools/commit/a253fe15b3c421eaff30467eec6408d38d2f3edd))
+
 ## [0.9.9](https://github.com/getmilpa/devtools/compare/v0.9.8...v0.9.9) (2026-08-04)
 
 

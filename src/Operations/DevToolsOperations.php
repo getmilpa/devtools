@@ -118,6 +118,10 @@ final class DevToolsOperations implements CommandProvider
                     'required' => ['what', 'plugin', 'name'],
                 ],
                 mutating: true,
+
+                // El objetivo lo nombra el humano (ADR-0044), y lo puso una medición: Q-P20-J midió que
+                // una puerta que muta sin contrato se usa 8/8 veces sobre un objeto que nadie nombró.
+                namedTarget: 'plugin',
             ),
             new Operation(
                 name: 'test',

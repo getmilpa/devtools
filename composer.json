@@ -65,7 +65,11 @@
           "dev.generator",
           "dev.doctor"
         ],
-        "briefing": "You can scaffold plugins, controllers and entities with `make`, and diagnose with `doctor`."
+        "briefing": "You can scaffold plugins, controllers and entities with `make`, and diagnose with `doctor`.",
+        "contracts": {
+          "dev.generator": "Milpa\\DevTools\\Make\\Generators\\CrudGenerator",
+          "dev.doctor": "Milpa\\DevTools\\Doctor\\AppDoctor"
+        }
       }
     }
   }

@@ -46,8 +46,14 @@ final readonly class AppDoctor
      * del host: este paquete no puede decidir cómo se declara una app sin volverse su dueño.
      *
      * @param list<string> $pluginClasses tal como el host las declara
+     * @param null|string  $raiz          la raíz de la app, si se quiere diagnosticar TAMBIÉN su
+     *                                    `hostProfile` y lo que sus paquetes instalados proveen. Sin
+     *                                    ella se diagnostica sólo el grafo de plugins contra un perfil
+     *                                    permisivo — que es lo que hacía siempre, y por eso una app
+     *                                    tumbada por una `requiredCapabilities` sin proveedor salía
+     *                                    con «nada que recomendar»
      */
-    public function diagnose(array $pluginClasses): DoctorReport
+    public function diagnose(array $pluginClasses, ?string $raiz = null): DoctorReport
     {
         $registros = [];
         $ilegibles = [];
@@ -80,7 +86,7 @@ final readonly class AppDoctor
         }
 
         try {
-            $reporte = (new MetadataGraphResolver())->diagnose($registros);
+            $reporte = (new MetadataGraphResolver())->diagnose($registros, $raiz);
         } catch (\InvalidArgumentException $e) {
             // Un registro que el resolver no puede ingerir NO es un grafo que no cierra: es una
             // entrada ilegible. Confundirlos mandaría a alguien a buscar un proveedor que no era el

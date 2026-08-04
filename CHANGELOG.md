@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.8](https://github.com/getmilpa/devtools/compare/v0.9.7...v0.9.8) (2026-08-04)
+
+
+### Bug Fixes
+
+* **composer:** declarar type milpa-capability para que el paquete sea descubrible por lo que es ([9300b91](https://github.com/getmilpa/devtools/commit/9300b919e7b58f6fd79dd3bcb8e26e423e20ab35))
+
 ## [0.9.7](https://github.com/getmilpa/devtools/compare/v0.9.6...v0.9.7) (2026-08-02)
 
 

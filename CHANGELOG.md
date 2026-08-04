@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/getmilpa/devtools/compare/v0.10.0...v0.11.0) (2026-08-04)
+
+
+### Features
+
+* **doctor:** coa update — actualizar una app sin tocar composer ([668ff55](https://github.com/getmilpa/devtools/commit/668ff55e9cd98187109067085fb221af029996a9))
+
 ## [0.10.0](https://github.com/getmilpa/devtools/compare/v0.9.9...v0.10.0) (2026-08-04)
 
 

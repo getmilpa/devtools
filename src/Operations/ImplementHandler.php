@@ -46,20 +46,36 @@ use Milpa\DevTools\Support\RootResolver;
  * any finding the original is restored byte for byte. Level 0 on purpose: this gate rules on
  * linkage, not style; the app's own level belongs to its suite.
  *
- * What this gate does NOT do, on purpose: run the written code. Executing untrusted code belongs
- * to another process (ADR-0045), and the agent already has `test` as its own governed step.
+ * ── THE BEHAVIORAL JUDGE: THE CLASS'S OWN TEST, INSIDE THE GATE ──────────────────────────────────
+ *
+ * Measured on a real session: a service landed conformant — syntax, interface, namespace clean —
+ * while its solicitar() SIMULATED persistence in a comment. Linkage had a judge and the app suite
+ * had one; behavior had none. The judge is never an LLM reading code (the substitute certificate
+ * P-0001 took seven generations to kill) and never the agent grading itself (the prior that faked
+ * the behavior would grade its fake): it is the test that already declares what the class must DO
+ * — `tests/Plugins/<plugin>/<Class>Test.php` — executed as one more landing postcondition, red
+ * restoring byte for byte. Without a test the landing still lands — Q-P19-R measured that
+ * OBLIGATING a criterion made everything worse — but the result SAYS the behavior went unjudged: a
+ * silent gap reads as covered, and that is how a simulated persistence ships wearing green.
+ *
+ * Running the class's test EXECUTES the written code, in a subprocess — the same risk class as the
+ * `test` operation, accepted for the same reason and said here. Fuller isolation is ADR-0045's.
  */
 final class ImplementHandler
 {
     /**
-     * @param string|null $analyzer the static-analysis command, or `null` to derive it from the
-     *                              app (`vendor/bin/phpstan`, when present). Tests inject a seam
-     *                              here — a gate only verifiable against a running binary is a
-     *                              gate that in practice nobody verifies
+     * @param string|null $analyzer       the static-analysis command, or `null` to derive it from
+     *                                    the app (`vendor/bin/phpstan`, when present). Tests
+     *                                    inject a seam here — a gate only verifiable against a
+     *                                    running binary is a gate nobody verifies in practice
+     * @param string|null $behaviorRunner the command that runs one test file, or `null` to derive
+     *                                    it (`vendor/bin/phpunit`, when present) — same seam, same
+     *                                    reason
      */
     public function __construct(
         private readonly RootResolver $roots = new RootResolver(),
         private readonly ?string $analyzer = null,
+        private readonly ?string $behaviorRunner = null,
     ) {
     }
 
@@ -93,8 +109,11 @@ final class ImplementHandler
             return ['ok' => false, 'error' => "this app has no plugin «{$plugin}» under src/Plugins"];
         }
 
-        // The path is DERIVED, never received: the class is searched inside the plugin's tree only.
-        $file = $this->fileFor($tree, $class);
+        // The path is DERIVED, never received: the class is searched inside the plugin's own trees
+        // only — its sources, and its tests. A judge is a class too, and the TDD flow depends on it
+        // landing through the SAME gate before the body it will judge.
+        $file = $this->fileFor($tree, $class)
+            ?? (is_dir($root . '/tests/Plugins/' . $plugin) ? $this->fileFor($root . '/tests/Plugins/' . $plugin, $class) : null);
         if ($file === null) {
             return [
                 'ok' => false,
@@ -168,14 +187,83 @@ final class ImplementHandler
             }
         }
 
+        // ── The behavioral judge: the class's own test, when one declares what it must DO ────────
+        //
+        // Except when the landed class IS a judge: running a test against the shell it exists to
+        // fail would make TDD's red unlandable — the judge lands first, and runs when its subject
+        // lands. It never judges itself.
+        if (str_starts_with($file, $root . '/tests/')) {
+            return [
+                'ok' => true,
+                'file' => substr($file, \strlen($root) + 1),
+                'class' => $expected . '\\' . $class,
+                'verified' => 'syntax, strict_types, class, namespace'
+                    . ($analyzer !== null ? ' and static conformance' : ' — static analysis unavailable in this app')
+                    . '; this class IS a judge — it runs when its subject lands',
+            ];
+        }
+
+        $verdictNote = '; behavior unjudged — no test declares what this class must do';
+        $testFile = $this->testFor($root, $plugin, $class);
+        if ($testFile !== null) {
+            $runner = $this->behaviorRunner ?? $this->defaultBehaviorRunner($root);
+            if ($runner === null) {
+                $verdictNote = '; behavior unjudged — a test exists but this app ships no phpunit';
+            } else {
+                exec($runner . ' ' . escapeshellarg($testFile) . ' 2>&1', $verdictLines, $verdictCode);
+                if ($verdictCode !== 0) {
+                    file_put_contents($file, $previous);
+                    $tail = implode("\n", \array_slice(array_values(array_filter(
+                        $verdictLines,
+                        static fn (string $l): bool => trim($l) !== '',
+                    )), -10));
+
+                    return [
+                        'ok' => false,
+                        'error' => 'refused: the class\'s own test judges this behavior red — '
+                            . basename($testFile, '.php') . " said:\n{$tail}",
+                    ];
+                }
+                $verdictNote = ', behavior (' . basename($testFile, '.php') . ' green)';
+            }
+        }
+
         return [
             'ok' => true,
             'file' => substr($file, \strlen($root) + 1),
             'class' => $expected . '\\' . $class,
             'verified' => 'syntax, strict_types, class, namespace'
                 . ($analyzer !== null ? ' and static conformance' : ' — static analysis unavailable in this app')
-                . '; behavior is `test`\'s job, run it',
+                . $verdictNote,
         ];
+    }
+
+    /** The class's behavioral test under `tests/Plugins/<plugin>/`, or `null` when none declares it. */
+    private function testFor(string $root, string $plugin, string $class): ?string
+    {
+        $tree = $root . '/tests/Plugins/' . $plugin;
+        if (!is_dir($tree)) {
+            return null;
+        }
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($tree, \FilesystemIterator::SKIP_DOTS),
+        );
+        foreach ($iterator as $entry) {
+            if ($entry instanceof \SplFileInfo && $entry->getFilename() === $class . 'Test.php') {
+                return $entry->getPathname();
+            }
+        }
+
+        return null;
+    }
+
+    /** The runner this app ships, or `null` — and `null` is SAID in the result, never silent. */
+    private function defaultBehaviorRunner(string $root): ?string
+    {
+        $phpunit = $root . '/vendor/bin/phpunit';
+
+        return is_file($phpunit) ? 'timeout 120 ' . escapeshellarg($phpunit) : null;
     }
 
     /**
@@ -212,9 +300,15 @@ final class ImplementHandler
         return null;
     }
 
-    /** The namespace this file's location dictates: `src/` maps to `App\`. */
+    /** The namespace this file's location dictates: `src/` maps to `App\`, `tests/` to `App\Tests\`. */
     private function namespaceFor(string $root, string $file): string
     {
+        if (str_starts_with($file, $root . '/tests/')) {
+            $relative = substr(\dirname($file), \strlen($root . '/tests/'));
+
+            return 'App\\Tests\\' . str_replace('/', '\\', $relative);
+        }
+
         $relative = substr(\dirname($file), \strlen($root . '/src/'));
 
         return 'App\\' . str_replace('/', '\\', $relative);

@@ -159,6 +159,163 @@ final class ImplementHandlerTest extends TestCase
         self::assertStringContainsString('Nope', $r['error']);
     }
 
+    // ── The behavioral judge: the class's own test, run INSIDE the landing gate ──────────────────
+    //
+    // Measured on a real session: a service landed conformant — syntax, interface, namespace all
+    // clean — while its solicitar() SIMULATED persistence in a comment. Linkage has a judge and
+    // the app suite has a judge; behavior had none. The judge is not a new operation and never an
+    // LLM reading code: it is the test that already declares what the class must DO, executed as
+    // one more landing postcondition. These tests run a REAL phpunit — a fake judging a fake would
+    // prove the seam, not the judgment.
+
+    /** Prepares the class's behavioral test demanding `greet()` actually greets. */
+    private function conJuezConductual(): void
+    {
+        mkdir($this->raiz . '/tests/Plugins/Demo', 0o775, true);
+        file_put_contents(
+            $this->raiz . '/tests/bootstrap.php',
+            "<?php require __DIR__ . '/../src/Plugins/Demo/Services/GreeterService.php';\n",
+        );
+        file_put_contents(
+            $this->raiz . '/tests/Plugins/Demo/GreeterServiceTest.php',
+            "<?php\n\ndeclare(strict_types=1);\n\nuse PHPUnit\\Framework\\TestCase;\n\n"
+            . "final class GreeterServiceTest extends TestCase\n{\n"
+            . "    public function testGreetGreetsForReal(): void\n    {\n"
+            . "        \$g = new App\\Plugins\\Demo\\Services\\GreeterService();\n"
+            . "        self::assertSame('hola rod', \$g->greet('rod'));\n    }\n}\n",
+        );
+    }
+
+    /** A handler whose behavior runner is the REAL phpunit over the fixture's bootstrap. */
+    private function handlerConJuez(): ImplementHandler
+    {
+        // The package's OWN vendor first, the monorepo root as fallback: the exported tree has no
+        // monorepo above it, and the old single path resolved to /tmp/../vendor there — caught by
+        // the release train's exported-suite step, invisible from the monorepo where both exist.
+        $phpunit = \dirname(__DIR__, 2) . '/vendor/bin/phpunit';
+        if (!is_file($phpunit)) {
+            $phpunit = \dirname(__DIR__, 3) . '/../vendor/bin/phpunit';
+        }
+        $runner = $this->raiz . '/juez.sh';
+        file_put_contents($runner, "#!/bin/sh\n" . escapeshellarg($phpunit)
+            . ' --bootstrap ' . escapeshellarg($this->raiz . '/tests/bootstrap.php') . " \"\$1\" 2>&1\n");
+        chmod($runner, 0o755);
+
+        return new ImplementHandler(new RootResolver($this->raiz), behaviorRunner: $runner);
+    }
+
+    /**
+     * THE measured case, reconstructed: a body that fakes the behavior lands clean through every
+     * prior gate — and the class's own test refuses it, with the original intact and the phpunit
+     * verdict travelling back as the diagnostic.
+     */
+    public function testABodyThatFakesTheBehaviorIsRefusedByTheClassOwnTest(): void
+    {
+        $this->conJuezConductual();
+        $antes = (string) file_get_contents($this->raiz . '/src/Plugins/Demo/Services/GreeterService.php');
+
+        $r = $this->handlerConJuez()->handle(['plugin' => 'Demo', 'class' => 'GreeterService',
+            'content' => str_replace("'hola ' . \$name", "'bye ' . \$name", $this->contenidoValido())]);
+
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('behavior', $r['error']);
+        self::assertStringContainsString('GreeterServiceTest', $r['error']);
+        self::assertSame($antes, (string) file_get_contents($this->raiz . '/src/Plugins/Demo/Services/GreeterService.php'));
+    }
+
+    /** The honest body passes its judge and the landing SAYS which test went green. */
+    public function testABodyThatBehavesLandsNamingItsGreenJudge(): void
+    {
+        $this->conJuezConductual();
+
+        $r = $this->handlerConJuez()->handle(['plugin' => 'Demo', 'class' => 'GreeterService',
+            'content' => $this->contenidoValido()]);
+
+        self::assertTrue($r['ok'], $r['error'] ?? '');
+        self::assertStringContainsString('behavior', $r['verified']);
+        self::assertStringContainsString('GreeterServiceTest', $r['verified']);
+    }
+
+    /**
+     * Without a test the landing still lands — Q-P19-R measured that OBLIGATING a criterion made
+     * everything worse — but the result SAYS the behavior went unjudged. A silent gap reads as
+     * covered, and that is how a simulated persistence ships wearing green.
+     */
+    public function testWithoutATestTheLandingSaysBehaviorWentUnjudged(): void
+    {
+        $r = $this->handlerConJuez()->handle(['plugin' => 'Demo', 'class' => 'GreeterService',
+            'content' => $this->contenidoValido()]);
+
+        self::assertTrue($r['ok'], $r['error'] ?? '');
+        self::assertStringContainsString('behavior unjudged', $r['verified']);
+    }
+
+    // ── The judge is a class too: implement reaches tests/, and never judges itself ──────────────
+
+    /**
+     * A test class under `tests/Plugins/<plugin>/` is fillable through the SAME gate — with the
+     * namespace its location dictates (`App\Tests\…`) — and the behavioral judge does NOT run it
+     * against the current shell: a judge that judged itself while landing would make TDD's red
+     * unlandable, and the whole flow depends on the test landing BEFORE the body satisfies it.
+     */
+    public function testAJudgeLandsThroughTheGateWithoutJudgingItself(): void
+    {
+        mkdir($this->raiz . '/tests/Plugins/Demo', 0o775, true);
+        file_put_contents(
+            $this->raiz . '/tests/Plugins/Demo/GreeterServiceTest.php',
+            "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Tests\\Plugins\\Demo;\n\n// Fill me.\n"
+        );
+
+        $r = $this->handlerConJuez()->handle(['plugin' => 'Demo', 'class' => 'GreeterServiceTest',
+            'content' => $this->juezExigente()]);
+
+        self::assertTrue($r['ok'], $r['error'] ?? '');
+        self::assertSame('tests/Plugins/Demo/GreeterServiceTest.php', $r['file']);
+        self::assertStringContainsString('IS a judge', $r['verified']);
+    }
+
+    /**
+     * The whole TDD machine flow, with a real phpunit: the judge lands first (red against the
+     * shell, landable because it never judges itself) — then a faking body is REFUSED by it — then
+     * the honest body lands green. Order as a property of the gates, not as a suggestion.
+     */
+    public function testTheFullTddFlowLandsJudgeFirstThenRefusesTheFakeThenLandsTheHonest(): void
+    {
+        mkdir($this->raiz . '/tests/Plugins/Demo', 0o775, true);
+        file_put_contents(
+            $this->raiz . '/tests/bootstrap.php',
+            "<?php require __DIR__ . '/../src/Plugins/Demo/Services/GreeterService.php';\n"
+        );
+        file_put_contents(
+            $this->raiz . '/tests/Plugins/Demo/GreeterServiceTest.php',
+            "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Tests\\Plugins\\Demo;\n\n// Fill me.\n"
+        );
+        $h = $this->handlerConJuez();
+
+        $juez = $h->handle(['plugin' => 'Demo', 'class' => 'GreeterServiceTest', 'content' => $this->juezExigente()]);
+        self::assertTrue($juez['ok'], $juez['error'] ?? '');
+
+        $falso = $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService',
+            'content' => str_replace("'hola ' . \$name", "'bye ' . \$name", $this->contenidoValido())]);
+        self::assertFalse($falso['ok'], 'el cuerpo que finge aterrizó');
+        self::assertStringContainsString('behavior', $falso['error']);
+
+        $honesto = $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'content' => $this->contenidoValido()]);
+        self::assertTrue($honesto['ok'], $honesto['error'] ?? '');
+        self::assertStringContainsString('GreeterServiceTest green', $honesto['verified']);
+    }
+
+    /** A complete judge for GreeterService, in the namespace its location dictates. */
+    private function juezExigente(): string
+    {
+        return "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Tests\\Plugins\\Demo;\n\n"
+            . "use PHPUnit\\Framework\\TestCase;\n\n"
+            . "final class GreeterServiceTest extends TestCase\n{\n"
+            . "    public function testGreetGreetsForReal(): void\n    {\n"
+            . "        \$g = new \\App\\Plugins\\Demo\\Services\\GreeterService();\n"
+            . "        self::assertSame('hola rod', \$g->greet('rod'));\n    }\n}\n";
+    }
+
     /** An app without an analyzer still lands — and the result SAYS the analysis did not run. */
     public function testWithoutAnAnalyzerTheLandingSaysSo(): void
     {

@@ -95,7 +95,7 @@ final class DevToolsOperations implements CommandProvider
                     'properties' => [
                         'what' => [
                             'type' => 'string',
-                            'enum' => ['plugin', 'controller', 'entity', 'crud', 'service', 'tool'],
+                            'enum' => ['plugin', 'controller', 'entity', 'crud', 'service', 'tool', 'test'],
                             'description' => 'Qué artefacto. Con «plugin», los dos nombres siguientes son el mismo',
                         ],
                         'plugin' => ['type' => 'string', 'description' => 'Directorio del plugin destino'],

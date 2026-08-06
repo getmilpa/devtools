@@ -23,6 +23,7 @@ use Milpa\DevTools\Make\Generators\CrudGenerator;
 use Milpa\DevTools\Make\Generators\EntityGenerator;
 use Milpa\DevTools\Make\Generators\PluginGenerator;
 use Milpa\DevTools\Make\Generators\ServiceGenerator;
+use Milpa\DevTools\Make\Generators\TestGenerator;
 use Milpa\DevTools\Make\Generators\ToolGenerator;
 use Milpa\DevTools\Make\VerifyRunner;
 use Milpa\DevTools\Make\WriteGuard;
@@ -60,14 +61,15 @@ final class MakeHandler
     private array $generadores = [];
 
     /**
-     * LOS SEIS que el paquete implementa, no dos.
+     * TODOS los que el paquete implementa, no dos.
      *
      * Cableaba `controller` y `entity`. Los otros cuatro estaban completos y probados —`CrudGeneratorTest`
      * y `ToolGeneratorTest` pasan de las quinientas líneas cada una— y no se alcanzaban desde ninguna
      * superficie: ni terminal, ni HTTP, ni TUI, ni el agente. Ningún gate lo notaba, porque no faltaba
      * código sino la línea que lo enchufa; y como nunca estuvieron proyectados, un inventario dorado de
      * lo ofrecido tampoco los habría extrañado. Lo encontró alguien preguntándole al agente por un
-     * plugin nuevo y viendo que no tenía a dónde ir.
+     * plugin nuevo y viendo que no tenía a dónde ir. El séptimo (`test`, el juez conductual) llegó
+     * luego, enchufado aquí mismo el día uno.
      */
     public function __construct(private readonly RootResolver $roots = new RootResolver())
     {
@@ -78,6 +80,7 @@ final class MakeHandler
             new CrudGenerator(),
             new ServiceGenerator(),
             new ToolGenerator(),
+            new TestGenerator(),
         ];
         foreach ($generadores as $generador) {
             $this->generadores[$generador->name()] = $generador;

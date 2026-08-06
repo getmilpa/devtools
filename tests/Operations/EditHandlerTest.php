@@ -116,6 +116,42 @@ final class EditHandlerTest extends TestCase
         self::assertFalse($r['ok']);
     }
 
+    /**
+     * The behavioral judge travels through the delegation: an edit that breaks what the class's
+     * own test demands is refused by the INHERITED gate, original intact — one landing authority
+     * means one judge, never two.
+     */
+    public function testABehaviorBreakingEditIsRefusedByTheInheritedJudge(): void
+    {
+        mkdir($this->raiz . '/tests/Plugins/Demo', 0o775, true);
+        file_put_contents(
+            $this->raiz . '/tests/bootstrap.php',
+            "<?php require __DIR__ . '/../src/Plugins/Demo/Services/GreeterService.php';\n"
+        );
+        file_put_contents(
+            $this->raiz . '/tests/Plugins/Demo/GreeterServiceTest.php',
+            "<?php\n\ndeclare(strict_types=1);\n\nuse PHPUnit\\Framework\\TestCase;\n\n"
+            . "final class GreeterServiceTest extends TestCase\n{\n"
+            . "    public function testGreets(): void\n    {\n"
+            . "        self::assertSame('hola x', (new App\\Plugins\\Demo\\Services\\GreeterService())->greet('x'));\n    }\n}\n"
+        );
+        $phpunit = \dirname(__DIR__, 3) . '/../vendor/bin/phpunit';
+        $runner = $this->raiz . '/juez.sh';
+        file_put_contents($runner, "#!/bin/sh\n" . escapeshellarg($phpunit)
+            . ' --bootstrap ' . escapeshellarg($this->raiz . '/tests/bootstrap.php') . " \"\$1\" 2>&1\n");
+        chmod($runner, 0o755);
+
+        $antes = $this->original();
+        $lander = new \Milpa\DevTools\Operations\ImplementHandler(new RootResolver($this->raiz), behaviorRunner: $runner);
+        $r = (new EditHandler(new RootResolver($this->raiz), $lander))
+            ->handle(['plugin' => 'Demo', 'class' => 'GreeterService',
+                'edits' => [['find' => "return 'hola ' . \$name;", 'replace' => "return 'bye ' . \$name;"]]]);
+
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('behavior', $r['error']);
+        self::assertSame($antes, $this->original());
+    }
+
     /** Editing is not creating: an unscaffolded class is refused toward `make`, same as implement. */
     public function testAnUnscaffoldedClassIsRefusedTowardMake(): void
     {

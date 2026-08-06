@@ -134,13 +134,13 @@ final class DevToolsOperationsTest extends TestCase
      */
     public function testEveryGeneratorThePackageImplementsIsReachableAndOffered(): void
     {
-        $esperados = ['controller', 'entity', 'plugin', 'crud', 'service', 'tool'];
+        $esperados = ['controller', 'entity', 'plugin', 'crud', 'service', 'tool', 'test'];
 
         $cableados = (new MakeHandler(new RootResolver($this->raiz)))->kinds();
         sort($cableados);
         $ordenados = $esperados;
         sort($ordenados);
-        self::assertSame($ordenados, $cableados, 'los seis se cablean en el handler');
+        self::assertSame($ordenados, $cableados, 'todos se cablean en el handler');
 
         $make = (new DevToolsOperations())->operations()[1];
         $ofrecidos = $make->inputSchema['properties']['what']['enum'];

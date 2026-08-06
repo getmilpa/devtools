@@ -138,6 +138,13 @@ once** — measured on real sessions: re-generating a whole file is where a mode
 in, and a pair that matches nothing returns the CURRENT file verbatim, so the next pair is built
 against ground truth instead of memory.
 
+And landing conformant is not behaving: when the class has its own test
+(`tests/Plugins/<Plugin>/<Class>Test.php`), the gate **runs it** — the behavioural judge. A judge
+is never asked to judge itself, so a TDD red is landable: `coa make test` scaffolds the judge
+*failing on purpose* (a vacuous judge must not green-light an empty class), `implement` lands the
+subject only when its judge passes. Measured with a real model in the loop: the judge converts
+«shipped broken» into «correct or nothing».
+
 ```bash
 coa make plugin Inventario Inventario --provides=inventory
 coa make crud Inventario Producto --fields=sku:string,existencia:int

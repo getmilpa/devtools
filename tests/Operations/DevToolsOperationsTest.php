@@ -53,7 +53,7 @@ final class DevToolsOperationsTest extends TestCase
             $porNombre[$op->name] = $op;
         }
 
-        self::assertSame(['validate', 'make', 'test'], array_keys($porNombre));
+        self::assertSame(['validate', 'make', 'implement', 'edit', 'test'], array_keys($porNombre));
 
         self::assertFalse($porNombre['validate']->mutating, 'validar sólo lee');
         self::assertFalse($porNombre['validate']->requiresConfirmation);
@@ -63,6 +63,24 @@ final class DevToolsOperationsTest extends TestCase
             $porNombre['make']->requiresConfirmation,
             'su daño lo acotan WriteGuard y el rollback del verify, más finos que una firma',
         );
+
+        self::assertTrue($porNombre['implement']->mutating, 'landing a body writes a file and says so');
+        self::assertFalse(
+            $porNombre['implement']->requiresConfirmation,
+            'its damage is bounded by the postcondition: what does not verify clean never touches the original',
+        );
+        self::assertSame(
+            'class',
+            $porNombre['implement']->namedTarget,
+            'the intent contract targets THE CLASS — a request that does not name it should not be filling it',
+        );
+
+        self::assertTrue($porNombre['edit']->mutating, 'landing an edit writes a file and says so');
+        self::assertFalse(
+            $porNombre['edit']->requiresConfirmation,
+            'same postcondition as implement — the landing gate is delegated, not duplicated',
+        );
+        self::assertSame('class', $porNombre['edit']->namedTarget, 'same intent contract as implement');
 
         self::assertTrue($porNombre['test']->mutating, 'correr la suite ejecuta el código del proyecto');
         self::assertFalse($porNombre['test']->requiresConfirmation);

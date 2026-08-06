@@ -109,18 +109,34 @@ class Product
 `$result->verifyKind` is `'entity'` and `$result->verifyTarget` is the class's FQCN — the exact two
 values `VerifyRunner::run()` needs to close the loop (see below) once the file is actually written.
 
-## The three atoms a host adopts: `DevToolsOperations`
+## The five atoms a host adopts: `DevToolsOperations`
 
 The engine below is callable on its own, but a Milpa host normally adopts it as **declared
-operations** — one `Operation` each for `validate`, `make` and `test`, enlisted once and materialised
-by every surface the host projects to (terminal, HTTP, TUI, MCP). A host adds `DevToolsOperations` to
-its operation providers and gets `coa make …` *and* a `make` tool its agent can call, from the same
-declaration.
+operations** — one `Operation` each for `validate`, `make`, `implement`, `edit` and `test`, enlisted
+once and materialised by every surface the host projects to (terminal, HTTP, TUI, MCP). A host adds
+`DevToolsOperations` to its operation providers and gets `coa make …` *and* a `make` tool its agent
+can call, from the same declaration.
 
-The three are a loop: write it, check it follows the convention, then **run it** to find out whether
-it also does what it was supposed to. Without the third the loop closes on form and never on
-behaviour — an entity can satisfy `EntityInterface` perfectly and still return the wrong field from
-`toArray()`.
+The five are a loop: scaffold it, **write its body**, check it follows the convention, then **run
+it** to find out whether it also does what it was supposed to. Without the last the loop closes on
+form and never on behaviour — an entity can satisfy `EntityInterface` perfectly and still return the
+wrong field from `toArray()`.
+
+### `implement` and `edit`: writing code through a gate, not around it
+
+`make` scaffolds; these two fill. Both target **a class `make` already scaffolded** — the target is
+a name the request can carry (the intent contract applies), and the path is derived by searching
+only inside `src/Plugins/<plugin>/`, so escaping the tree is impossible by construction. Landing is
+a **postcondition**: syntax on a staged copy, `strict_types`, the class it claims, the namespace its
+location dictates — and, when the app ships PHPStan, **static conformance analysed in place**
+(unknown collaborators and interface mismatches were the two measured ways a clean-parsing body
+still failed to load). On any finding the original survives byte for byte and the diagnostic travels
+back, which is what a model corrects from.
+
+`implement` takes the complete file; `edit` takes find→replace pairs that must match **exactly
+once** — measured on real sessions: re-generating a whole file is where a model's priors sneak back
+in, and a pair that matches nothing returns the CURRENT file verbatim, so the next pair is built
+against ground truth instead of memory.
 
 ```bash
 coa make plugin Inventario Inventario --provides=inventory

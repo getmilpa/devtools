@@ -124,6 +124,52 @@ final class DevToolsOperations implements CommandProvider
                 namedTarget: 'plugin',
             ),
             new Operation(
+                name: 'implement',
+                description: 'Write the body of a class that make scaffolded, verified before it lands',
+                handler: [ImplementHandler::class, 'handle'],
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'plugin' => ['type' => 'string', 'description' => 'The plugin directory that owns the class'],
+                        'class' => ['type' => 'string', 'description' => 'The class to fill — one bare identifier, no paths'],
+                        'content' => ['type' => 'string', 'description' => 'The COMPLETE PHP file: strict_types, the namespace its location dictates, and a class by that name'],
+                    ],
+                    'required' => ['plugin', 'class', 'content'],
+                ],
+                mutating: true,
+                // The target is named by the human (ADR-0044), and here the target is THE CLASS: a
+                // request that does not name it is exactly the one that should not be filling it.
+                namedTarget: 'class',
+            ),
+            new Operation(
+                name: 'edit',
+                description: 'Edit a scaffolded class by exact find-replace pairs, verified before it lands',
+                handler: [EditHandler::class, 'handle'],
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'plugin' => ['type' => 'string', 'description' => 'The plugin directory that owns the class'],
+                        'class' => ['type' => 'string', 'description' => 'The class to edit — one bare identifier, no paths'],
+                        'edits' => [
+                            'type' => 'array',
+                            'description' => 'Find-replace pairs; each `find` must appear VERBATIM and exactly once in the current file',
+                            'items' => [
+                                'type' => 'object',
+                                'properties' => [
+                                    'find' => ['type' => 'string', 'description' => 'Exact text as it appears in the file today'],
+                                    'replace' => ['type' => 'string', 'description' => 'What takes its place'],
+                                ],
+                                'required' => ['find', 'replace'],
+                            ],
+                        ],
+                    ],
+                    'required' => ['plugin', 'class', 'edits'],
+                ],
+                mutating: true,
+                // Same contract as implement: the target is THE CLASS, named by the human.
+                namedTarget: 'class',
+            ),
+            new Operation(
                 name: 'test',
                 description: 'Run this app test suite and return the verdict',
                 handler: [TestHandler::class, 'handle'],

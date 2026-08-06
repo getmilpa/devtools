@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/getmilpa/devtools/compare/v0.11.2...v0.12.0) (2026-08-06)
+
+
+### Features
+
+* implement and edit — the agent writes code bodies through a gate, not around it ([d199ba5](https://github.com/getmilpa/devtools/commit/d199ba531aaae11c846b92c60c4180b0834a4192))
+
 ## [0.11.2](https://github.com/getmilpa/devtools/compare/v0.11.1...v0.11.2) (2026-08-05)
 
 

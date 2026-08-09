@@ -15,6 +15,12 @@ declare(strict_types=1);
 namespace Milpa\DevTools\Operations;
 
 use Milpa\Command\CommandProvider;
+use Milpa\Command\Effect\Authority;
+use Milpa\Command\Effect\EffectProfile;
+use Milpa\Command\Effect\Externality;
+use Milpa\Command\Effect\Mutation;
+use Milpa\Command\Effect\Reversibility;
+use Milpa\Command\Effect\Subject;
 use Milpa\Command\Operation;
 
 /**
@@ -69,6 +75,14 @@ final class DevToolsOperations implements CommandProvider
         return [
             new Operation(
                 name: 'validate',
+                effects: new EffectProfile(
+                    Mutation::None,
+                    Externality::None,
+                    Reversibility::Guaranteed,
+                    Authority::Read,
+                    subject: Subject::None,
+                    rollbackContract: 'nothing-to-roll-back',
+                ),
                 description: 'Validate a plugin manifest and the providers it declares',
                 handler: [ValidateHandler::class, 'handle'],
                 inputSchema: [
@@ -85,6 +99,23 @@ final class DevToolsOperations implements CommandProvider
             ),
             new Operation(
                 name: 'make',
+                effects: new EffectProfile(
+                    Mutation::Persistent,
+                    // Local disk only. It writes files and SUGGESTS the registration; it never runs
+                    // the package manager and never touches the boot list itself.
+                    Externality::None,
+                    // The files can be deleted by hand, and nothing tracks what a half-finished
+                    // scaffold left behind.
+                    Reversibility::ManualRecovery,
+                    // Writing in the caller's own tree, with the caller's own reach. It does not
+                    // change what this app is ALLOWED to do — that distinction is what keeps
+                    // routine development from demanding a signature per call.
+                    Authority::WriteAsUser,
+                    escalatesOn: ['plugin'],
+                    // New classes in the app's own tree: the set of things this app can execute is
+                    // different afterwards, even though nothing boots until someone declares it.
+                    subject: Subject::Executable,
+                ),
                 description: 'Scaffold a framework artifact (plugin, controller, entity, crud, service or tool) and verify it',
                 handler: [MakeHandler::class, 'handle'],
                 inputSchema: [
@@ -125,6 +156,14 @@ final class DevToolsOperations implements CommandProvider
             ),
             new Operation(
                 name: 'implement',
+                effects: new EffectProfile(
+                    Mutation::Persistent,
+                    Externality::None,
+                    Reversibility::ManualRecovery,
+                    Authority::WriteAsUser,
+                    escalatesOn: ['class'],
+                    subject: Subject::Executable,
+                ),
                 description: 'Write the body of a class that make scaffolded, verified before it lands',
                 handler: [ImplementHandler::class, 'handle'],
                 inputSchema: [
@@ -143,6 +182,14 @@ final class DevToolsOperations implements CommandProvider
             ),
             new Operation(
                 name: 'edit',
+                effects: new EffectProfile(
+                    Mutation::Persistent,
+                    Externality::None,
+                    Reversibility::ManualRecovery,
+                    Authority::WriteAsUser,
+                    escalatesOn: ['class'],
+                    subject: Subject::Executable,
+                ),
                 description: 'Edit a scaffolded class by exact find-replace pairs, verified before it lands',
                 handler: [EditHandler::class, 'handle'],
                 inputSchema: [
@@ -171,6 +218,19 @@ final class DevToolsOperations implements CommandProvider
             ),
             new Operation(
                 name: 'test',
+                effects: new EffectProfile(
+                    // phpunit leaves its cache behind.
+                    Mutation::Persistent,
+                    // THE CEILING, NOT THE TYPICAL CASE: this runs the app's own suite, which is code
+                    // this operation does not control and cannot inspect. At worst those tests reach
+                    // the public internet, so that is what the ceiling says.
+                    Externality::Public,
+                    Reversibility::ManualRecovery,
+                    Authority::WriteAsUser,
+                    // It RUNS code; it does not change which code runs. The distinction is the whole
+                    // point of this dimension.
+                    subject: Subject::Data,
+                ),
                 description: 'Run this app test suite and return the verdict',
                 handler: [TestHandler::class, 'handle'],
                 inputSchema: [

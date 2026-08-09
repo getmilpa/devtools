@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/getmilpa/devtools/compare/v0.13.1...v0.14.0) (2026-08-09)
+
+
+### Features
+
+* **effect:** the dev tools declare their ceiling, so scaffolding stays usable ([fe4dde3](https://github.com/getmilpa/devtools/commit/fe4dde341a1996ceb3e50744b164d6f71059b46a))
+
 ## [0.13.1](https://github.com/getmilpa/devtools/compare/v0.13.0...v0.13.1) (2026-08-09)
 
 

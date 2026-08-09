@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.1](https://github.com/getmilpa/devtools/compare/v0.13.0...v0.13.1) (2026-08-09)
+
+
+### Bug Fixes
+
+* **deps:** reach milpa/command ^0.7, where the ceiling grew a fifth dimension ([4a78fbd](https://github.com/getmilpa/devtools/commit/4a78fbd732f94ba26aad531be796646a4921acf0))
+
 ## [0.13.0](https://github.com/getmilpa/devtools/compare/v0.12.0...v0.13.0) (2026-08-06)
 
 

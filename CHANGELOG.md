@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/getmilpa/devtools/compare/v0.14.0...v0.14.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* require milpa/command ^0.7, the only range this package can run in ([#30](https://github.com/getmilpa/devtools/issues/30)) ([c9a97df](https://github.com/getmilpa/devtools/commit/c9a97dffc9775c99acf73352753e495b7ce929bd))
+
 ## [0.14.0](https://github.com/getmilpa/devtools/compare/v0.13.1...v0.14.0) (2026-08-09)
 
 

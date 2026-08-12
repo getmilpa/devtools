@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.2](https://github.com/getmilpa/devtools/compare/v0.14.1...v0.14.2) (2026-08-12)
+
+
+### Bug Fixes
+
+* accept milpa/plugin ^0.11, the second leaf blocking the family ([#32](https://github.com/getmilpa/devtools/issues/32)) ([2537c70](https://github.com/getmilpa/devtools/commit/2537c70e81019ca779dc1fd4a2a0f03c0f14cba0))
+
 ## [0.14.1](https://github.com/getmilpa/devtools/compare/v0.14.0...v0.14.1) (2026-08-11)
 
 

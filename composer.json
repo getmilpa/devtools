@@ -21,10 +21,10 @@
   "require": {
     "php": ">=8.3",
     "composer-runtime-api": "^2.2",
-    "milpa/command": "^0.7 || ^0.8 || ^0.9",
+    "milpa/command": ">=0.7 <1.0",
     "milpa/data": "^0.2",
-    "milpa/plugin": "^0.7 || ^0.8 || ^0.9 || ^0.10 || ^0.11",
-    "milpa/core": "^0.6.2 || ^0.7 || ^0.8"
+    "milpa/plugin": ">=0.7 <1.0",
+    "milpa/core": ">=0.6.2 <1.0"
   },
   "require-dev": {
     "doctrine/orm": "^3",

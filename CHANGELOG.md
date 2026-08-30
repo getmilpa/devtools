@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.15.3](https://github.com/getmilpa/devtools/compare/v0.15.2...v0.15.3) (2026-08-30)
+
+
+### Bug Fixes
+
+* implement resolves the file's namespace instead of refusing a foreign one ([#43](https://github.com/getmilpa/devtools/issues/43)) ([78f004c](https://github.com/getmilpa/devtools/commit/78f004c7ade4d5df1bfa73dfe29b0d9efca1dd26))
+
 ## [0.14.3](https://github.com/getmilpa/devtools/releases/tag/v0.14.3) (2026-08-12)
 
 Accepts `milpa/command ^0.8`, which ships the descent field — an argument that lowers an operation's ceiling, with its reason carried in the declaration.

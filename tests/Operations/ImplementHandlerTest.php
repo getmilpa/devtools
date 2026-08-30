@@ -108,10 +108,11 @@ final class ImplementHandlerTest extends TestCase
     }
 
     /**
-     * The namespace must be the one the file's location dictates, or the class lands unloadable —
-     * `php -l` cannot see that, so the gate must.
+     * The namespace is a FACT of the file's location — the system resolves it, the author does not
+     * guess it. A foreign namespace in the content lands CORRECTED to the location-dictated one; it is
+     * never refused for it. (An agent should never re-guess what the system already knows.)
      */
-    public function testAForeignNamespaceIsRefusedNamingTheExpectedOne(): void
+    public function testAForeignNamespaceIsResolvedToTheExpectedOne(): void
     {
         $r = $this->implement(str_replace(
             'namespace App\\Plugins\\Demo\\Services;',
@@ -119,8 +120,24 @@ final class ImplementHandlerTest extends TestCase
             $this->contenidoValido(),
         ));
 
-        self::assertFalse($r['ok']);
-        self::assertStringContainsString('App\\Plugins\\Demo\\Services', $r['error']);
+        self::assertTrue($r['ok'], (string) ($r['error'] ?? ''));
+        $landed = (string) file_get_contents($this->raiz . '/src/Plugins/Demo/Services/GreeterService.php');
+        self::assertStringContainsString('namespace App\\Plugins\\Demo\\Services;', $landed);
+        self::assertStringNotContainsString('App\\Elsewhere', $landed);
+    }
+
+    /** No namespace at all is not a lie to refuse — the system injects the one the location dictates. */
+    public function testAMissingNamespaceIsInjectedFromTheLocation(): void
+    {
+        $r = $this->implement(str_replace(
+            "namespace App\\Plugins\\Demo\\Services;\n\n",
+            '',
+            $this->contenidoValido(),
+        ));
+
+        self::assertTrue($r['ok'], (string) ($r['error'] ?? ''));
+        $landed = (string) file_get_contents($this->raiz . '/src/Plugins/Demo/Services/GreeterService.php');
+        self::assertStringContainsString('namespace App\\Plugins\\Demo\\Services;', $landed);
     }
 
     /** House rule, enforced at the gate: every PHP file declares strict types. */

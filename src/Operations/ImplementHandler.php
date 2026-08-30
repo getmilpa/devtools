@@ -130,9 +130,25 @@ final class ImplementHandler
             return ['ok' => false, 'error' => "refused: the content does not declare «{$class}» — a landing that renames its class leaves a file that lies"];
         }
 
+        // The namespace is a FACT of the file's location — the system owns it, the author does not
+        // guess it. If the content declares a different namespace (or none), the system RESOLVES it to
+        // the location-dictated one instead of refusing: the class name is the author's intent (kept and
+        // checked above); the namespace is derived, so a file that would «land unloadable» is made
+        // loadable, not rejected. An agent should never re-guess what the system already knows.
         $expected = $this->namespaceFor($root, $file);
-        if (preg_match('/^namespace\s+([^;]+);/m', $content, $m) !== 1 || trim($m[1]) !== $expected) {
-            return ['ok' => false, 'error' => "refused: this file's location dictates `namespace {$expected};` — anything else lands unloadable"];
+        if (preg_match('/^namespace\s+[^;]+;/m', $content) === 1) {
+            $content = (string) preg_replace('/^namespace\s+[^;]+;/m', "namespace {$expected};", $content, 1);
+        } else {
+            // No namespace at all — inject it after the opening tag and its declare(), if present.
+            $content = (string) preg_replace(
+                '/\A(<\?php\b[^\n]*\n(?:\s*declare\s*\([^)]*\)\s*;\s*\n)?)/',
+                "$1\nnamespace {$expected};\n",
+                $content,
+                1
+            );
+        }
+        if (preg_match('/^namespace\s+' . preg_quote($expected, '/') . '\s*;/m', $content) !== 1) {
+            return ['ok' => false, 'error' => "could not resolve this file's namespace to `{$expected}` — is the opening `<?php` well-formed?"];
         }
 
         $staged = tempnam(sys_get_temp_dir(), 'milpa-implement-');

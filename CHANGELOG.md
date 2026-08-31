@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.15.4](https://github.com/getmilpa/devtools/compare/v0.15.3...v0.15.4) (2026-08-31)
+
+
+### Bug Fixes
+
+* **make:** document the fields DSL and the plugin identifier in the schema ([#45](https://github.com/getmilpa/devtools/issues/45)) ([677fd43](https://github.com/getmilpa/devtools/commit/677fd433dfa90f480bf61bfdb1f19f39edce539d))
+
 ## [0.15.3](https://github.com/getmilpa/devtools/compare/v0.15.2...v0.15.3) (2026-08-30)
 
 

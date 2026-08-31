@@ -53,10 +53,13 @@ final class DevToolsOperationsTest extends TestCase
             $porNombre[$op->name] = $op;
         }
 
-        self::assertSame(['validate', 'make', 'implement', 'edit', 'test'], array_keys($porNombre));
+        self::assertSame(['validate', 'make', 'implement', 'edit', 'test', 'artifact:contract'], array_keys($porNombre));
 
         self::assertFalse($porNombre['validate']->mutating, 'validar sólo lee');
         self::assertFalse($porNombre['validate']->requiresConfirmation);
+
+        self::assertFalse($porNombre['artifact:contract']->mutating, 'leer un contrato sólo lee');
+        self::assertFalse($porNombre['artifact:contract']->requiresConfirmation);
 
         self::assertTrue($porNombre['make']->mutating, 'andamiar escribe archivos y tiene que decirlo');
         self::assertFalse(

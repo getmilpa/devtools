@@ -255,6 +255,29 @@ final class DevToolsOperations implements CommandProvider
                 // sirve.
                 surfaces: ['cli', 'tui', 'mcp'],
             ),
+            new Operation(
+                name: 'artifact:contract',
+                effects: new EffectProfile(
+                    Mutation::None,
+                    Externality::None,
+                    Reversibility::Guaranteed,
+                    Authority::Read,
+                    subject: Subject::None,
+                    rollbackContract: 'nothing-to-roll-back',
+                ),
+                description: 'Read an artifact\'s contract — an enum\'s cases, a class\'s constructor signature and public methods, what it extends/implements — so you READ a signature instead of provoking an error to learn it',
+                handler: [ContractHandler::class, 'handle'],
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'name' => ['type' => 'string', 'description' => 'La clase o enum a inspeccionar (ej. «PrioridadTarea», «Tarea»)'],
+                        'plugin' => ['type' => 'string', 'description' => 'El plugin donde buscar — opcional; si se omite, busca en todos'],
+                    ],
+                    'required' => ['name'],
+                ],
+                mutating: false,
+                surfaces: ['cli', 'tui', 'mcp'],
+            ),
         ];
     }
 }

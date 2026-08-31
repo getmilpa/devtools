@@ -231,6 +231,19 @@ final class EntityGenerator implements GeneratorInterface
 
         $files = [new PlannedFile($entityPath, $contents)];
 
+        // Materialise every enum a field DECLARED its cases for, so the entity's reference resolves to
+        // a real class with known cases — no dangling reference, no guessing (greenhouse: the house
+        // must not leave a reference it can make). Only when absent: an existing enum is the author's.
+        foreach ($fields as $field) {
+            if ($field->kind !== 'enum' || $field->cases === []) {
+                continue;
+            }
+            $enumFile = EnumGenerator::plannedFile($context->root, $context->plugin, (string) $field->target, $field->cases);
+            if (! file_exists($enumFile->path)) {
+                $files[] = $enumFile;
+            }
+        }
+
         ['file' => $pluginFile, 'guidance' => $guidance] = $this->wireRepository(
             $context,
             $appNamespace,

@@ -564,4 +564,103 @@ final class DevToolsOperationsTest extends TestCase
         self::assertStringContainsString('milpa.json', (string) $r['error']);
         self::assertStringContainsString('PluginMetadata', (string) $r['error']);
     }
+
+    /**
+     * `ok:true` de `make` SIGNIFICA que las consecuencias prometidas existen — el reporte de
+     * postcondiciones acompaña un PASS y todas pasan.
+     *
+     * El verify de forma corre de verdad (registramos un autoloader que mapea el árbol temporal), así
+     * que este PASS es el de una entidad autocargable Y cableada: su archivo, el enum que un campo
+     * declaró con cases, y el registro del repositorio en el plugin recién andamiado.
+     */
+    public function testAMakeThatPassesCarriesAPostconditionReportWhereEverythingHolds(): void
+    {
+        file_put_contents(
+            $this->raiz . '/composer.json',
+            (string) json_encode(['autoload' => ['psr-4' => ['App\\' => 'src/']]]),
+        );
+        $autoloader = $this->registerAppAutoloader();
+
+        try {
+            $r = (new MakeHandler(new RootResolver($this->raiz)))->handle([
+                'what' => 'entity',
+                'plugin' => 'PostcondOk',
+                'name' => 'Widget',
+                'fields' => 'title:string, priority:enum:Kind(a,b)',
+                'flavor' => 'runtime',
+            ]);
+        } finally {
+            spl_autoload_unregister($autoloader);
+        }
+
+        self::assertTrue($r['ok'], (string) ($r['error'] ?? '') . ' / ' . json_encode($r['verify'] ?? null));
+        self::assertArrayNotHasKey('incomplete', $r);
+        self::assertArrayHasKey('postconditions', $r);
+        self::assertTrue($r['postconditions']['ok']);
+        self::assertSame([], $r['postconditions']['missing']);
+    }
+
+    /**
+     * Una consecuencia REFERENCIADA que cuelga vuelve el veredicto `incomplete`, no PASS — y NO
+     * deshace lo escrito.
+     *
+     * `enum:Ghost` sin cases referencia un enum que `make` no crea. La clase de la entidad es válida y
+     * autocargable —el verify de forma pasa—, pero apunta a un enum que no está en disco: exactamente
+     * la referencia colgada por la que un agente molió 20 negativas creyendo que tenía un PASS. El
+     * reporte nombra lo que falta y el archivo de la entidad sigue ahí para terminarlo.
+     */
+    public function testADanglingConsequenceMakesTheRunIncompleteWithoutRollingBack(): void
+    {
+        file_put_contents(
+            $this->raiz . '/composer.json',
+            (string) json_encode(['autoload' => ['psr-4' => ['App\\' => 'src/']]]),
+        );
+        $autoloader = $this->registerAppAutoloader();
+
+        try {
+            $r = (new MakeHandler(new RootResolver($this->raiz)))->handle([
+                'what' => 'entity',
+                'plugin' => 'PostcondDangling',
+                'name' => 'Widget',
+                'fields' => 'title:string, priority:enum:Ghost',
+                'flavor' => 'runtime',
+            ]);
+        } finally {
+            spl_autoload_unregister($autoloader);
+        }
+
+        self::assertFalse($r['ok'], 'una referencia colgada no puede ser PASS');
+        self::assertTrue($r['incomplete']);
+        self::assertContains('enum:Ghost', $r['postconditions']['missing']);
+
+        // No se deshizo: los archivos son válidos, sólo les falta el enum — borrarlos castigaría al
+        // que casi llegó. Ninguno quedó como 'rolled-back' y el de la entidad está en disco.
+        foreach ($r['files'] as $archivo) {
+            self::assertNotSame('rolled-back', $archivo['action']);
+        }
+        self::assertFileExists($this->raiz . '/src/Plugins/PostcondDangling/Entities/Widget.php');
+    }
+
+    /**
+     * Registers a PSR-4 autoloader for `App\` -> the temp root's `src/`, so the real shape verifier
+     * can autoload a freshly scaffolded runtime class instead of failing "class not found" (the reason
+     * every other verifying test skips verify). Returns the closure to unregister after the test.
+     */
+    private function registerAppAutoloader(): callable
+    {
+        $root = $this->raiz;
+        $loader = static function (string $class) use ($root): void {
+            if (!str_starts_with($class, 'App\\')) {
+                return;
+            }
+            $relative = str_replace('\\', '/', substr($class, \strlen('App\\')));
+            $file = $root . '/src/' . $relative . '.php';
+            if (is_file($file)) {
+                require $file;
+            }
+        };
+        spl_autoload_register($loader);
+
+        return $loader;
+    }
 }

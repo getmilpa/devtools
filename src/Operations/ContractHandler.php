@@ -36,6 +36,9 @@ final class ContractHandler
     }
 
     /**
+     * Resolves the named artifact in the app's plugins and returns its contract, or `ok:false` when
+     * there is nothing to read. Enums report their cases; classes report their constructor and methods.
+     *
      * @param array<string, mixed> $input
      *
      * @return array<string, mixed>

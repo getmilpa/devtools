@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.16.0](https://github.com/getmilpa/devtools/compare/v0.15.4...v0.16.0) (2026-08-31)
+
+
+### Features
+
+* **devtools:** close the agent's introspection debt — enum-as-consequence + artifact:contract ([#47](https://github.com/getmilpa/devtools/issues/47)) ([e4ec0e8](https://github.com/getmilpa/devtools/commit/e4ec0e89e498637b62020980d2eed49260457684))
+
 ## [0.15.4](https://github.com/getmilpa/devtools/compare/v0.15.3...v0.15.4) (2026-08-31)
 
 

@@ -78,10 +78,22 @@ final class FieldParser
         if ($type === 'enum') {
             $target = trim($parts[2] ?? '');
             if ($target === '') {
-                throw new \InvalidArgumentException("enum field '{$name}' needs an enum name (name:enum:MyEnum)");
+                throw new \InvalidArgumentException("enum field '{$name}' needs an enum name (name:enum:MyEnum, or name:enum:MyEnum(a,b,c) to generate it)");
             }
 
-            return new FieldSpec($name, 'enum', $target, 'string', $nullable, [], $target);
+            // `Class(a,b,c)` declares the cases so the enum is GENERATED with them (no dangling
+            // reference, no guessing case names). `Class` alone references an enum made elsewhere.
+            // Commas were encoded as `|` in splitTopLevel; decode them here.
+            $cases = [];
+            if (preg_match('/^([A-Za-z_]\w*)\((.*)\)$/', $target, $m) === 1) {
+                $target = $m[1];
+                $cases = array_values(array_filter(
+                    array_map('trim', explode('|', $m[2])),
+                    static fn (string $c): bool => $c !== '',
+                ));
+            }
+
+            return new FieldSpec($name, 'enum', $target, 'string', $nullable, [], $target, $cases);
         }
 
         if ($type === 'belongsTo') {
@@ -112,14 +124,21 @@ final class FieldParser
     }
 
     /**
-     * The decimal `precision,scale` modifier contains a comma; protect it before the top-level split
-     * by temporarily encoding it. (Only decimal uses an inner comma in v1.)
+     * Inner commas — the decimal `precision,scale` modifier, and the enum `Class(a,b,c)` case list —
+     * must not be mistaken for the top-level field separator. Encode them as `|` before the split; the
+     * field parsers decode `|` back.
      */
     private function splitTopLevel(string $dsl): string
     {
-        return (string) preg_replace_callback(
+        $dsl = (string) preg_replace_callback(
             '/decimal:(\d+),(\d+)/',
             static fn (array $m): string => "decimal:{$m[1]}|{$m[2]}",
+            $dsl,
+        );
+
+        return (string) preg_replace_callback(
+            '/\(([^)]*)\)/',
+            static fn (array $m): string => '(' . str_replace(',', '|', $m[1]) . ')',
             $dsl,
         );
     }

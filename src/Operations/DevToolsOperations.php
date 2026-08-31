@@ -131,7 +131,7 @@ final class DevToolsOperations implements CommandProvider
                         ],
                         'plugin' => ['type' => 'string', 'description' => 'Identificador del plugin destino: UNA palabra `^[A-Za-z_][A-Za-z0-9_]*$`, sin slashes ni ruta (ej. «Tareas», no «Plugins/Tareas»)'],
                         'name' => ['type' => 'string', 'description' => 'Nombre de la clase a crear'],
-                        'fields' => ['type' => 'string', 'description' => 'Campos `nombre:tipo` separados por coma; prefija el nombre con `?` para nullable. Ej: «titulo:string, ?fecha_limite:date, hecha:bool». Tipos: string, text, int, bigint, bool, float, decimal, date, datetime, json, «enum:<Clase>», «belongsTo:<Entidad>». Mods de escalar: longitud («titulo:string:120») o precisión en decimal («precio:decimal:10,2»). NO existe «default» ni «:nullable» — la nullabilidad es el `?`. Para entity y crud'],
+                        'fields' => ['type' => 'string', 'description' => 'Campos `nombre:tipo` separados por coma; prefija el nombre con `?` para nullable. Ej: «titulo:string, ?fecha_limite:date, hecha:bool». Tipos: string, text, int, bigint, bool, float, decimal, date, datetime, json, «belongsTo:<Entidad>», y «enum:<Clase>(caso1,caso2,…)» que GENERA el enum con esas cases (ej. «prioridad:enum:PrioridadTarea(baja,media,alta)») — declara siempre las cases para no dejar un enum colgando. Mods de escalar: longitud («titulo:string:120») o precisión en decimal («precio:decimal:10,2»). NO existe «default» ni «:nullable» — la nullabilidad es el `?`. Para entity y crud'],
                         'route' => ['type' => 'string', 'description' => 'Ruta base, para controller y crud'],
                         'methods' => ['type' => 'string', 'description' => 'Métodos separados por coma, para controller'],
                         'table' => ['type' => 'string', 'description' => 'Nombre de tabla, para entity y crud'],
@@ -253,6 +253,29 @@ final class DevToolsOperations implements CommandProvider
                 // desplegado es una forma de tumbar el proceso desde fuera. La terminal, el TUI y el
                 // agente son los tres lugares donde alguien está construyendo algo y necesita saber si
                 // sirve.
+                surfaces: ['cli', 'tui', 'mcp'],
+            ),
+            new Operation(
+                name: 'artifact:contract',
+                effects: new EffectProfile(
+                    Mutation::None,
+                    Externality::None,
+                    Reversibility::Guaranteed,
+                    Authority::Read,
+                    subject: Subject::None,
+                    rollbackContract: 'nothing-to-roll-back',
+                ),
+                description: 'Read an artifact\'s contract — an enum\'s cases, a class\'s constructor signature and public methods, what it extends/implements — so you READ a signature instead of provoking an error to learn it',
+                handler: [ContractHandler::class, 'handle'],
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'name' => ['type' => 'string', 'description' => 'La clase o enum a inspeccionar (ej. «PrioridadTarea», «Tarea»)'],
+                        'plugin' => ['type' => 'string', 'description' => 'El plugin donde buscar — opcional; si se omite, busca en todos'],
+                    ],
+                    'required' => ['name'],
+                ],
+                mutating: false,
                 surfaces: ['cli', 'tui', 'mcp'],
             ),
         ];

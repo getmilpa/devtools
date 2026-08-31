@@ -380,6 +380,47 @@ final class EntityGeneratorRuntimeTest extends TestCase
     }
 
     /** @param list<PlannedFile> $files */
+    public function testAnEnumFieldWithDeclaredCasesMaterialisesTheEnumAlongsideTheEntity(): void
+    {
+        $ctx = new GenerationContext(
+            plugin: 'Tareas',
+            name: 'Tarea',
+            options: ['flavor' => 'runtime', 'fields' => 'titulo:string, prioridad:enum:PrioridadTarea(baja,media,alta)'],
+            root: $this->root,
+        );
+
+        $result = (new EntityGenerator())->generate($ctx);
+
+        // The entity references the enum AND the enum is generated with its cases — no dangling
+        // reference for the author to guess and static analysis to refuse.
+        $entity = $this->fileNamed($result->files, 'Tarea.php');
+        $this->assertStringContainsString('use App\\Plugins\\Tareas\\Enums\\PrioridadTarea;', $entity->contents);
+
+        $enum = $this->fileNamed($result->files, 'PrioridadTarea.php');
+        $this->assertStringEndsWith('/src/Plugins/Tareas/Enums/PrioridadTarea.php', $enum->path);
+        $this->assertStringContainsString('enum PrioridadTarea: string', $enum->contents);
+        $this->assertStringContainsString("case baja = 'baja';", $enum->contents);
+        $this->assertStringContainsString("case media = 'media';", $enum->contents);
+        $this->assertStringContainsString("case alta = 'alta';", $enum->contents);
+    }
+
+    public function testAnEnumFieldWithNoCasesIsReferencedNotGenerated(): void
+    {
+        $ctx = new GenerationContext(
+            plugin: 'Tareas',
+            name: 'Tarea',
+            options: ['flavor' => 'runtime', 'fields' => 'titulo:string, estado:enum:EstadoTarea'],
+            root: $this->root,
+        );
+
+        $result = (new EntityGenerator())->generate($ctx);
+
+        // No cases declared → the enum is referenced, not made (backward compatible).
+        foreach ($result->files as $file) {
+            $this->assertNotSame('EstadoTarea.php', basename($file->path), 'a case-less enum must not be generated');
+        }
+    }
+
     private function fileNamed(array $files, string $basename): PlannedFile
     {
         foreach ($files as $file) {

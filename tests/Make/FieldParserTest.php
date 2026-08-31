@@ -45,6 +45,22 @@ final class FieldParserTest extends TestCase
         $this->assertSame('belongsTo', $fields[1]->kind);
         $this->assertSame('Client', $fields[1]->phpType);
         $this->assertSame('Client', $fields[1]->target);
+        $this->assertSame([], $fields[0]->cases, 'an enum with no case list is referenced, not made');
+    }
+
+    public function testEnumWithDeclaredCasesCarriesThemAndTheirCommasDoNotSplitFields(): void
+    {
+        // The case list's commas must not be mistaken for the field separator, and the target must be
+        // the bare class name with its cases carried separately — so the enum can be GENERATED.
+        $fields = (new FieldParser())->parse('titulo:string, prioridad:enum:PrioridadTarea(baja,media,alta), ?fecha:date');
+
+        $this->assertCount(3, $fields, 'the enum(…) commas do not split the field list');
+        $this->assertSame('prioridad', $fields[1]->name);
+        $this->assertSame('enum', $fields[1]->kind);
+        $this->assertSame('PrioridadTarea', $fields[1]->target, 'the target is the bare class name');
+        $this->assertSame(['baja', 'media', 'alta'], $fields[1]->cases);
+        $this->assertSame('date', $fields[2]->columnType);
+        $this->assertTrue($fields[2]->nullable);
     }
 
     public function testEmptyDslIsNoFields(): void

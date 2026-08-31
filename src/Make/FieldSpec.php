@@ -24,6 +24,9 @@ final class FieldSpec
     /**
      * @param 'scalar'|'enum'|'belongsTo' $kind
      * @param array<string, int>          $modifiers
+     * @param list<string>                $cases     enum case names, when the field declares them
+     *                                               (`enum:Class(a,b,c)`) — the enum is generated from
+     *                                               these; empty means the enum is referenced, not made
      */
     public function __construct(
         public readonly string $name,
@@ -33,6 +36,7 @@ final class FieldSpec
         public readonly bool $nullable = false,
         public readonly array $modifiers = [],
         public readonly ?string $target = null,
+        public readonly array $cases = [],
     ) {
     }
 }

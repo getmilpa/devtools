@@ -342,6 +342,56 @@ final class DevToolsOperations implements CommandProvider
                 mutating: false,
                 surfaces: ['cli', 'tui', 'mcp'],
             ),
+            new Operation(
+                name: 'test:baseline',
+                effects: new EffectProfile(
+                    // It runs the suite (phpunit leaves its cache) AND writes a snapshot file.
+                    Mutation::Persistent,
+                    // Same ceiling as `test`: it runs the app's own suite, code this operation does not
+                    // control; at worst those tests reach the public internet.
+                    Externality::Public,
+                    Reversibility::ManualRecovery,
+                    Authority::WriteAsUser,
+                    // It runs code and records what it observed; it does not change which code runs.
+                    subject: Subject::Data,
+                ),
+                description: 'Run the suite and record which tests pass and fail as a baseline to diff against later',
+                handler: [TestBaselineHandler::class, 'handleBaseline'],
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'filter' => ['type' => 'string', 'description' => 'Run only the tests whose name matches'],
+                        'snapshot' => ['type' => 'string', 'description' => 'Where to write the baseline, inside the app root (default .milpa/test-baseline.json)'],
+                        'timeout' => ['type' => 'integer', 'description' => 'Seconds before it is stopped (default 300)'],
+                    ],
+                    'required' => [],
+                ],
+                mutating: true,
+                surfaces: ['cli', 'tui', 'mcp'],
+            ),
+            new Operation(
+                name: 'test:delta',
+                effects: new EffectProfile(
+                    Mutation::Persistent,
+                    Externality::Public,
+                    Reversibility::ManualRecovery,
+                    Authority::WriteAsUser,
+                    subject: Subject::Data,
+                ),
+                description: 'Run the suite again and report new, resolved, and unchanged failures against the recorded baseline',
+                handler: [TestBaselineHandler::class, 'handleDelta'],
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'filter' => ['type' => 'string', 'description' => 'Run only the tests whose name matches'],
+                        'snapshot' => ['type' => 'string', 'description' => 'The baseline to diff against, inside the app root (default .milpa/test-baseline.json)'],
+                        'timeout' => ['type' => 'integer', 'description' => 'Seconds before it is stopped (default 300)'],
+                    ],
+                    'required' => [],
+                ],
+                mutating: true,
+                surfaces: ['cli', 'tui', 'mcp'],
+            ),
         ];
     }
 }

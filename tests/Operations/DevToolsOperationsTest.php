@@ -56,7 +56,7 @@ final class DevToolsOperationsTest extends TestCase
         }
 
         self::assertSame(
-            ['validate', 'make', 'implement', 'edit', 'test', 'artifact:contract', 'artifact:list', 'test:list', 'test:show'],
+            ['validate', 'make', 'implement', 'edit', 'test', 'artifact:contract', 'artifact:list', 'test:list', 'test:show', 'test:baseline', 'test:delta'],
             array_keys($porNombre),
         );
 

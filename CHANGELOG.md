@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.18.0](https://github.com/getmilpa/devtools/compare/v0.17.0...v0.18.0) (2026-09-01)
+
+
+### Features
+
+* **devtools:** test baseline and delta so a regression can be told from a pre-existing failure ([#52](https://github.com/getmilpa/devtools/issues/52)) ([935145b](https://github.com/getmilpa/devtools/commit/935145b70e20fbfb54674ac4202279d4940dccc1))
+
 ## [0.17.0](https://github.com/getmilpa/devtools/compare/v0.16.0...v0.17.0) (2026-09-01)
 
 

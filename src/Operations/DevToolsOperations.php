@@ -521,6 +521,49 @@ final class DevToolsOperations implements CommandProvider
                 mutating: false,
                 surfaces: ['cli', 'tui', 'mcp'],
             ),
+            new Operation(
+                name: 'discover',
+                effects: new EffectProfile(
+                    Mutation::None,
+                    Externality::None,
+                    Reversibility::Guaranteed,
+                    Authority::Read,
+                    subject: Subject::None,
+                    rollbackContract: 'nothing-to-roll-back',
+                ),
+                description: 'Find anything by one query — artifacts, contracts, tests, packages — through the existing finders, answered as ONE row shape where each row names the exact operation call that answers in full',
+                handler: [DiscoverHandler::class, 'handle'],
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'query' => ['type' => 'string', 'description' => 'What to find: a name fragment (matched like contract:search matches), or «vendor/name» to reach an installed package'],
+                        'kinds' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'string', 'enum' => DiscoverHandler::KINDS],
+                            'description' => 'Narrow the search to a subset of kinds; omit it to search them all',
+                        ],
+                    ],
+                    'required' => ['query'],
+                ],
+                mutating: false,
+                surfaces: ['cli', 'tui', 'mcp'],
+
+                // THE DECLARED CONTRACT (greenhouse decisions/0183): each precondition below is one
+                // the handler enforces with a refusal, tied by the discover falsifiers that violate
+                // each and assert it.
+                preconditions: [
+                    new DeclaredCondition(
+                        'query-named',
+                        'a non-empty `query` names what to find — an empty one is refused asking for one',
+                    ),
+                    new DeclaredCondition(
+                        'kinds-valid',
+                        '`kinds`, when given, is a non-empty subset of artifact, contract, test, package '
+                            . '— an unknown kind is refused naming that valid set',
+                    ),
+                ],
+                observableEvidence: 'the found rows in the result: each row is {kind, identity, path?, detail} where detail names a declared operation call that answers in full; an empty found still names the queried kinds',
+            ),
         ];
     }
 }

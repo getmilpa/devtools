@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [0.19.0](https://github.com/getmilpa/devtools/compare/v0.18.0...v0.19.0) (2026-09-01)
+
+
+### Features
+
+* **devtools:** universal contract introspection reaching app, vendor, and source ([#54](https://github.com/getmilpa/devtools/issues/54)) ([44ce668](https://github.com/getmilpa/devtools/commit/44ce66812e4fa0a0e84224659f7072b093583bb1))
+* **make:** generator closure — materialize known postconditions, and make:resource ([#56](https://github.com/getmilpa/devtools/issues/56)) ([766fea0](https://github.com/getmilpa/devtools/commit/766fea00c7f818468b167fb44c1f32e6599a8be3))
+
 ## [0.18.0](https://github.com/getmilpa/devtools/compare/v0.17.0...v0.18.0) (2026-09-01)
 
 

@@ -100,6 +100,12 @@ final class DevToolsOperationsTest extends TestCase
 
         self::assertTrue($porNombre['test']->mutating, 'correr la suite ejecuta el código del proyecto');
         self::assertFalse($porNombre['test']->requiresConfirmation);
+
+        foreach (['test:baseline', 'test:delta'] as $suiteOp) {
+            self::assertTrue($porNombre[$suiteOp]->mutating, "{$suiteOp} runs the suite");
+            self::assertFalse($porNombre[$suiteOp]->requiresConfirmation);
+            self::assertSame(['cli', 'tui', 'mcp'], $porNombre[$suiteOp]->surfaces);
+        }
     }
 
     /**
@@ -117,8 +123,10 @@ final class DevToolsOperationsTest extends TestCase
             $porNombre[$op->name] = $op;
         }
 
-        self::assertSame(['cli', 'tui', 'mcp'], $porNombre['test']->surfaces);
-        self::assertNotContains('http', (array) $porNombre['test']->surfaces);
+        foreach (['test', 'test:baseline', 'test:delta'] as $suiteOp) {
+            self::assertSame(['cli', 'tui', 'mcp'], $porNombre[$suiteOp]->surfaces);
+            self::assertNotContains('http', (array) $porNombre[$suiteOp]->surfaces);
+        }
         self::assertNull($porNombre['make']->surfaces, 'las otras dos se ofrecen en las cuatro');
     }
 

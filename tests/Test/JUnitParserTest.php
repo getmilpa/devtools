@@ -73,6 +73,23 @@ final class JUnitParserTest extends TestCase
         self::assertArrayHasKey('Only\Classname::testOnly', (new JUnitParser())->parse($xml));
     }
 
+    public function testATestcaseWithoutANameIsSkipped(): void
+    {
+        $xml = <<<'XML'
+        <?xml version="1.0"?>
+        <testsuites><testsuite name="S">
+          <testcase name="" class="X"/>
+          <testcase name="testOk" class="X"/>
+        </testsuite></testsuites>
+        XML;
+
+        $results = (new JUnitParser())->parse($xml);
+
+        self::assertArrayNotHasKey('X::', $results);
+        self::assertArrayHasKey('X::testOk', $results);
+        self::assertCount(1, $results);
+    }
+
     public function testEmptyDocumentIsRejected(): void
     {
         $this->expectException(\InvalidArgumentException::class);

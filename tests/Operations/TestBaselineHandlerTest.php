@@ -149,4 +149,193 @@ final class TestBaselineHandlerTest extends TestCase
         self::assertFalse($r['ok']);
         self::assertStringContainsString('no JUnit report', (string) $r['error']);
     }
+
+    public function testAMalformedSnapshotIsRefusedWithoutRunningTheSuite(): void
+    {
+        mkdir($this->root . '/.milpa', 0777, true);
+        file_put_contents($this->root . '/.milpa/test-baseline.json', '{not-json');
+
+        $runner = $this->spyRunner($this->junit('failed'));
+        $r = (new TestBaselineHandler(new RootResolver($this->root), $runner))->handleDelta([]);
+
+        self::assertFalse($r['ok']);
+        self::assertFalse($r['ran']);
+        self::assertNull($runner->command, 'must not run the suite against an unreadable baseline');
+        self::assertStringContainsString('not readable', (string) $r['error']);
+        self::assertStringContainsString('test:baseline', (string) $r['error']);
+    }
+
+    public function testASnapshotMissingResultsIsMalformed(): void
+    {
+        mkdir($this->root . '/.milpa', 0777, true);
+        file_put_contents($this->root . '/.milpa/test-baseline.json', json_encode(['version' => 1]));
+
+        $r = $this->handler($this->junit('failed'))->handleDelta([]);
+
+        self::assertFalse($r['ok']);
+        self::assertFalse($r['ran']);
+        self::assertStringContainsString('not readable', (string) $r['error']);
+    }
+
+    public function testDeltaAgainstAnEmptyBaselineTreatsCurrentFailuresAsNew(): void
+    {
+        mkdir($this->root . '/.milpa', 0777, true);
+        file_put_contents(
+            $this->root . '/.milpa/test-baseline.json',
+            json_encode(['version' => 1, 'results' => []]),
+        );
+
+        $r = $this->handler($this->junit('failed'))->handleDelta([]);
+
+        self::assertTrue($r['ok'], (string) ($r['error'] ?? ''));
+        self::assertTrue($r['regressed']);
+        self::assertSame(['X::testBar'], $r['new_failures']);
+        self::assertSame([], $r['unchanged_failures']);
+        self::assertSame(0, $r['baseline_failures']);
+    }
+
+    public function testDeltaRefusesASnapshotOutsideTheRootWithoutRunning(): void
+    {
+        $runner = $this->spyRunner($this->junit('failed'));
+        $r = (new TestBaselineHandler(new RootResolver($this->root), $runner))
+            ->handleDelta(['snapshot' => '/etc/passwd']);
+
+        self::assertFalse($r['ok']);
+        self::assertFalse($r['ran']);
+        self::assertNull($runner->command);
+        self::assertStringContainsString('must stay inside', (string) $r['error']);
+    }
+
+    public function testDeltaReportsWhenTheSuiteCannotBeMeasured(): void
+    {
+        $this->handler($this->junit('passed'))->handleBaseline([]);
+
+        $runner = new class () extends ProcessRunner {
+            public function run(array $command, string $cwd, int $timeoutSeconds): array
+            {
+                return ['exit' => 2, 'output' => 'fatal'];
+            }
+        };
+        $r = (new TestBaselineHandler(new RootResolver($this->root), $runner))->handleDelta([]);
+
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('no JUnit report', (string) $r['error']);
+    }
+
+    public function testWithoutPhpunitItSaysSoAndDoesNotPretendToHaveRun(): void
+    {
+        unlink($this->root . '/vendor/bin/phpunit');
+
+        $r = (new TestBaselineHandler(new RootResolver($this->root)))->handleBaseline([]);
+
+        self::assertFalse($r['ok']);
+        self::assertFalse($r['ran']);
+        self::assertStringContainsString('composer require --dev phpunit/phpunit', (string) $r['error']);
+    }
+
+    public function testTheFilterAndTimeoutReachTheCommand(): void
+    {
+        $runner = $this->spyRunner($this->junit('passed'));
+        $r = (new TestBaselineHandler(new RootResolver($this->root), $runner))
+            ->handleBaseline(['filter' => 'testBar', 'timeout' => 0]);
+
+        self::assertTrue($r['ok'], (string) ($r['error'] ?? ''));
+        self::assertContains('--filter', (array) $runner->command);
+        self::assertContains('testBar', (array) $runner->command);
+        self::assertSame(1, $runner->timeout, 'zero seconds is not a timeout; it clamps to one');
+
+        (new TestBaselineHandler(new RootResolver($this->root), $runner))
+            ->handleBaseline(['timeout' => 99999]);
+        self::assertSame(3600, $runner->timeout);
+    }
+
+    public function testAMalformedJUnitReportIsUnmeasurable(): void
+    {
+        $runner = new class () extends ProcessRunner {
+            public function run(array $command, string $cwd, int $timeoutSeconds): array
+            {
+                $i = array_search('--log-junit', $command, true);
+                if ($i !== false && isset($command[$i + 1])) {
+                    file_put_contents((string) $command[$i + 1], '<not xml');
+                }
+
+                return ['exit' => 1, 'output' => 'broken'];
+            }
+        };
+        $r = (new TestBaselineHandler(new RootResolver($this->root), $runner))->handleBaseline([]);
+
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('could not read the JUnit report', (string) $r['error']);
+    }
+
+    public function testLongOutputIsTruncatedFromTheStartAndSaysSo(): void
+    {
+        $noise = str_repeat('x', 20000);
+        $runner = new class ($this->junit('passed'), $noise) extends ProcessRunner {
+            public function __construct(private string $junit, private string $output)
+            {
+            }
+
+            public function run(array $command, string $cwd, int $timeoutSeconds): array
+            {
+                $i = array_search('--log-junit', $command, true);
+                if ($i !== false && isset($command[$i + 1])) {
+                    file_put_contents((string) $command[$i + 1], $this->junit);
+                }
+
+                return ['exit' => 0, 'output' => $this->output . "\nOK (1 test, 1 assertion)"];
+            }
+        };
+        $r = (new TestBaselineHandler(new RootResolver($this->root), $runner))->handleBaseline([]);
+
+        self::assertTrue($r['ok'], (string) ($r['error'] ?? ''));
+        self::assertStringContainsString('output trimmed', $r['output']);
+        self::assertStringContainsString('OK (1 test, 1 assertion)', $r['output']);
+        self::assertLessThan(20000, \strlen($r['output']));
+    }
+
+    public function testItCannotCreateTheSnapshotDirectoryWhenAFileOccupiesThePath(): void
+    {
+        file_put_contents($this->root . '/.milpa', 'not a directory');
+
+        $r = $this->handler($this->junit('passed'))->handleBaseline([]);
+
+        self::assertFalse($r['ok']);
+        self::assertTrue($r['ran'], 'the suite ran; writing the snapshot is what failed');
+        self::assertStringContainsString('could not create', (string) $r['error']);
+    }
+
+    public function testItCannotWriteTheSnapshotOntoADirectory(): void
+    {
+        $r = $this->handler($this->junit('passed'))->handleBaseline(['snapshot' => 'vendor']);
+
+        self::assertFalse($r['ok']);
+        self::assertTrue($r['ran']);
+        self::assertStringContainsString('could not write the snapshot', (string) $r['error']);
+    }
+
+    private function spyRunner(string $junit): ProcessRunner
+    {
+        return new class ($junit) extends ProcessRunner {
+            /** @var list<string>|null */
+            public ?array $command = null;
+            public ?int $timeout = null;
+
+            public function __construct(private string $junit)
+            {
+            }
+
+            public function run(array $command, string $cwd, int $timeoutSeconds): array
+            {
+                $this->command = $command;
+                $this->timeout = $timeoutSeconds;
+                $i = array_search('--log-junit', $command, true);
+                if ($i !== false && isset($command[$i + 1])) {
+                    file_put_contents((string) $command[$i + 1], $this->junit);
+                }
+
+                return ['exit' => 0, 'output' => 'OK'];
+            }
+        };
+    }
 }

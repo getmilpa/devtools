@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [0.17.0](https://github.com/getmilpa/devtools/compare/v0.16.0...v0.17.0) (2026-09-01)
+
+
+### Features
+
+* **devtools:** add read-only test and artifact discovery ([#50](https://github.com/getmilpa/devtools/issues/50)) ([a37c4e4](https://github.com/getmilpa/devtools/commit/a37c4e4411e94273ec69037801f238cd579614be))
+* **make:** strong postconditions so ok:true means the consequences exist ([#49](https://github.com/getmilpa/devtools/issues/49)) ([f98ce4a](https://github.com/getmilpa/devtools/commit/f98ce4abb492f140da9d6e84c53626f17ac86bc5))
+
 ## [0.16.0](https://github.com/getmilpa/devtools/compare/v0.15.4...v0.16.0) (2026-08-31)
 
 

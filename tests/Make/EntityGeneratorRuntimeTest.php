@@ -330,18 +330,13 @@ final class EntityGeneratorRuntimeTest extends TestCase
         (new EntityGenerator())->generate($ctx);
     }
 
-    /**
-     * `milpa/data` has no relation concept (see the F1 report's Fricciones) — a `belongsTo` field
-     * cannot be expressed by a flat `toArray()`/`fromArray()` round trip the way it can as a Doctrine
-     * `#[ORM\ManyToOne]`, so the runtime path rejects it with an actionable message instead of
-     * emitting code that doesn't compile or silently dropping the relation.
-     */
-    public function testRejectsBelongsToFieldsWithAnActionableMessage(): void
+    /** An unknown runtime type names only types that runtime entities can actually store. */
+    public function testUnknownRuntimeFieldTypeDoesNotAdvertiseBelongsTo(): void
     {
         $ctx = new GenerationContext(
             plugin: 'BlogPlugin',
             name: 'Article',
-            options: ['flavor' => 'runtime', 'fields' => 'author:belongsTo:Author'],
+            options: ['flavor' => 'runtime', 'fields' => 'belongsTo:Lista'],
             root: $this->root,
         );
 
@@ -349,8 +344,61 @@ final class EntityGeneratorRuntimeTest extends TestCase
             (new EntityGenerator())->generate($ctx);
             $this->fail('expected an InvalidArgumentException');
         } catch (\InvalidArgumentException $e) {
-            $this->assertStringContainsString('belongsTo', $e->getMessage());
-            $this->assertStringContainsString('--flavor=legacy', $e->getMessage());
+            $this->assertSame(
+                "unknown field type 'Lista' for field 'belongsTo' — valid: string, text, int, bigint, bool, float, decimal, datetime, date, json",
+                $e->getMessage(),
+            );
+        }
+    }
+
+    /** An incomplete relation token must not teach runtime callers to finish unsupported syntax. */
+    public function testIncompleteBelongsToUsesTheRuntimeScalarRefusal(): void
+    {
+        $ctx = new GenerationContext(
+            plugin: 'BlogPlugin',
+            name: 'Article',
+            options: ['flavor' => 'runtime', 'fields' => 'lista:belongsTo'],
+            root: $this->root,
+        );
+
+        try {
+            (new EntityGenerator())->generate($ctx);
+            $this->fail('expected an InvalidArgumentException');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertSame(
+                "field 'lista': store the related id as a plain scalar field (e.g. 'lista:int'); "
+                    . 'runtime entities do not support belongsTo relations yet because milpa/data has no relation concept. '
+                    . 'Use --flavor=legacy for a Doctrine relation',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    /**
+     * `milpa/data` has no relation concept (see the F1 report's Fricciones) — a `belongsTo` field
+     * cannot be expressed by a flat `toArray()`/`fromArray()` round trip the way it can as a Doctrine
+     * `#[ORM\ManyToOne]`, so the runtime path leads with the working scalar alternative and only then
+     * names the unsupported relation and legacy escape hatch.
+     */
+    public function testRejectsBelongsToFieldsWithTheWorkingScalarAlternativeFirst(): void
+    {
+        $ctx = new GenerationContext(
+            plugin: 'BlogPlugin',
+            name: 'Article',
+            options: ['flavor' => 'runtime', 'fields' => 'lista:belongsTo:Lista'],
+            root: $this->root,
+        );
+
+        try {
+            (new EntityGenerator())->generate($ctx);
+            $this->fail('expected an InvalidArgumentException');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertSame(
+                "field 'lista': store the related id as a plain scalar field (e.g. 'lista:int'); "
+                    . 'runtime entities do not support belongsTo relations yet because milpa/data has no relation concept. '
+                    . 'Use --flavor=legacy for a Doctrine relation',
+                $e->getMessage(),
+            );
         }
     }
 

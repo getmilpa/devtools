@@ -151,14 +151,14 @@ final class EntityGenerator implements GeneratorInterface
      * wiring), and returns it paired with its `entity` verify target.
      *
      * @throws \InvalidArgumentException When a field is named `id` (collides with the stub's
-     *                                   built-in `$id`), or is a `belongsTo` relation — `milpa/data`
-     *                                   has no relation concept yet, so a runtime entity cannot
-     *                                   express one; store the related id as a plain scalar field
-     *                                   instead, or use `--flavor=legacy`.
+     *                                   built-in `$id`), or is a `belongsTo` relation — the refusal
+     *                                   leads with the supported plain scalar id field because
+     *                                   `milpa/data` cannot express relations, then names the legacy
+     *                                   Doctrine alternative.
      */
     private function generateRuntime(GenerationContext $context): GenerationResult
     {
-        $fields = $this->parser->parse($context->option('fields') ?? '');
+        $fields = $this->parser->parse($context->option('fields') ?? '', supportsRelations: false);
         [$appNamespace, $appDir] = ComposerAutoload::primaryNamespace($context->root) ?? ['App', 'src'];
         $appDir = trim($appDir, '/');
 
@@ -179,14 +179,6 @@ final class EntityGenerator implements GeneratorInterface
             if (strtolower($field->name) === 'id') {
                 throw new \InvalidArgumentException(
                     "field '{$field->name}' collides with the entity stub's built-in \${$field->name} — choose a different name",
-                );
-            }
-
-            if ($field->kind === 'belongsTo') {
-                throw new \InvalidArgumentException(
-                    "field '{$field->name}': belongsTo relations aren't supported by runtime entities "
-                    . "yet (milpa/data has no relation concept) — store the related id as a plain "
-                    . "scalar field (e.g. '{$field->name}:int'), or use --flavor=legacy",
                 );
             }
 

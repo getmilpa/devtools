@@ -40,6 +40,59 @@ use Milpa\DevTools\Support\ComposerAutoload;
  */
 final class PostconditionVerifier
 {
+    /** The entity class file the run promised exists on disk (entity, crud, resource). */
+    public const ENTITY_FILE = 'entity_file';
+
+    /** The REST controller file the run promised exists on disk (crud, resource). */
+    public const CONTROLLER_FILE = 'controller_file';
+
+    /** The controller reached a registration in the wiring plugin (crud, resource). */
+    public const CONTROLLER_REGISTERED = 'controller_registered';
+
+    /** The entity's repository reached a registration in the wiring plugin (entity, crud, resource). */
+    public const REPOSITORY_REGISTERED = 'repository_registered';
+
+    /** All five REST routes the run promised were declared in the wiring plugin (crud, resource). */
+    public const ROUTES_DECLARED = 'routes_declared';
+
+    /** The service class file the resource run promised exists on disk (resource). */
+    public const SERVICE_FILE = 'service_file';
+
+    /** The service reached a registration in the wiring plugin (resource). */
+    public const SERVICE_REGISTERED = 'service_registered';
+
+    /** The behavioral judge the resource run promised was scaffolded under tests/ (resource). */
+    public const TEST_FILE = 'test_file';
+
+    /** ADVISORY: the plugin is listed in config/plugins.php — reported, never failing the run. */
+    public const PLUGIN_REGISTERED = 'plugin_registered';
+
+    /** Dynamic prefix: one check per enum a --fields entry referenced, named `enum:<Class>`. */
+    public const PREFIX_ENUM = 'enum:';
+
+    /** Dynamic ADVISORY prefix: one check per belongsTo relation, named `relation:<Entity>`. */
+    public const PREFIX_RELATION = 'relation:';
+
+    /**
+     * Every STATIC name this verifier can emit — THE one authority on postcondition names.
+     *
+     * The `make` operation's DECLARED postconditions ({@see \Milpa\DevTools\Operations\DevToolsOperations})
+     * are built from these same constants, so the declaration and the report cannot drift apart:
+     * renaming an emission here renames the declaration in the same keystroke, and a name added
+     * here without being declared (or declared without existing here) turns the contract test red.
+     * Dynamic names are covered by the two documented prefixes above.
+     */
+    public const STATIC_NAMES = [
+        self::ENTITY_FILE,
+        self::CONTROLLER_FILE,
+        self::CONTROLLER_REGISTERED,
+        self::REPOSITORY_REGISTERED,
+        self::ROUTES_DECLARED,
+        self::SERVICE_FILE,
+        self::SERVICE_REGISTERED,
+        self::TEST_FILE,
+        self::PLUGIN_REGISTERED,
+    ];
     public function __construct(
         private readonly FieldParser $parser = new FieldParser(),
         private readonly PluginSurgeon $surgeon = new PluginSurgeon(),
@@ -148,7 +201,7 @@ final class PostconditionVerifier
         $path = $this->pluginDir($context, $appDir) . '/Services/' . $context->name . 'Service.php';
 
         return new PostconditionCheck(
-            'service_file',
+            self::SERVICE_FILE,
             is_file($path),
             is_file($path) ? "service written at {$path}" : "service file missing: {$path}",
         );
@@ -160,7 +213,7 @@ final class PostconditionVerifier
         $path = $context->root . '/tests/Plugins/' . $context->plugin . '/' . $context->name . 'Test.php';
 
         return new PostconditionCheck(
-            'test_file',
+            self::TEST_FILE,
             is_file($path),
             is_file($path)
                 ? "behavioral judge scaffolded at {$path} (red on purpose until it judges something)"
@@ -177,7 +230,7 @@ final class PostconditionVerifier
         $pluginPath = $this->pluginPath($context, $appDir);
 
         return new PostconditionCheck(
-            'service_registered',
+            self::SERVICE_REGISTERED,
             $ok,
             $ok
                 ? "{$context->name}Service registered in {$pluginPath}"
@@ -211,7 +264,7 @@ final class PostconditionVerifier
             $target = (string) $field->target;
             $column = ResourceGenerator::relationColumn($target);
             $checks[] = new PostconditionCheck(
-                'relation:' . $target,
+                self::PREFIX_RELATION . $target,
                 true,
                 "field '{$field->name}' belongsTo {$target} was degraded to scalar {$column}:int — "
                     . 'milpa/data has no relation concept, so the related id is stored as a plain int',
@@ -247,7 +300,7 @@ final class PostconditionVerifier
         $path = $this->pluginDir($context, $appDir) . '/Entities/' . $context->name . '.php';
 
         return new PostconditionCheck(
-            'entity_file',
+            self::ENTITY_FILE,
             is_file($path),
             is_file($path) ? "entity written at {$path}" : "entity file missing: {$path}",
         );
@@ -259,7 +312,7 @@ final class PostconditionVerifier
         $path = $this->pluginDir($context, $appDir) . '/Controllers/' . $context->name . 'Controller.php';
 
         return new PostconditionCheck(
-            'controller_file',
+            self::CONTROLLER_FILE,
             is_file($path),
             is_file($path) ? "controller written at {$path}" : "controller file missing: {$path}",
         );
@@ -295,7 +348,7 @@ final class PostconditionVerifier
                 : "field '{$field->name}' references enum {$enum} but no file exists at {$path} — "
                     . "declare its cases (enum:{$enum}(case1,case2,…)) so make creates it, or add the enum";
 
-            $checks[] = new PostconditionCheck('enum:' . $enum, is_file($path), $detail);
+            $checks[] = new PostconditionCheck(self::PREFIX_ENUM . $enum, is_file($path), $detail);
         }
 
         return $checks;
@@ -314,7 +367,7 @@ final class PostconditionVerifier
         $pluginPath = $this->pluginPath($context, $appDir);
 
         return new PostconditionCheck(
-            'repository_registered',
+            self::REPOSITORY_REGISTERED,
             $ok,
             $ok
                 ? "{$context->name} repository registered in {$pluginPath}"
@@ -333,7 +386,7 @@ final class PostconditionVerifier
         $pluginPath = $this->pluginPath($context, $appDir);
 
         return new PostconditionCheck(
-            'controller_registered',
+            self::CONTROLLER_REGISTERED,
             $ok,
             $ok
                 ? "{$context->name}Controller registered in {$pluginPath}"
@@ -359,7 +412,7 @@ final class PostconditionVerifier
         $pluginPath = $this->pluginPath($context, $appDir);
 
         return new PostconditionCheck(
-            'routes_declared',
+            self::ROUTES_DECLARED,
             $missing === [],
             $missing === []
                 ? "all 5 REST routes declared in {$pluginPath}"
@@ -383,7 +436,7 @@ final class PostconditionVerifier
             && (str_contains($source, $fqcn) || str_contains($source, $context->plugin . '::class'));
 
         return new PostconditionCheck(
-            'plugin_registered',
+            self::PLUGIN_REGISTERED,
             $ok,
             $ok
                 ? "plugin listed in {$configPath}"
@@ -436,7 +489,7 @@ final class PostconditionVerifier
         $path = $context->root . '/plugins/' . $context->plugin . '/Entities/' . $context->name . '.php';
 
         return new PostconditionCheck(
-            'entity_file',
+            self::ENTITY_FILE,
             is_file($path),
             is_file($path) ? "entity written at {$path}" : "entity file missing: {$path}",
         );

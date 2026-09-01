@@ -15,6 +15,7 @@ declare(strict_types=1);
 namespace Milpa\DevTools\Operations;
 
 use Milpa\Command\CommandProvider;
+use Milpa\Command\DeclaredCondition;
 use Milpa\Command\Effect\Authority;
 use Milpa\Command\Effect\EffectProfile;
 use Milpa\Command\Effect\Externality;
@@ -22,6 +23,7 @@ use Milpa\Command\Effect\Mutation;
 use Milpa\Command\Effect\Reversibility;
 use Milpa\Command\Effect\Subject;
 use Milpa\Command\Operation;
+use Milpa\DevTools\Make\PostconditionVerifier;
 
 /**
  * El bucle de desarrollo —andamiar y validar— como átomos, para cualquier host.
@@ -148,6 +150,47 @@ final class DevToolsOperations implements CommandProvider
                 // El objetivo lo nombra el humano (ADR-0044), y lo puso una medición: Q-P20-J midió que
                 // una puerta que muta sin contrato se usa 8/8 veces sobre un objeto que nadie nombró.
                 namedTarget: 'plugin',
+
+                // THE DECLARED CONTRACT (greenhouse decisions/0183): what must hold before the run,
+                // what a completed run proves, and what it leaves behind — declared as data so a
+                // caller reads the answer instead of asking a model to invent it.
+                //
+                // Every precondition here is backed by the handler's refusal, and the contract test
+                // violates each one asserting the refusal — declaring what is not enforced is red.
+                preconditions: [
+                    new DeclaredCondition(
+                        'identifier-shaped-names',
+                        '`plugin` and `name` match ^[A-Za-z_][A-Za-z0-9_]*$ — no slashes, no dots; '
+                            . 'a violating name is refused before any generator runs',
+                    ),
+                    new DeclaredCondition(
+                        'plugin-directory-exists',
+                        'legacy flavor only: the target plugin directory exists under plugins/ '
+                            . 'before scaffolding inside it — scaffolding the plugin itself is exempt, '
+                            . 'and the runtime flavor creates the plugin as part of the run',
+                    ),
+                ],
+                // ONE AUTHORITY: these names ARE PostconditionVerifier's constants — the same source
+                // the report emits from — so declaration and report cannot drift. The report stays
+                // the per-run truth; the descriptions say which kinds emit which.
+                postconditions: [
+                    new DeclaredCondition(PostconditionVerifier::ENTITY_FILE, 'entity, crud, resource: the entity class file exists on disk'),
+                    new DeclaredCondition(PostconditionVerifier::CONTROLLER_FILE, 'crud, resource: the REST controller file exists on disk'),
+                    new DeclaredCondition(PostconditionVerifier::CONTROLLER_REGISTERED, 'crud, resource: the controller is registered in the wiring plugin'),
+                    new DeclaredCondition(PostconditionVerifier::REPOSITORY_REGISTERED, 'entity, crud, resource: the entity repository is registered in the wiring plugin'),
+                    new DeclaredCondition(PostconditionVerifier::ROUTES_DECLARED, 'crud, resource: all five REST routes are declared in the wiring plugin'),
+                    new DeclaredCondition(PostconditionVerifier::SERVICE_FILE, 'resource: the service class file exists on disk'),
+                    new DeclaredCondition(PostconditionVerifier::SERVICE_REGISTERED, 'resource: the service is registered in the wiring plugin'),
+                    new DeclaredCondition(PostconditionVerifier::TEST_FILE, 'resource: the behavioral judge is scaffolded under tests/'),
+                    new DeclaredCondition(PostconditionVerifier::PLUGIN_REGISTERED, 'advisory — entity, crud, resource: the plugin is listed in config/plugins.php; reported, never failing, because activation is the decision make hands to a human'),
+                    new DeclaredCondition(PostconditionVerifier::PREFIX_ENUM, 'dynamic — entity, crud, resource: one check per enum a --fields entry referenced, named enum:<Class>; the enum file must resolve on disk'),
+                    new DeclaredCondition(PostconditionVerifier::PREFIX_RELATION, 'dynamic advisory — resource: one check per belongsTo field, named relation:<Entity>; names the scalar id column the relation was degraded to'),
+                ],
+                artifacts: [
+                    'the scaffolded files by kind: plugin wiring, entity, controller, service, tool, test scaffold',
+                    'the postcondition report, for entity, crud and resource runs',
+                ],
+                observableEvidence: 'the files list with per-file actions and, for entity/crud/resource, the postcondition report in the result',
             ),
             new Operation(
                 name: 'implement',
@@ -249,6 +292,22 @@ final class DevToolsOperations implements CommandProvider
                 // agente son los tres lugares donde alguien está construyendo algo y necesita saber si
                 // sirve.
                 surfaces: ['cli', 'tui', 'mcp'],
+
+                // THE DECLARED CONTRACT: both preconditions are enforced by the handler with a
+                // refusal, and the contract test violates each one asserting it.
+                preconditions: [
+                    new DeclaredCondition(
+                        'phpunit-installed',
+                        'vendor/bin/phpunit exists under the app root — without it the handler '
+                            . 'refuses with the composer line that installs it, and `ran` stays false',
+                    ),
+                    new DeclaredCondition(
+                        'path-inside-root',
+                        'a `path`, when given, must exist and resolve inside the app root — one '
+                            . 'that escapes is refused before any command is built',
+                    ),
+                ],
+                observableEvidence: 'the verdict in the result: `ok` is the PHPUnit exit code — what a CI reads — with the parsed counts and the tail of the output',
             ),
             new Operation(
                 name: 'artifact:contract',

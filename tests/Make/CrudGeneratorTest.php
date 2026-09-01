@@ -286,20 +286,23 @@ final class CrudGeneratorTest extends TestCase
         // it must be suppressed, not merely present alongside a conflicting claim.
         $this->assertStringNotContainsString('add this to its boot()', $guidance);
 
-        // idempotent-safe re-run: applying the merged plugin back and re-running must not duplicate.
+        // Idempotent re-run: with the merge landed, the same make adds nothing and re-plans nothing
+        // (both semantic needles short-circuit to "already wired" before any splice).
         file_put_contents($pluginDir . '/BoardPlugin.php', $code);
         $result2 = (new CrudGenerator())->generate($ctx);
-        $mergedAgain = $this->fileNamed($result2->files, 'BoardPlugin.php');
-        $this->assertSame($code, $mergedAgain->contents, 're-running the same make:crud must not duplicate the wiring');
+        $this->assertCount(2, $result2->files, 'entity + controller only — the wired plugin is not re-planned');
+        $this->assertStringContainsString('Already wired', (string) $result2->guidance);
+        $this->assertSame($code, file_get_contents($pluginDir . '/BoardPlugin.php'), 'the file on disk is untouched');
     }
 
     /**
      * A plugin carrying ONLY the services marker (e.g. hand-upgraded from a plain `make:service`
-     * wiring plugin, which never implements RouteProviderInterface) auto-wires the repository+
-     * controller registration but falls back to guidance for the routes half — never silently drops
-     * either concern.
+     * wiring plugin, which never implements RouteProviderInterface): the repository+controller
+     * registration goes in at the anchor, and the routes half — which used to fall back to prose —
+     * is now MATERIALIZED structurally too: routes() and the RouteProviderInterface declaration are
+     * added, so neither concern lands as guidance.
      */
-    public function testExistingPluginWithOnlyTheServicesMarkerAutoWiresServicesAndGuidesRoutes(): void
+    public function testExistingPluginWithOnlyTheServicesMarkerWiresBothConcerns(): void
     {
         $pluginDir = $this->root . '/src/Plugins/BoardPlugin';
         mkdir($pluginDir, 0o775, true);
@@ -318,19 +321,74 @@ final class CrudGeneratorTest extends TestCase
 
         $this->assertTrue($mergedPlugin->merge);
         $this->assertStringContainsString("Task::class . 'Repository'", $mergedPlugin->contents);
+        $this->assertStringContainsString('implements \\Milpa\\Runtime\\Http\\RouteProviderInterface', $mergedPlugin->contents);
+        $this->assertStringContainsString('public function routes(): array', $mergedPlugin->contents);
+        foreach (['index', 'show', 'create', 'update', 'delete'] as $method) {
+            $this->assertStringContainsString("'tasks_{$method}'", $mergedPlugin->contents);
+        }
         $this->assertPhpLints($mergedPlugin->contents);
 
         $guidance = (string) $result->guidance;
         $this->assertStringContainsString('Auto-wired', $guidance);
-        $this->assertStringContainsString('coa:routes', $guidance);
-        $this->assertStringContainsString('by hand', $guidance);
+        $this->assertStringNotContainsString('by hand', $guidance, 'no concern may land as prose when the file is wirable');
     }
 
-    public function testExistingPluginIsNotEditedAndGetsCombinedGuidanceInstead(): void
+    /**
+     * P0.2 CLOSURE with NO markers at all: an existing plugin with plain boot() and routes() gets
+     * BOTH concerns spliced structurally — and a second run adds nothing, because both halves
+     * report already-wired instead of duplicating.
+     */
+    public function testExistingUnmarkedPluginGetsBothConcernsSplicedStructurallyAndIdempotently(): void
     {
         $pluginDir = $this->root . '/src/Plugins/BoardPlugin';
         mkdir($pluginDir, 0o775, true);
-        $existing = "<?php\n// hand-written plugin — must not be touched\n";
+        $unmarked = "<?php\n\nfinal class BoardPlugin\n{\n    public function boot(): void\n    {\n    }\n\n"
+            . "    public function routes(): array\n    {\n        return [\n        ];\n    }\n}\n";
+        file_put_contents($pluginDir . '/BoardPlugin.php', $unmarked);
+
+        $ctx = new GenerationContext(
+            plugin: 'BoardPlugin',
+            name: 'Task',
+            options: ['flavor' => 'runtime', 'fields' => 'title:string'],
+            root: $this->root,
+        );
+
+        $result = (new CrudGenerator())->generate($ctx);
+        $mergedPlugin = $this->fileNamed($result->files, 'BoardPlugin.php');
+
+        $this->assertTrue($mergedPlugin->merge);
+        $code = $mergedPlugin->contents;
+        $this->assertStringContainsString("Task::class . 'Repository'", $code);
+        $this->assertStringContainsString('new \\App\\Plugins\\BoardPlugin\\Controllers\\TaskController($repository)', $code);
+        foreach (['index', 'show', 'create', 'update', 'delete'] as $method) {
+            $this->assertStringContainsString("'tasks_{$method}'", $code);
+        }
+        $this->assertPhpLints($code);
+
+        $guidance = (string) $result->guidance;
+        $this->assertStringContainsString('Auto-wired', $guidance);
+        $this->assertStringContainsString('structurally', $guidance);
+        // EntityGenerator's own separate advice is stale once the boot half is handled here.
+        $this->assertStringNotContainsString('add this to its boot()', $guidance);
+
+        // Land the merge, run the same make:crud again: nothing to add, nothing duplicated.
+        file_put_contents($pluginDir . '/BoardPlugin.php', $code);
+        $again = (new CrudGenerator())->generate($ctx);
+        $this->assertCount(2, $again->files, 'entity + controller only — the wired plugin is not re-planned');
+        $this->assertStringContainsString('Already wired', (string) $again->guidance);
+        $this->assertSame(1, substr_count((string) file_get_contents($pluginDir . '/BoardPlugin.php'), "Task::class . 'Repository'"));
+    }
+
+    /**
+     * The fail-closed control (P0.2): a plugin file the surgeon REFUSES — no class declaration — is
+     * the only case left where the wiring lands as guidance, and the guidance NAMES the file and the
+     * reason, carrying both fully-qualified snippets.
+     */
+    public function testAnUnwirablePluginFallsBackToCombinedGuidanceNamingTheFileAndReason(): void
+    {
+        $pluginDir = $this->root . '/src/Plugins/BoardPlugin';
+        mkdir($pluginDir, 0o775, true);
+        $existing = "<?php\n// hand-written file with no class — nothing to wire into\n";
         file_put_contents($pluginDir . '/BoardPlugin.php', $existing);
 
         $ctx = new GenerationContext(
@@ -342,18 +400,18 @@ final class CrudGeneratorTest extends TestCase
 
         $result = (new CrudGenerator())->generate($ctx);
 
-        $this->assertCount(2, $result->files, 'entity + controller only — the existing plugin file must not be (re)written');
+        $this->assertCount(2, $result->files, 'entity + controller only — the unwirable plugin file must not be (re)written');
         $this->assertSame('Task.php', basename($result->files[0]->path));
         $this->assertSame('TaskController.php', basename($result->files[1]->path));
-        $this->assertSame($existing, file_get_contents($pluginDir . '/BoardPlugin.php'), 'existing plugin file must be untouched on disk');
+        $this->assertSame($existing, file_get_contents($pluginDir . '/BoardPlugin.php'), 'unwirable plugin file must be untouched on disk');
 
-        $this->assertNotNull($result->guidance);
         $guidance = (string) $result->guidance;
         $this->assertStringContainsString('already exists', $guidance);
-        $this->assertStringContainsString('registerService(', $guidance);
+        $this->assertStringContainsString('could not be auto-wired', $guidance);
+        $this->assertStringContainsString('no class declaration found', $guidance, 'the REASON is named, not implied');
+        $this->assertStringContainsString($pluginDir . '/BoardPlugin.php', $guidance, 'the FILE is named');
         $this->assertStringContainsString("Task::class . 'Repository'", $guidance);
-        $this->assertStringContainsString('TaskController::class,', $guidance);
-        $this->assertStringContainsString("new Route(path: '/tasks'", $guidance);
+        $this->assertStringContainsString("'tasks_index'", $guidance);
         $this->assertStringContainsString('Controller/route wiring:', $guidance);
     }
 

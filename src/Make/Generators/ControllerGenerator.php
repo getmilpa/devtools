@@ -22,6 +22,7 @@ use Milpa\DevTools\Make\GeneratorInterface;
 use Milpa\DevTools\Make\MarkerInserter;
 use Milpa\DevTools\Make\Markers;
 use Milpa\DevTools\Make\PlannedFile;
+use Milpa\DevTools\Make\PluginSurgeon;
 use Milpa\DevTools\Make\StubRenderer;
 use Milpa\DevTools\Support\ComposerAutoload;
 
@@ -67,6 +68,7 @@ final class ControllerGenerator implements GeneratorInterface
         private readonly StubRenderer $renderer = new StubRenderer(),
         private readonly ConventionDetector $detector = new ConventionDetector(),
         private readonly MarkerInserter $markers = new MarkerInserter(),
+        private readonly PluginSurgeon $surgeon = new PluginSurgeon(),
     ) {
         $this->stubs = \dirname(__DIR__) . '/stubs';
     }
@@ -171,10 +173,12 @@ final class ControllerGenerator implements GeneratorInterface
      *   via {@see \Milpa\DevTools\Make\MarkerInserter} — `$file` becomes the merged plugin, marked
      *   {@see \Milpa\DevTools\Make\PlannedFile::$merge} so {@see \Milpa\DevTools\Make\WriteGuard} does
      *   not require `--force` to write it.
-     * - One already exists but carries no anchor → unchanged pre-F1 behavior: it is NOT edited
-     *   (parsing/rewriting arbitrary host PHP is exactly the fragile AST surgery this generator's
-     *   deterministic `PlannedFile`/`WriteGuard` model exists to avoid). The exact `Route` snippet to
-     *   add by hand is returned instead.
+     * - One already exists but carries no anchor → the route is inserted STRUCTURALLY via
+     *   {@see \Milpa\DevTools\Make\PluginSurgeon}: into `routes()`'s literal return array when the
+     *   method exists, otherwise the method (and the `RouteProviderInterface` declaration) is
+     *   appended. A route already declared is reported as already wired. Only a file the surgeon
+     *   refuses (unparseable, no class, no literal return array) falls back to guidance NAMING the
+     *   file and the reason — prose for a route this generator knows is a defect, not a courtesy.
      *
      * Existence is checked on the FILESYSTEM only (`is_file()`), not via reflection/autoloading —
      * consistent with the rest of this deterministic generate step, and safe to call from a
@@ -199,14 +203,23 @@ final class ControllerGenerator implements GeneratorInterface
 
         if (is_file($pluginPath)) {
             $existing = (string) file_get_contents($pluginPath);
-            if ($this->markers->hasMarker($existing, Markers::ROUTES)) {
-                $routeSnippet = "new \\Milpa\\Http\\Routing\\Route(\n"
-                    . "    path: '{$path}',\n"
-                    . "    methods: \\Milpa\\Http\\HttpMethod::GET,\n"
-                    . "    name: '{$routeName}',\n"
-                    . "    handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'index'),\n"
-                    . '),';
 
+            // Idempotent by postcondition: the same route name the plugin would declare.
+            if (str_contains($existing, "'{$routeName}'")) {
+                $guidance = "Already wired: {$pluginPath} already declares the '{$routeName}' route — "
+                    . 'nothing to add.';
+
+                return ['file' => null, 'guidance' => $guidance];
+            }
+
+            $routeSnippet = "new \\Milpa\\Http\\Routing\\Route(\n"
+                . "    path: '{$path}',\n"
+                . "    methods: \\Milpa\\Http\\HttpMethod::GET,\n"
+                . "    name: '{$routeName}',\n"
+                . "    handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'index'),\n"
+                . '),';
+
+            if ($this->markers->hasMarker($existing, Markers::ROUTES)) {
                 $merged = $this->markers->insertBefore($existing, Markers::ROUTES, $routeSnippet, $context->flag('force'));
 
                 $guidance = "Auto-wired into the existing plugin at {$pluginPath} (// {" . Markers::ROUTES . '} marker found).';
@@ -214,17 +227,33 @@ final class ControllerGenerator implements GeneratorInterface
                 return ['file' => new PlannedFile($pluginPath, $merged, merge: true), 'guidance' => $guidance];
             }
 
-            $snippet = "new Route(\n"
-                . "    path: '{$path}',\n"
-                . "    methods: HttpMethod::GET,\n"
-                . "    name: '{$routeName}',\n"
-                . "    handler: new HandlerReference({$context->name}::class, 'index'),\n"
-                . '),';
+            $reason = $this->surgeon->diagnose($existing);
+            if ($reason === null) {
+                try {
+                    $merged = $this->surgeon->hasMethod($existing, 'routes')
+                        ? $this->surgeon->insertIntoReturnArray($existing, 'routes', $routeSnippet)
+                        : $this->surgeon->appendMethod(
+                            $this->surgeon->ensureImplements($existing, 'Milpa\\Runtime\\Http\\RouteProviderInterface'),
+                            $this->surgeon->wrapMethod(
+                                '/** @return list<\\Milpa\\Http\\Routing\\Route> */' . "\npublic function routes(): array",
+                                "return [\n" . (string) preg_replace('/^(?=.)/m', '    ', $routeSnippet) . "\n];",
+                            ),
+                        );
 
-            $guidance = "A RouteProviderInterface plugin already exists at {$pluginPath} — it is left "
-                . "untouched (editing existing host code is outside this generator's deterministic "
-                . "write model). Add a `use {$controllerNamespace}\\{$context->name};` import and this "
-                . "entry to its routes():\n\n{$snippet}";
+                    $guidance = "Auto-wired into the existing plugin at {$pluginPath} (no // {" . Markers::ROUTES
+                        . '} marker; the route was inserted structurally into routes()).';
+
+                    return ['file' => new PlannedFile($pluginPath, $merged, merge: true), 'guidance' => $guidance];
+                } catch (\RuntimeException $e) {
+                    $reason = $e->getMessage();
+                }
+            }
+
+            // Fail closed, and NAME the file and the reason — the only remaining prose path. The
+            // snippet is fully qualified so following it needs no import-block edits.
+            $guidance = "A plugin already exists at {$pluginPath} but could not be auto-wired ({$reason}) — "
+                . 'the file is left untouched. Add this entry to its routes() (fully qualified, no '
+                . "imports needed):\n\n{$routeSnippet}";
 
             return ['file' => null, 'guidance' => $guidance];
         }

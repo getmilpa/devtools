@@ -14,10 +14,12 @@ declare(strict_types=1);
 
 namespace Milpa\DevTools\Make;
 
+use Milpa\DevTools\Make\Generators\ResourceGenerator;
 use Milpa\DevTools\Support\ComposerAutoload;
 
 /**
- * Checks that the CONSEQUENCES a `make:entity` / `make:crud` run promised actually exist on disk,
+ * Checks that the CONSEQUENCES a `make:entity` / `make:crud` / `make:resource` run promised
+ * actually exist on disk,
  * so `ok:true` cannot mean "the class is shaped right" while a referenced enum, the repository
  * registration, the controller or the declared routes dangle unwired.
  *
@@ -38,20 +40,22 @@ use Milpa\DevTools\Support\ComposerAutoload;
  */
 final class PostconditionVerifier
 {
-    public function __construct(private readonly FieldParser $parser = new FieldParser())
-    {
+    public function __construct(
+        private readonly FieldParser $parser = new FieldParser(),
+        private readonly PluginSurgeon $surgeon = new PluginSurgeon(),
+    ) {
     }
 
     /**
      * Builds the {@see PostconditionReport} for a completed `$kind` generation, checking each
      * consequence that `$kind` promised against the tree under `$context->root`.
      *
-     * Kinds other than `entity`/`crud` have no filesystem consequences beyond the class the shape
-     * verifier already covers, so they get an empty (always-ok) report.
+     * Kinds other than `entity`/`crud`/`resource` have no filesystem consequences beyond the class
+     * the shape verifier already covers, so they get an empty (always-ok) report.
      */
     public function verify(string $kind, GenerationContext $context, Flavor $flavor): PostconditionReport
     {
-        if ($kind !== 'entity' && $kind !== 'crud') {
+        if ($kind !== 'entity' && $kind !== 'crud' && $kind !== 'resource') {
             return new PostconditionReport([]);
         }
 
@@ -59,7 +63,11 @@ final class PostconditionVerifier
             return new PostconditionReport([$this->legacyEntityFile($context)]);
         }
 
-        return $kind === 'crud' ? $this->verifyCrud($context) : $this->verifyEntity($context);
+        return match ($kind) {
+            'crud' => $this->verifyCrud($context),
+            'resource' => $this->verifyResource($context),
+            default => $this->verifyEntity($context),
+        };
     }
 
     /**
@@ -101,6 +109,136 @@ final class PostconditionVerifier
         $checks[] = $this->pluginRegistered($context, $appNamespace, $appDir);
 
         return new PostconditionReport($checks);
+    }
+
+    /**
+     * Checks a runtime `make:resource`: every `make:crud` consequence PLUS the service class and its
+     * registration, the behavioral judge's file, and one ADVISORY check per `belongsTo` relation the
+     * `--fields` DSL declared — the degradation to a scalar id column is deliberate (the runtime
+     * convention has no relation concept) but it must be NAMED in the verdict, never silent.
+     */
+    private function verifyResource(GenerationContext $context): PostconditionReport
+    {
+        [$appNamespace, $appDir] = $this->appLayout($context->root);
+
+        $checks = [
+            $this->entityFile($context, $appDir),
+            $this->controllerFile($context, $appDir),
+            $this->serviceFile($context, $appDir),
+            $this->testFile($context),
+        ];
+        foreach ($this->enumChecks($context, $appDir) as $check) {
+            $checks[] = $check;
+        }
+        foreach ($this->relationChecks($context) as $check) {
+            $checks[] = $check;
+        }
+        $checks[] = $this->repositoryRegistered($context, $appDir);
+        $checks[] = $this->controllerRegistered($context, $appDir);
+        $checks[] = $this->serviceRegistered($context, $appDir);
+        $checks[] = $this->routesDeclared($context, $appDir);
+        $checks[] = $this->pluginRegistered($context, $appNamespace, $appDir);
+
+        return new PostconditionReport($checks);
+    }
+
+    /** The `<Name>Service` class file the resource run promised, checked on disk. */
+    private function serviceFile(GenerationContext $context, string $appDir): PostconditionCheck
+    {
+        $path = $this->pluginDir($context, $appDir) . '/Services/' . $context->name . 'Service.php';
+
+        return new PostconditionCheck(
+            'service_file',
+            is_file($path),
+            is_file($path) ? "service written at {$path}" : "service file missing: {$path}",
+        );
+    }
+
+    /** The behavioral judge the resource run promised — `tests/Plugins/<Plugin>/<Name>Test.php` under the app root. */
+    private function testFile(GenerationContext $context): PostconditionCheck
+    {
+        $path = $context->root . '/tests/Plugins/' . $context->plugin . '/' . $context->name . 'Test.php';
+
+        return new PostconditionCheck(
+            'test_file',
+            is_file($path),
+            is_file($path)
+                ? "behavioral judge scaffolded at {$path} (red on purpose until it judges something)"
+                : "test scaffold missing: {$path}",
+        );
+    }
+
+    /** Whether the `<Name>Service` was registered into the container in the wiring plugin. */
+    private function serviceRegistered(GenerationContext $context, string $appDir): PostconditionCheck
+    {
+        $source = $this->pluginSource($context, $appDir);
+        $needle = $context->name . 'Service::class';
+        $ok = $source !== null && str_contains($source, $needle);
+        $pluginPath = $this->pluginPath($context, $appDir);
+
+        return new PostconditionCheck(
+            'service_registered',
+            $ok,
+            $ok
+                ? "{$context->name}Service registered in {$pluginPath}"
+                : "{$context->name}Service is NOT registered — register it in the plugin's boot() "
+                    . '(or add a // {coa:services} marker so make can wire it)'
+                    . $this->autoWireObstacle($context, $appDir),
+        );
+    }
+
+    /**
+     * One ADVISORY (never-failing) check per `belongsTo` field the `--fields` DSL declared, naming
+     * the scalar column the relation was degraded to — the column name comes from the same authority
+     * the generator used ({@see ResourceGenerator::relationColumn()}), so report and emission cannot
+     * drift apart.
+     *
+     * @return list<PostconditionCheck>
+     */
+    private function relationChecks(GenerationContext $context): array
+    {
+        try {
+            $fields = $this->parser->parse($context->option('fields') ?? '');
+        } catch (\InvalidArgumentException) {
+            return [];
+        }
+
+        $checks = [];
+        foreach ($fields as $field) {
+            if ($field->kind !== 'belongsTo') {
+                continue;
+            }
+            $target = (string) $field->target;
+            $column = ResourceGenerator::relationColumn($target);
+            $checks[] = new PostconditionCheck(
+                'relation:' . $target,
+                true,
+                "field '{$field->name}' belongsTo {$target} was degraded to scalar {$column}:int — "
+                    . 'milpa/data has no relation concept, so the related id is stored as a plain int',
+                required: false,
+            );
+        }
+
+        return $checks;
+    }
+
+    /**
+     * Names WHY a wiring consequence is missing when the plugin file itself is the obstacle — one
+     * the structural inserter refuses (see {@see PluginSurgeon::diagnose()}). Empty when there is no
+     * plugin file or it is parseable: then the absence is a plain unwired registration, not a
+     * refusal, and the check's own message already says what to do.
+     */
+    private function autoWireObstacle(GenerationContext $context, string $appDir): string
+    {
+        $source = $this->pluginSource($context, $appDir);
+        if ($source === null) {
+            return '';
+        }
+        $reason = $this->surgeon->diagnose($source);
+
+        return $reason === null
+            ? ''
+            : '; ' . $this->pluginPath($context, $appDir) . ' could not be auto-wired: ' . $reason;
     }
 
     /** The entity class file the run promised, checked on disk. */
@@ -181,7 +319,8 @@ final class PostconditionVerifier
             $ok
                 ? "{$context->name} repository registered in {$pluginPath}"
                 : "{$context->name} repository is NOT registered — the wiring landed as guidance, not code; "
-                    . "register it in the plugin's boot() (or add a // {coa:services} marker so make can wire it)",
+                    . "register it in the plugin's boot() (or add a // {coa:services} marker so make can wire it)"
+                    . $this->autoWireObstacle($context, $appDir),
         );
     }
 
@@ -199,7 +338,8 @@ final class PostconditionVerifier
             $ok
                 ? "{$context->name}Controller registered in {$pluginPath}"
                 : "{$context->name}Controller is NOT registered — register it in the plugin's boot() "
-                    . '(or add a // {coa:services} marker so make can wire it)',
+                    . '(or add a // {coa:services} marker so make can wire it)'
+                    . $this->autoWireObstacle($context, $appDir),
         );
     }
 
@@ -224,7 +364,8 @@ final class PostconditionVerifier
             $missing === []
                 ? "all 5 REST routes declared in {$pluginPath}"
                 : 'missing route(s) ' . implode(', ', $missing) . " — the routes landed as guidance, not code; "
-                    . "declare them in the plugin's routes() (or add a // {coa:routes} marker so make can wire them)",
+                    . "declare them in the plugin's routes() (or add a // {coa:routes} marker so make can wire them)"
+                    . $this->autoWireObstacle($context, $appDir),
         );
     }
 

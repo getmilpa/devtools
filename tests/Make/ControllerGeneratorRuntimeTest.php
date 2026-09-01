@@ -101,11 +101,16 @@ final class ControllerGeneratorRuntimeTest extends TestCase
         $this->assertStringContainsString('App\\Plugins\\BlogPlugin\\BlogPlugin::class', (string) $result->guidance);
     }
 
-    public function testExistingPluginIsNotEditedAndGetsARouteSnippetInGuidanceInstead(): void
+    /**
+     * The fail-closed control (P0.2): a plugin file the surgeon REFUSES — no class declaration — is
+     * the only case left where the route lands as guidance, and the guidance NAMES the file and the
+     * reason, with the fully-qualified entry so following it needs no import edits.
+     */
+    public function testAnUnwirablePluginFallsBackToGuidanceNamingTheFileAndReason(): void
     {
         $pluginDir = $this->root . '/src/Plugins/BlogPlugin';
         mkdir($pluginDir, 0o775, true);
-        $existing = "<?php\n// hand-written plugin — must not be touched\n";
+        $existing = "<?php\n// hand-written file with no class — nothing to wire into\n";
         file_put_contents($pluginDir . '/BlogPlugin.php', $existing);
 
         $ctx = new GenerationContext(
@@ -117,17 +122,20 @@ final class ControllerGeneratorRuntimeTest extends TestCase
 
         $result = (new ControllerGenerator())->generate($ctx);
 
-        $this->assertCount(1, $result->files, 'the existing plugin file must not be (re)written');
+        $this->assertCount(1, $result->files, 'the unwirable plugin file must not be (re)written');
         $this->assertSame('PostController.php', basename($result->files[0]->path));
-        $this->assertSame($existing, file_get_contents($pluginDir . '/BlogPlugin.php'), 'existing plugin file must be untouched on disk');
+        $this->assertSame($existing, file_get_contents($pluginDir . '/BlogPlugin.php'), 'unwirable plugin file must be untouched on disk');
 
-        $this->assertNotNull($result->guidance);
         $guidance = (string) $result->guidance;
         $this->assertStringContainsString('already exists', $guidance);
-        $this->assertStringContainsString('new Route(', $guidance);
+        $this->assertStringContainsString('could not be auto-wired', $guidance);
+        $this->assertStringContainsString('no class declaration found', $guidance, 'the REASON is named, not implied');
+        $this->assertStringContainsString($pluginDir . '/BlogPlugin.php', $guidance, 'the FILE is named');
         $this->assertStringContainsString("path: '/posts'", $guidance);
-        $this->assertStringContainsString("handler: new HandlerReference(PostController::class, 'index')", $guidance);
-        $this->assertStringContainsString('use App\\Plugins\\BlogPlugin\\Controllers\\PostController;', $guidance);
+        $this->assertStringContainsString(
+            "handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\App\\Plugins\\BlogPlugin\\Controllers\\PostController::class, 'index')",
+            $guidance,
+        );
     }
 
     /**
@@ -169,19 +177,26 @@ final class ControllerGeneratorRuntimeTest extends TestCase
         $this->assertNotNull($result->guidance);
         $this->assertStringContainsString('Auto-wired', (string) $result->guidance);
 
-        // idempotent-safe re-run.
+        // Idempotent re-run: with the merge landed, the same make adds nothing and re-plans nothing
+        // (the route needle short-circuits to "already wired" before any splice).
         file_put_contents($pluginDir . '/BlogPlugin.php', $code);
         $result2 = (new ControllerGenerator())->generate($ctx);
-        $mergedAgain = $this->fileNamed($result2->files, 'BlogPlugin.php');
-        $this->assertSame($code, $mergedAgain->contents, 're-running the same make:controller must not duplicate the route');
+        $this->assertCount(1, $result2->files, 'only the controller — the wired plugin is not re-planned');
+        $this->assertStringContainsString('Already wired', (string) $result2->guidance);
+        $this->assertSame($code, file_get_contents($pluginDir . '/BlogPlugin.php'), 'the file on disk is untouched');
     }
 
-    /** A plugin that exists but carries no `// {coa:routes}` marker keeps the pre-F1 guidance-only fallback. */
-    public function testExistingPluginWithoutAMarkerStillFallsBackToGuidance(): void
+    /**
+     * P0.2 CLOSURE for the routes concern: a plugin with a routes() but NO marker used to get the
+     * exact Route entry back as prose — now it is inserted structurally into the literal return
+     * array (here one whose last entry even lacks its trailing comma), read back from the plan.
+     */
+    public function testExistingUnmarkedPluginGetsTheRouteSplicedIntoItsReturnArray(): void
     {
         $pluginDir = $this->root . '/src/Plugins/BlogPlugin';
         mkdir($pluginDir, 0o775, true);
-        $unmarked = "<?php\n// hand-written plugin — no markers\n";
+        $unmarked = "<?php\n\nfinal class BlogPlugin\n{\n    public function routes(): array\n    {\n"
+            . "        return [\n            'placeholder'\n        ];\n    }\n}\n";
         file_put_contents($pluginDir . '/BlogPlugin.php', $unmarked);
 
         $ctx = new GenerationContext(
@@ -193,9 +208,51 @@ final class ControllerGeneratorRuntimeTest extends TestCase
 
         $result = (new ControllerGenerator())->generate($ctx);
 
-        $this->assertCount(1, $result->files, 'the controller class only — the unmarked plugin file is untouched');
-        $this->assertSame($unmarked, file_get_contents($pluginDir . '/BlogPlugin.php'));
-        $this->assertStringContainsString('already exists', (string) $result->guidance);
+        $this->assertCount(2, $result->files, 'the controller class + the MERGED plugin');
+        $merged = $this->fileNamed($result->files, 'BlogPlugin.php');
+        $this->assertTrue($merged->merge);
+        $this->assertStringContainsString("'placeholder',", $merged->contents, 'the missing trailing comma is added, not tripped over');
+        $this->assertStringContainsString("path: '/posts',", $merged->contents);
+        $this->assertStringContainsString(
+            "handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\App\\Plugins\\BlogPlugin\\Controllers\\PostController::class, 'index'),",
+            $merged->contents,
+        );
+        $this->assertPhpLints($merged->contents);
+        $this->assertStringContainsString('structurally', (string) $result->guidance);
+        $this->assertSame($unmarked, file_get_contents($pluginDir . '/BlogPlugin.php'), 'the generator only PLANS; disk is the handler\'s job');
+
+        // Idempotent re-run once the merge is landed.
+        file_put_contents($pluginDir . '/BlogPlugin.php', $merged->contents);
+        $again = (new ControllerGenerator())->generate($ctx);
+        $this->assertCount(1, $again->files, 'only the controller — the wired plugin is not re-planned');
+        $this->assertStringContainsString('Already wired', (string) $again->guidance);
+    }
+
+    /**
+     * P0.2: routes() absent entirely — the method AND the `RouteProviderInterface` declaration are
+     * added, because a routes() the kernel never calls would be dead code wearing a wiring.
+     */
+    public function testExistingPluginWithoutRoutesGetsTheMethodAndTheInterfaceAdded(): void
+    {
+        $pluginDir = $this->root . '/src/Plugins/BlogPlugin';
+        mkdir($pluginDir, 0o775, true);
+        $bootOnly = "<?php\n\nfinal class BlogPlugin\n{\n    public function boot(): void\n    {\n    }\n}\n";
+        file_put_contents($pluginDir . '/BlogPlugin.php', $bootOnly);
+
+        $ctx = new GenerationContext(
+            plugin: 'BlogPlugin',
+            name: 'PostController',
+            options: ['flavor' => 'runtime', 'path' => '/posts'],
+            root: $this->root,
+        );
+
+        $result = (new ControllerGenerator())->generate($ctx);
+        $merged = $this->fileNamed($result->files, 'BlogPlugin.php');
+
+        $this->assertStringContainsString('implements \\Milpa\\Runtime\\Http\\RouteProviderInterface', $merged->contents);
+        $this->assertStringContainsString('public function routes(): array', $merged->contents);
+        $this->assertStringContainsString("path: '/posts',", $merged->contents);
+        $this->assertPhpLints($merged->contents);
     }
 
     public function testDefaultPathIsDerivedFromTheControllerName(): void

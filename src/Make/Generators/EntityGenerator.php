@@ -21,7 +21,10 @@ use Milpa\DevTools\Make\Flavor;
 use Milpa\DevTools\Make\GenerationContext;
 use Milpa\DevTools\Make\GenerationResult;
 use Milpa\DevTools\Make\GeneratorInterface;
+use Milpa\DevTools\Make\MarkerInserter;
+use Milpa\DevTools\Make\Markers;
 use Milpa\DevTools\Make\PlannedFile;
+use Milpa\DevTools\Make\PluginSurgeon;
 use Milpa\DevTools\Make\StubRenderer;
 use Milpa\DevTools\Support\ComposerAutoload;
 use Milpa\DevTools\Support\DoctrineAvailability;
@@ -44,9 +47,10 @@ use Milpa\DevTools\Support\DoctrineAvailability;
  *   app's `storage` config via `Milpa\Data\RepositoryFactory` (driver `file|sqlite|mysql|memory` —
  *   the backend is one config line; defaults to a JSON file under `var/` so zero config still
  *   persists) and registers it into the DI container — a minimal `PluginInterface` implementation
- *   is generated alongside the entity when the target plugin area doesn't exist yet, or the exact
- *   registration snippet to add by hand is returned via {@see GenerationResult::$guidance} when it
- *   does — see {@see self::wireRepository()}, which mirrors {@see ControllerGenerator::wireRoute()}.
+ *   is generated alongside the entity when the target plugin area doesn't exist yet, and an
+ *   EXISTING plugin gets the registration MATERIALIZED into it — marker anchor first, structural
+ *   splice second — see {@see self::wireRepository()}; only a file that cannot be parsed falls
+ *   back to guidance, naming the reason.
  */
 final class EntityGenerator implements GeneratorInterface
 {
@@ -65,6 +69,8 @@ final class EntityGenerator implements GeneratorInterface
         private readonly StubRenderer $renderer = new StubRenderer(),
         private readonly ConventionDetector $detector = new ConventionDetector(),
         private readonly ?bool $doctrineAvailable = null,
+        private readonly MarkerInserter $markers = new MarkerInserter(),
+        private readonly PluginSurgeon $surgeon = new PluginSurgeon(),
     ) {
         $this->stubs = \dirname(__DIR__) . '/stubs';
     }
@@ -276,9 +282,14 @@ final class EntityGenerator implements GeneratorInterface
      *   persists) and registers `RepositoryFactory::fromConfig($storage, Entity::class)` into the
      *   DI container under the id `Entity::class . 'Repository'`, plus guidance to register the
      *   new plugin class in `config/plugins.php`.
-     * - One already exists -> it is NOT edited (same deterministic-write rationale as the
-     *   controller path). The exact `boot()` registration snippet to add by hand is returned
-     *   instead.
+     * - One already exists -> the registration is MATERIALIZED into it: at the `// {coa:services}`
+     *   anchor when the file carries one (see {@see \Milpa\DevTools\Make\MarkerInserter}), otherwise
+     *   spliced structurally into `boot()` — or `boot()` is added — via
+     *   {@see \Milpa\DevTools\Make\PluginSurgeon}, the planned file marked
+     *   {@see \Milpa\DevTools\Make\PlannedFile::$merge}. A registration already present is reported
+     *   as already wired. Only a file the surgeon refuses (unparseable, no class) falls back to
+     *   guidance NAMING the file and the reason — prose for a wiring this generator knows is a
+     *   defect the postcondition layer reports as `incomplete`, not a courtesy.
      *
      * Existence is checked on the FILESYSTEM only (`is_file()`), not via reflection/autoloading —
      * safe to call from a `--dry-run` before anything is installed/autoloadable, and consistent
@@ -300,22 +311,51 @@ final class EntityGenerator implements GeneratorInterface
         $repositoryId = "{$context->name}::class . 'Repository'";
 
         if (is_file($pluginPath)) {
-            $snippet = "\$storage = \$this->container->get(Config::class)->get('storage', [\n"
-                . "    'driver' => 'file',\n"
-                . "    'path' => (new RootResolver())->resolve() . '/var/{$table}.json',\n"
-                . "]);\n"
-                . "\\assert(\\is_array(\$storage));\n"
-                . "\n"
-                . "\$this->container->registerService(\n"
-                . "    {$repositoryId},\n"
-                . "    RepositoryFactory::fromConfig(\$storage, {$context->name}::class),\n"
-                . ');';
+            $existing = (string) file_get_contents($pluginPath);
 
-            $guidance = "A plugin already exists at {$pluginPath} — it is left untouched (editing "
-                . "existing host code is outside this generator's deterministic write model). Add "
-                . "`use {$entityNamespace}\\{$context->name};`, `use Milpa\\Data\\RepositoryFactory;`, "
-                . "`use Milpa\\Runtime\\Config;` and `use Milpa\\Runtime\\Support\\RootResolver;` imports "
-                . "and this to its boot():\n\n{$snippet}\n\n"
+            // Idempotent by postcondition: the needle is the same one PostconditionVerifier checks,
+            // so "already wired" here and "consequence found" there can never disagree.
+            if (str_contains($existing, $context->name . "::class . 'Repository'")) {
+                $guidance = "Already wired: {$pluginPath} already registers the {$context->name} "
+                    . "repository — nothing to add. Resolve it via \$container->get({$repositoryId}).";
+
+                return ['file' => null, 'guidance' => $guidance];
+            }
+
+            $snippet = $this->fullyQualifiedBootSnippet($entityNamespace . '\\' . $context->name, $table);
+
+            if ($this->markers->hasMarker($existing, Markers::SERVICES)) {
+                $merged = $this->markers->insertBefore($existing, Markers::SERVICES, $snippet, $context->flag('force'));
+                $guidance = "Auto-wired into the existing plugin at {$pluginPath} (// {" . Markers::SERVICES
+                    . "} marker found). Resolve the repository later via \$container->get({$repositoryId}).";
+
+                return ['file' => new PlannedFile($pluginPath, $merged, merge: true), 'guidance' => $guidance];
+            }
+
+            $reason = $this->surgeon->diagnose($existing);
+            if ($reason === null) {
+                try {
+                    $merged = $this->surgeon->hasMethod($existing, 'boot')
+                        ? $this->surgeon->insertIntoMethod($existing, 'boot', $snippet)
+                        : $this->surgeon->appendMethod(
+                            $existing,
+                            $this->surgeon->wrapMethod('public function boot(): void', $snippet),
+                        );
+                    $guidance = "Auto-wired into the existing plugin at {$pluginPath} (no // {" . Markers::SERVICES
+                        . "} marker; the registration was inserted structurally into boot()). Resolve the "
+                        . "repository later via \$container->get({$repositoryId}).";
+
+                    return ['file' => new PlannedFile($pluginPath, $merged, merge: true), 'guidance' => $guidance];
+                } catch (\RuntimeException $e) {
+                    $reason = $e->getMessage();
+                }
+            }
+
+            // Fail closed, and NAME the file and the reason — the only remaining prose path. The
+            // snippet is fully qualified so following it needs no import-block edits.
+            $guidance = "A plugin already exists at {$pluginPath} but could not be auto-wired ({$reason}) — "
+                . "the file is left untouched. Add this to its boot() (fully qualified, no imports needed):\n\n"
+                . "{$snippet}\n\n"
                 . "The backend is one config line: set storage.driver in config/app.php to file, sqlite, "
                 . "mysql or memory (with its path/dsn); with no storage block the default above persists "
                 . "to var/{$table}.json. Resolve the repository later via \$container->get({$repositoryId}).";
@@ -339,6 +379,27 @@ final class EntityGenerator implements GeneratorInterface
             . "\$container->get({$repositoryId}).";
 
         return ['file' => new PlannedFile($pluginPath, $pluginContents), 'guidance' => $guidance];
+    }
+
+    /**
+     * The repository registration `boot()` snippet with every class reference fully qualified
+     * (`\Fqcn::class` inline), so splicing it — at a marker or structurally — never has to touch or
+     * even inspect the target file's import block: a second, riskier anchor this deterministic
+     * insertion deliberately avoids needing (same rationale as {@see CrudGenerator}'s splice). Built
+     * through RepositoryFactory so the backend stays the app's `storage` config decision.
+     */
+    private function fullyQualifiedBootSnippet(string $entityFqcn, string $table): string
+    {
+        return "\$storage = \$this->container->get(\\Milpa\\Runtime\\Config::class)->get('storage', [\n"
+            . "    'driver' => 'file',\n"
+            . "    'path' => (new \\Milpa\\Runtime\\Support\\RootResolver())->resolve() . '/var/{$table}.json',\n"
+            . "]);\n"
+            . "\\assert(\\is_array(\$storage));\n"
+            . "\n"
+            . "\$this->container->registerService(\n"
+            . "    \\{$entityFqcn}::class . 'Repository',\n"
+            . "    \\Milpa\\Data\\RepositoryFactory::fromConfig(\$storage, \\{$entityFqcn}::class),\n"
+            . ');';
     }
 
     private function property(FieldSpec $field): string

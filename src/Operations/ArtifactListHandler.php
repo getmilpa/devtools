@@ -15,13 +15,15 @@ declare(strict_types=1);
 namespace Milpa\DevTools\Operations;
 
 use Milpa\DevTools\Support\ComposerAutoload;
+use Milpa\DevTools\Support\DeclarationScanner;
 use Milpa\DevTools\Support\RootResolver;
 
 /**
  * Lists class, interface, and enum declarations in the app's plugins without loading their files.
  *
- * The operation returns declaration metadata only. It tokenizes PHP instead of requiring files, so
- * top-level code and static initializers never run merely because an agent asked what exists.
+ * The operation returns declaration metadata only. It reads declarations through the shared
+ * {@see DeclarationScanner} — tokens, not `require` — so top-level code and static initializers
+ * never run merely because an agent asked what exists.
  */
 final class ArtifactListHandler
 {
@@ -84,7 +86,7 @@ final class ArtifactListHandler
             sort($files);
 
             foreach ($files as $file) {
-                foreach ($this->declarations($file) as $declaration) {
+                foreach (DeclarationScanner::scan($file) as $declaration) {
                     $artifacts[] = [
                         'name' => $declaration['name'],
                         'fqcn' => $declaration['fqcn'],
@@ -104,81 +106,6 @@ final class ArtifactListHandler
         }
 
         return ['ok' => true, 'artifacts' => $artifacts];
-    }
-
-    /**
-     * Reads only namespace and named type declaration tokens from a PHP file.
-     *
-     * @return list<array{name: string, fqcn: string, kind: string}>
-     */
-    private function declarations(string $file): array
-    {
-        $source = file_get_contents($file);
-        if ($source === false) {
-            return [];
-        }
-
-        $tokens = token_get_all($source);
-        $namespace = '';
-        $declarations = [];
-        $count = \count($tokens);
-
-        for ($index = 0; $index < $count; ++$index) {
-            $token = $tokens[$index];
-            if (\is_array($token) && $token[0] === T_NAMESPACE) {
-                $namespace = '';
-                for (++$index; $index < $count; ++$index) {
-                    $part = $tokens[$index];
-                    if ($part === ';' || $part === '{') {
-                        break;
-                    }
-                    if (\is_array($part) && \in_array($part[0], [T_STRING, T_NAME_QUALIFIED, T_NS_SEPARATOR], true)) {
-                        $namespace .= $part[1];
-                    }
-                }
-                continue;
-            }
-
-            if (!\is_array($token) || !\in_array($token[0], [T_CLASS, T_INTERFACE, T_ENUM], true)) {
-                continue;
-            }
-
-            $nameIndex = $this->nextSignificant($tokens, $index + 1);
-            $nameToken = $nameIndex !== null ? $tokens[$nameIndex] : null;
-            if (!\is_array($nameToken) || $nameToken[0] !== T_STRING) {
-                continue;
-            }
-
-            $name = $nameToken[1];
-            $declarations[] = [
-                'name' => $name,
-                'fqcn' => $namespace !== '' ? $namespace . '\\' . $name : $name,
-                'kind' => match ($token[0]) {
-                    T_INTERFACE => 'interface',
-                    T_ENUM => 'enum',
-                    default => 'class',
-                },
-            ];
-        }
-
-        return $declarations;
-    }
-
-    /**
-     * Finds the next token that is not whitespace or a comment.
-     *
-     * @param array<int, string|array{0: int, 1: string, 2: int}> $tokens
-     */
-    private function nextSignificant(array $tokens, int $from): ?int
-    {
-        for ($index = $from, $count = \count($tokens); $index < $count; ++$index) {
-            $token = $tokens[$index];
-            if (!\is_array($token) || !\in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
-                return $index;
-            }
-        }
-
-        return null;
     }
 
     /** Returns a stable path relative to the host app root. */

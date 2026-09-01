@@ -163,7 +163,7 @@ final class DevToolsOperationsTest extends TestCase
      */
     public function testEveryGeneratorThePackageImplementsIsReachableAndOffered(): void
     {
-        $esperados = ['controller', 'entity', 'plugin', 'crud', 'service', 'tool', 'test'];
+        $esperados = ['controller', 'entity', 'plugin', 'crud', 'resource', 'service', 'tool', 'test'];
 
         $cableados = (new MakeHandler(new RootResolver($this->raiz)))->kinds();
         sort($cableados);
@@ -174,7 +174,43 @@ final class DevToolsOperationsTest extends TestCase
         $make = (new DevToolsOperations())->operations()[1];
         $ofrecidos = $make->inputSchema['properties']['what']['enum'];
         sort($ofrecidos);
-        self::assertSame($ordenados, $ofrecidos, 'y los seis se declaran en el esquema');
+        self::assertSame($ordenados, $ofrecidos, 'y todos se declaran en el esquema');
+    }
+
+    /**
+     * `resource` is the one-call closed shape: entity + service + controller + routes + judge, all
+     * landed as FILES through the handler surface, none as prose. (`no_verify` because this temp
+     * root has no autoloader for the shape verify; the postcondition closure itself is proven at the
+     * generator layer — see ResourceGeneratorTest.)
+     */
+    public function testAResourceLandsTheWholeClosedShapeInOneCall(): void
+    {
+        $handler = new MakeHandler(new RootResolver($this->raiz));
+        $r = $handler->handle([
+            'what' => 'resource',
+            'plugin' => 'Tareas',
+            'name' => 'Tarea',
+            'fields' => 'titulo:string, hecha:bool',
+            'no_verify' => true,
+        ]);
+
+        self::assertTrue($r['ok'], (string) ($r['error'] ?? ''));
+
+        $porNombre = [];
+        foreach ($r['files'] as $archivo) {
+            self::assertFileExists($archivo['path']);
+            $porNombre[basename($archivo['path'])] = $archivo['action'];
+        }
+        foreach (['Tarea.php', 'TareaController.php', 'TareaService.php', 'Tareas.php', 'TareaTest.php'] as $pieza) {
+            self::assertArrayHasKey($pieza, $porNombre, "la pieza {$pieza} aterriza como archivo, no como prosa");
+            self::assertSame('created', $porNombre[$pieza]);
+        }
+
+        $plugin = (string) file_get_contents($this->raiz . '/src/Plugins/Tareas/Tareas.php');
+        self::assertStringContainsString("Tarea::class . 'Repository'", $plugin);
+        self::assertStringContainsString('TareaController::class', $plugin);
+        self::assertStringContainsString('TareaService::class', $plugin);
+        self::assertStringContainsString("'tareas_index'", $plugin);
     }
 
     /**

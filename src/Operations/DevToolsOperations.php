@@ -111,7 +111,7 @@ final class DevToolsOperations implements CommandProvider
                     // different afterwards, even though nothing boots until someone declares it.
                     subject: Subject::Executable,
                 ),
-                description: 'Scaffold a framework artifact (plugin, controller, entity, crud, service or tool) and verify it',
+                description: 'Scaffold a framework artifact (plugin, controller, entity, crud, resource, service, tool or test) and verify it',
                 handler: [MakeHandler::class, 'handle'],
                 inputSchema: [
                     'type' => 'object',
@@ -121,15 +121,15 @@ final class DevToolsOperations implements CommandProvider
                     'properties' => [
                         'what' => [
                             'type' => 'string',
-                            'enum' => ['plugin', 'controller', 'entity', 'crud', 'service', 'tool', 'test'],
+                            'enum' => ['plugin', 'controller', 'entity', 'crud', 'resource', 'service', 'tool', 'test'],
                             'description' => 'Qué artefacto. Con «plugin», los dos nombres siguientes son el mismo',
                         ],
                         'plugin' => ['type' => 'string', 'description' => 'Identificador del plugin destino: UNA palabra `^[A-Za-z_][A-Za-z0-9_]*$`, sin slashes ni ruta (ej. «Tareas», no «Plugins/Tareas»)'],
                         'name' => ['type' => 'string', 'description' => 'Nombre de la clase a crear'],
-                        'fields' => ['type' => 'string', 'description' => 'Campos `nombre:tipo` separados por coma; prefija el nombre con `?` para nullable. Ej: «titulo:string, ?fecha_limite:date, hecha:bool». Tipos: string, text, int, bigint, bool, float, decimal, date, datetime, json, «belongsTo:<Entidad>», y «enum:<Clase>(caso1,caso2,…)» que GENERA el enum con esas cases (ej. «prioridad:enum:PrioridadTarea(baja,media,alta)») — declara siempre las cases para no dejar un enum colgando. Mods de escalar: longitud («titulo:string:120») o precisión en decimal («precio:decimal:10,2»). NO existe «default» ni «:nullable» — la nullabilidad es el `?`. Para entity y crud'],
+                        'fields' => ['type' => 'string', 'description' => 'Campos `nombre:tipo` separados por coma; prefija el nombre con `?` para nullable. Ej: «titulo:string, ?fecha_limite:date, hecha:bool». Tipos: string, text, int, bigint, bool, float, decimal, date, datetime, json, «belongsTo:<Entidad>», y «enum:<Clase>(caso1,caso2,…)» que GENERA el enum con esas cases (ej. «prioridad:enum:PrioridadTarea(baja,media,alta)») — declara siempre las cases para no dejar un enum colgando. Mods de escalar: longitud («titulo:string:120») o precisión en decimal («precio:decimal:10,2»). NO existe «default» ni «:nullable» — la nullabilidad es el `?`. Para entity, crud y resource (donde belongsTo:<Entidad> se degrada a <entidad>_id:int y se nombra en las postcondiciones)'],
                         'route' => ['type' => 'string', 'description' => 'Ruta base, para controller y crud'],
                         'methods' => ['type' => 'string', 'description' => 'Métodos separados por coma, para controller'],
-                        'table' => ['type' => 'string', 'description' => 'Nombre de tabla, para entity y crud'],
+                        'table' => ['type' => 'string', 'description' => 'Nombre de tabla, para entity, crud y resource'],
                         'provides' => ['type' => 'string', 'description' => 'Capacidades que ofrece, separadas por coma, para plugin'],
                         'requires' => ['type' => 'string', 'description' => 'Capacidades que necesita, separadas por coma, para plugin'],
                         'interface' => ['type' => 'string', 'description' => 'Interfaz que el servicio implementa, para service'],

@@ -69,12 +69,32 @@ final class PostconditionVerifierTest extends TestCase
         self::assertTrue($this->check($report, 'entity_file'), 'the entity itself was still written');
     }
 
-    public function testAnEntityWiredOnlyByGuidanceReportsTheMissingRepository(): void
+    /**
+     * The closure control, positive side: a hand-written plugin with NO markers but a parseable
+     * boot() is no longer a guidance case — EntityGenerator splices the registration structurally,
+     * so the postcondition layer finds the consequence and the run is COMPLETE.
+     */
+    public function testAnUnmarkedButParseablePluginIsAutoWiredAndTheRunIsComplete(): void
     {
-        // A hand-written plugin with NO wiring markers: EntityGenerator cannot splice into it, so the
-        // repository registration lands as guidance text, never as code — the entity has nothing to
-        // persist it.
         $this->preexistingPluginWithoutMarkers('BoardPlugin');
+        $ctx = $this->context('BoardPlugin', 'Task', 'title:string');
+        $this->writeFiles((new EntityGenerator())->generate($ctx));
+
+        $report = (new PostconditionVerifier())->verify('entity', $ctx, Flavor::Runtime);
+
+        self::assertTrue($report->ok(), 'structural wiring closed the gap: ' . implode(', ', $report->missing()));
+        self::assertTrue($this->check($report, 'repository_registered'));
+        self::assertTrue($this->check($report, 'entity_file'));
+    }
+
+    /**
+     * The fail-closed control (P0.2): ONLY a plugin file the surgeon refuses — here, hand-mangled to
+     * carry no class declaration — may still leave the wiring unlanded, and then the report NAMES
+     * the file and the reason instead of a generic "landed as guidance".
+     */
+    public function testAnUnwirablePluginReportsTheMissingRepositoryNamingFileAndReason(): void
+    {
+        $this->preexistingUnwirablePlugin('BoardPlugin');
         $ctx = $this->context('BoardPlugin', 'Task', 'title:string');
         $this->writeFiles((new EntityGenerator())->generate($ctx));
 
@@ -83,6 +103,11 @@ final class PostconditionVerifierTest extends TestCase
         self::assertFalse($report->ok());
         self::assertContains('repository_registered', $report->missing());
         self::assertTrue($this->check($report, 'entity_file'));
+
+        $detail = $this->detail($report, 'repository_registered');
+        self::assertStringContainsString('could not be auto-wired', $detail);
+        self::assertStringContainsString('no class declaration found', $detail, 'the REASON is named');
+        self::assertStringContainsString($this->root . '/src/Plugins/BoardPlugin/BoardPlugin.php', $detail, 'the FILE is named');
     }
 
     public function testACompleteCrudRunPassesEveryRequiredConsequence(): void
@@ -100,9 +125,9 @@ final class PostconditionVerifierTest extends TestCase
         self::assertTrue($this->check($report, 'routes_declared'));
     }
 
-    public function testACrudWiredOnlyByGuidanceReportsEveryUnwiredConsequence(): void
+    public function testAnUnwirableCrudPluginReportsEveryUnwiredConsequenceWithTheReason(): void
     {
-        $this->preexistingPluginWithoutMarkers('BoardPlugin');
+        $this->preexistingUnwirablePlugin('BoardPlugin');
         $ctx = $this->context('BoardPlugin', 'Task', 'title:string');
         $this->writeFiles((new CrudGenerator())->generate($ctx));
 
@@ -112,9 +137,28 @@ final class PostconditionVerifierTest extends TestCase
         self::assertContains('repository_registered', $report->missing());
         self::assertContains('controller_registered', $report->missing());
         self::assertContains('routes_declared', $report->missing());
-        // The files themselves were still produced — only the wiring dangles.
+        // The files themselves were still produced — only the wiring dangles, with the reason named.
         self::assertTrue($this->check($report, 'entity_file'));
         self::assertTrue($this->check($report, 'controller_file'));
+        self::assertStringContainsString('no class declaration found', $this->detail($report, 'routes_declared'));
+    }
+
+    /**
+     * And the same crud on an unmarked-but-parseable plugin is COMPLETE — the structural splice
+     * closes all three wiring consequences at once.
+     */
+    public function testACrudOnAnUnmarkedButParseablePluginIsComplete(): void
+    {
+        $this->preexistingPluginWithoutMarkers('BoardPlugin');
+        $ctx = $this->context('BoardPlugin', 'Task', 'title:string');
+        $this->writeFiles((new CrudGenerator())->generate($ctx));
+
+        $report = (new PostconditionVerifier())->verify('crud', $ctx, Flavor::Runtime);
+
+        self::assertTrue($report->ok(), 'structural wiring closed the gaps: ' . implode(', ', $report->missing()));
+        self::assertTrue($this->check($report, 'repository_registered'));
+        self::assertTrue($this->check($report, 'controller_registered'));
+        self::assertTrue($this->check($report, 'routes_declared'));
     }
 
     public function testPluginRegistrationIsAdvisoryAndNeverFailsTheRun(): void
@@ -179,6 +223,28 @@ final class PostconditionVerifierTest extends TestCase
             "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Plugins\\{$plugin};\n\n"
                 . "final class {$plugin}\n{\n    public function boot(): void\n    {\n    }\n}\n",
         );
+    }
+
+    /** A hand-mangled plugin file (no class declaration) — the one shape the structural inserter refuses. */
+    private function preexistingUnwirablePlugin(string $plugin): void
+    {
+        $dir = $this->root . '/src/Plugins/' . $plugin;
+        mkdir($dir, 0o775, true);
+        file_put_contents(
+            $dir . '/' . $plugin . '.php',
+            "<?php\n// hand-mangled: no class declaration in here\n",
+        );
+    }
+
+    /** The detail text of the named check — the report's own explanation of what it found. */
+    private function detail(\Milpa\DevTools\Make\PostconditionReport $report, string $name): string
+    {
+        foreach ($report->checks as $c) {
+            if ($c->name === $name) {
+                return $c->detail;
+            }
+        }
+        self::fail("no postcondition check named '{$name}'");
     }
 
     private function check(\Milpa\DevTools\Make\PostconditionReport $report, string $name): bool

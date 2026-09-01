@@ -195,7 +195,7 @@ final class ServiceGenerator implements GeneratorInterface
                 $merged = $this->markers->insertBefore(
                     $existing,
                     Markers::SERVICES,
-                    "\$this->container->registerService(\n    \\{$registrationFqcn}::class,\n    new \\{$serviceFqcn}(),\n);",
+                    $this->registrationSnippet($registrationFqcn, $serviceFqcn),
                     $context->flag('force'),
                 );
 
@@ -244,5 +244,17 @@ final class ServiceGenerator implements GeneratorInterface
             . "; resolve it later via \$container->get({$registrationClass}::class).";
 
         return ['file' => new PlannedFile($pluginPath, $pluginContents), 'guidance' => $guidance];
+    }
+
+    /**
+     * The `registerService()` statement that registers `$serviceFqcn` under `$registrationFqcn`,
+     * with both class references fully qualified inline so splicing it into any plugin file — at a
+     * marker, structurally, or by hand — never has to touch the target's import block.
+     * {@see wireService()} and {@see ResourceGenerator} both land exactly this shape: one authority
+     * for what "the service is registered" looks like.
+     */
+    public function registrationSnippet(string $registrationFqcn, string $serviceFqcn): string
+    {
+        return "\$this->container->registerService(\n    \\{$registrationFqcn}::class,\n    new \\{$serviceFqcn}(),\n);";
     }
 }

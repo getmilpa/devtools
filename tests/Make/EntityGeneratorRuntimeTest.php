@@ -122,11 +122,16 @@ final class EntityGeneratorRuntimeTest extends TestCase
         $this->assertStringContainsString('App\\Plugins\\BlogPlugin\\BlogPlugin::class', (string) $result->guidance);
     }
 
-    public function testExistingPluginIsNotEditedAndGetsARegistrationSnippetInGuidanceInstead(): void
+    /**
+     * The fail-closed control (P0.2): a plugin file the surgeon REFUSES — here, no class declaration
+     * at all — is the only case left where wiring lands as guidance, and that guidance must NAME the
+     * file and the reason, carrying the fully-qualified snippet so following it needs no import edits.
+     */
+    public function testAnUnwirablePluginFallsBackToGuidanceNamingTheFileAndReason(): void
     {
         $pluginDir = $this->root . '/src/Plugins/BlogPlugin';
         mkdir($pluginDir, 0o775, true);
-        $existing = "<?php\n// hand-written plugin — must not be touched\n";
+        $existing = "<?php\n// hand-written file with no class — nothing to wire into\n";
         file_put_contents($pluginDir . '/BlogPlugin.php', $existing);
 
         $ctx = new GenerationContext(
@@ -138,23 +143,124 @@ final class EntityGeneratorRuntimeTest extends TestCase
 
         $result = (new EntityGenerator())->generate($ctx);
 
-        $this->assertCount(1, $result->files, 'the existing plugin file must not be (re)written');
+        $this->assertCount(1, $result->files, 'the unwirable plugin file must not be (re)written');
         $this->assertSame('Article.php', basename($result->files[0]->path));
-        $this->assertSame($existing, file_get_contents($pluginDir . '/BlogPlugin.php'), 'existing plugin file must be untouched on disk');
+        $this->assertSame($existing, file_get_contents($pluginDir . '/BlogPlugin.php'), 'unwirable plugin file must be untouched on disk');
 
-        $this->assertNotNull($result->guidance);
         $guidance = (string) $result->guidance;
         $this->assertStringContainsString('already exists', $guidance);
-        $this->assertStringContainsString('registerService(', $guidance);
+        $this->assertStringContainsString('could not be auto-wired', $guidance);
+        $this->assertStringContainsString('no class declaration found', $guidance, 'the REASON is named, not implied');
+        $this->assertStringContainsString($pluginDir . '/BlogPlugin.php', $guidance, 'the FILE is named');
         $this->assertStringContainsString("Article::class . 'Repository'", $guidance);
-        $this->assertStringContainsString('use App\\Plugins\\BlogPlugin\\Entities\\Article;', $guidance);
-        // Driver-aware storage (T4): the hand-add snippet must carry the same factory + config
-        // wiring the generated plugin gets — snippet and stub must never teach two idioms.
-        $this->assertStringContainsString('RepositoryFactory::fromConfig($storage, Article::class)', $guidance);
-        $this->assertStringContainsString("->get(Config::class)->get('storage', [", $guidance);
-        $this->assertStringContainsString('use Milpa\\Data\\RepositoryFactory;', $guidance);
-        $this->assertStringContainsString('use Milpa\\Runtime\\Config;', $guidance);
+        $this->assertStringContainsString('RepositoryFactory::fromConfig', $guidance);
         $this->assertStringNotContainsString('new FileRepository(', $guidance);
+    }
+
+    /**
+     * F1 parity closed: an EXISTING plugin carrying `// {coa:services}` gets the registration at the
+     * anchor — EntityGenerator was the one composite still answering this case with prose.
+     */
+    public function testExistingMarkedPluginInsertsTheRegistrationAtTheAnchorNotDuplicated(): void
+    {
+        $pluginDir = $this->root . '/src/Plugins/BlogPlugin';
+        mkdir($pluginDir, 0o775, true);
+        $marked = "<?php\n\nfinal class BlogPlugin\n{\n    public function boot(): void\n    {\n        // {coa:services}\n    }\n}\n";
+        file_put_contents($pluginDir . '/BlogPlugin.php', $marked);
+
+        $ctx = new GenerationContext(
+            plugin: 'BlogPlugin',
+            name: 'Article',
+            options: ['flavor' => 'runtime', 'fields' => 'title:string'],
+            root: $this->root,
+        );
+
+        $result = (new EntityGenerator())->generate($ctx);
+
+        $this->assertCount(2, $result->files, 'the entity + the MERGED plugin');
+        $merged = $this->fileNamed($result->files, 'BlogPlugin.php');
+        $this->assertTrue($merged->merge);
+        $this->assertStringContainsString("\\App\\Plugins\\BlogPlugin\\Entities\\Article::class . 'Repository'", $merged->contents);
+        $this->assertStringContainsString('\\Milpa\\Data\\RepositoryFactory::fromConfig', $merged->contents);
+        $this->assertSame(1, substr_count($merged->contents, '// {coa:services}'), 'the anchor is preserved for a later run');
+        $this->assertPhpLints($merged->contents);
+        $this->assertStringContainsString('Auto-wired', (string) $result->guidance);
+
+        // Idempotent re-run: with the merged plugin landed, the same make adds nothing.
+        file_put_contents($pluginDir . '/BlogPlugin.php', $merged->contents);
+        $again = (new EntityGenerator())->generate($ctx);
+        $this->assertCount(1, $again->files, 'only the entity — the wired plugin is not re-planned');
+        $this->assertStringContainsString('Already wired', (string) $again->guidance);
+    }
+
+    /**
+     * P0.2 CLOSURE, the confession itself: an existing plugin with a boot() but NO marker used to
+     * get the exact registration back as prose ("add this to its boot()") — now it is MATERIALIZED:
+     * spliced structurally at the end of boot(), read back here from the planned file.
+     */
+    public function testExistingUnmarkedPluginGetsTheRegistrationSplicedIntoBoot(): void
+    {
+        $pluginDir = $this->root . '/src/Plugins/BlogPlugin';
+        mkdir($pluginDir, 0o775, true);
+        $unmarked = "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Plugins\\BlogPlugin;\n\n"
+            . "final class BlogPlugin\n{\n    public function boot(): void\n    {\n        \$this->ready = true;\n    }\n}\n";
+        file_put_contents($pluginDir . '/BlogPlugin.php', $unmarked);
+
+        $ctx = new GenerationContext(
+            plugin: 'BlogPlugin',
+            name: 'Article',
+            options: ['flavor' => 'runtime', 'fields' => 'title:string'],
+            root: $this->root,
+        );
+
+        $result = (new EntityGenerator())->generate($ctx);
+
+        $this->assertCount(2, $result->files, 'the entity + the MERGED plugin');
+        $merged = $this->fileNamed($result->files, 'BlogPlugin.php');
+        $this->assertTrue($merged->merge);
+        $this->assertLessThan(
+            strpos($merged->contents, 'registerService'),
+            strpos($merged->contents, '$this->ready = true;'),
+            'the registration lands at the END of boot(), after the existing statements',
+        );
+        $this->assertStringContainsString("\\App\\Plugins\\BlogPlugin\\Entities\\Article::class . 'Repository'", $merged->contents);
+        $this->assertPhpLints($merged->contents);
+        $this->assertStringContainsString('structurally', (string) $result->guidance);
+
+        // Idempotency (P0.2): running make entity twice must not duplicate the registration.
+        file_put_contents($pluginDir . '/BlogPlugin.php', $merged->contents);
+        $again = (new EntityGenerator())->generate($ctx);
+        $this->assertCount(1, $again->files);
+        $this->assertStringContainsString('Already wired', (string) $again->guidance);
+        $this->assertSame(
+            1,
+            substr_count((string) file_get_contents($pluginDir . '/BlogPlugin.php'), 'registerService'),
+            'one registration on disk, not two',
+        );
+    }
+
+    /** P0.2: boot() absent but the class parseable — a boot() carrying the registration is ADDED. */
+    public function testExistingPluginWithoutBootGetsABootAdded(): void
+    {
+        $pluginDir = $this->root . '/src/Plugins/BlogPlugin';
+        mkdir($pluginDir, 0o775, true);
+        $bootless = "<?php\n\nfinal class BlogPlugin\n{\n    public function install(): void\n    {\n    }\n}\n";
+        file_put_contents($pluginDir . '/BlogPlugin.php', $bootless);
+
+        $ctx = new GenerationContext(
+            plugin: 'BlogPlugin',
+            name: 'Article',
+            options: ['flavor' => 'runtime', 'fields' => 'title:string'],
+            root: $this->root,
+        );
+
+        $result = (new EntityGenerator())->generate($ctx);
+        $merged = $this->fileNamed($result->files, 'BlogPlugin.php');
+
+        $this->assertStringContainsString('public function boot(): void', $merged->contents);
+        $this->assertStringContainsString("\\App\\Plugins\\BlogPlugin\\Entities\\Article::class . 'Repository'", $merged->contents);
+        $this->assertStringContainsString('public function install(): void', $merged->contents, 'the existing member survives');
+        $this->assertPhpLints($merged->contents);
     }
 
     public function testDefaultTableIsDerivedFromTheEntityName(): void

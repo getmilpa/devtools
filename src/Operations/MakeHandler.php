@@ -22,6 +22,7 @@ use Milpa\DevTools\Make\Generators\ControllerGenerator;
 use Milpa\DevTools\Make\Generators\CrudGenerator;
 use Milpa\DevTools\Make\Generators\EntityGenerator;
 use Milpa\DevTools\Make\Generators\PluginGenerator;
+use Milpa\DevTools\Make\Generators\ResourceGenerator;
 use Milpa\DevTools\Make\Generators\ServiceGenerator;
 use Milpa\DevTools\Make\Generators\TestGenerator;
 use Milpa\DevTools\Make\Generators\ToolGenerator;
@@ -79,6 +80,7 @@ final class MakeHandler
             new EntityGenerator(),
             new PluginGenerator(),
             new CrudGenerator(),
+            new ResourceGenerator(),
             new ServiceGenerator(),
             new ToolGenerator(),
             new TestGenerator(),
@@ -302,7 +304,7 @@ final class MakeHandler
             $verifyOk
             && !$ensayo
             && ($input['no_verify'] ?? false) !== true
-            && ($que === 'crud' || $que === 'entity')
+            && ($que === 'crud' || $que === 'entity' || $que === 'resource')
         ) {
             $reporte = (new PostconditionVerifier())->verify($que, $contexto, $resultado->flavor ?? Flavor::Runtime);
             $postcondiciones = $reporte->toArray();

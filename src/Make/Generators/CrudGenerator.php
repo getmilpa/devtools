@@ -22,6 +22,7 @@ use Milpa\DevTools\Make\GeneratorInterface;
 use Milpa\DevTools\Make\MarkerInserter;
 use Milpa\DevTools\Make\Markers;
 use Milpa\DevTools\Make\PlannedFile;
+use Milpa\DevTools\Make\PluginSurgeon;
 use Milpa\DevTools\Make\StubRenderer;
 use Milpa\DevTools\Support\ComposerAutoload;
 
@@ -57,6 +58,7 @@ final class CrudGenerator implements GeneratorInterface
         private readonly StubRenderer $renderer = new StubRenderer(),
         private readonly ConventionDetector $detector = new ConventionDetector(),
         private readonly MarkerInserter $markers = new MarkerInserter(),
+        private readonly PluginSurgeon $surgeon = new PluginSurgeon(),
     ) {
         $this->stubs = \dirname(__DIR__) . '/stubs';
     }
@@ -165,7 +167,7 @@ final class CrudGenerator implements GeneratorInterface
             verifyKind: 'controller',
             verifyTarget: $controllerNamespace . '\\' . $controllerClass,
             flavor: Flavor::Runtime,
-            // F1: once autoWireCrudPlugin() has actually spliced the repository+controller
+            // F1: once wireExistingPlugin() has actually spliced the repository+controller
             // registration into the existing plugin's // {coa:services} marker, EntityGenerator's OWN
             // "add this to its boot() by hand" guidance (produced by the SEPARATE generateEntity()
             // call above, which knows nothing about the marker insertion) describes a step that is
@@ -205,14 +207,15 @@ final class CrudGenerator implements GeneratorInterface
      *   `routes()` returns all 5 REST routes — now ALSO carrying both
      *   {@see \Milpa\DevTools\Make\Markers::SERVICES}/{@see \Milpa\DevTools\Make\Markers::ROUTES}
      *   anchors for a later run.
-     * - One already exists AND carries either anchor (F1) -> the repository+controller registration
-     *   and/or the 5 REST routes are INSERTED at the matching marker(s) via
-     *   {@see \Milpa\DevTools\Make\MarkerInserter} — `$file` becomes the merged plugin, marked
-     *   {@see \Milpa\DevTools\Make\PlannedFile::$merge} so {@see \Milpa\DevTools\Make\WriteGuard} does
-     *   not require `--force` to write it. Whichever anchor is MISSING (a plugin that only implements
-     *   one of `boot()`/`routes()`'s conventions) still falls back to guidance for that half.
-     * - One already exists but carries NEITHER anchor -> unchanged pre-F1 behavior: it is NOT edited.
-     *   The exact snippets to hand-add are returned via guidance instead.
+     * - One already exists -> BOTH concerns are MATERIALIZED into it, each half resolved
+     *   independently: an already-present registration/route set is left alone, a `// {coa:*}`
+     *   anchor takes the {@see \Milpa\DevTools\Make\MarkerInserter} splice, and an unmarked half is
+     *   inserted structurally via {@see \Milpa\DevTools\Make\PluginSurgeon} — into `boot()` /
+     *   `routes()`'s literal return array, adding the method (and, for routes, the
+     *   `RouteProviderInterface` declaration) when absent. The merged plugin is marked
+     *   {@see \Milpa\DevTools\Make\PlannedFile::$merge} so {@see \Milpa\DevTools\Make\WriteGuard}
+     *   does not require `--force`. Only a half the surgeon refuses (unparseable file, no literal
+     *   return array) falls back to guidance NAMING the reason — see {@see self::wireExistingPlugin()}.
      *
      * Existence is checked on the FILESYSTEM only (`is_file()`), consistent with the rest of this
      * deterministic generate step.
@@ -234,64 +237,15 @@ final class CrudGenerator implements GeneratorInterface
         $repositoryId = "{$context->name}::class . 'Repository'";
 
         if (is_file($pluginPath)) {
-            $existing = (string) file_get_contents($pluginPath);
-            $hasServicesMarker = $this->markers->hasMarker($existing, Markers::SERVICES);
-            $hasRoutesMarker = $this->markers->hasMarker($existing, Markers::ROUTES);
-
-            if ($hasServicesMarker || $hasRoutesMarker) {
-                return $this->autoWireCrudPlugin(
-                    $context,
-                    $existing,
-                    $pluginPath,
-                    $entityNamespace,
-                    $controllerNamespace,
-                    $controllerClass,
-                    $table,
-                    $hasServicesMarker,
-                    $hasRoutesMarker,
-                );
-            }
-
-            $bootSnippet = "\$storage = \$this->container->get(Config::class)->get('storage', [\n"
-                . "    'driver' => 'file',\n"
-                . "    'path' => (new RootResolver())->resolve() . '/var/{$table}.json',\n"
-                . "]);\n"
-                . "\\assert(\\is_array(\$storage));\n"
-                . "\n"
-                . "\$repository = RepositoryFactory::fromConfig(\$storage, {$context->name}::class);\n\n"
-                . "\$this->container->registerService(\n"
-                . "    {$repositoryId},\n"
-                . "    \$repository,\n"
-                . ");\n"
-                . "\$this->container->registerService(\n"
-                . "    {$controllerClass}::class,\n"
-                . "    new {$controllerClass}(\$repository),\n"
-                . ');';
-
-            $routesSnippet = "new Route(path: '/{$table}', methods: HttpMethod::GET, name: '{$table}_index', "
-                . "handler: new HandlerReference({$controllerClass}::class, 'index')),\n"
-                . "new Route(path: '/{$table}/{id}', methods: HttpMethod::GET, name: '{$table}_show', "
-                . "handler: new HandlerReference({$controllerClass}::class, 'show')),\n"
-                . "new Route(path: '/{$table}', methods: HttpMethod::POST, name: '{$table}_create', "
-                . "handler: new HandlerReference({$controllerClass}::class, 'create')),\n"
-                . "new Route(path: '/{$table}/{id}', methods: HttpMethod::PUT, name: '{$table}_update', "
-                . "handler: new HandlerReference({$controllerClass}::class, 'update')),\n"
-                . "new Route(path: '/{$table}/{id}', methods: HttpMethod::DELETE, name: '{$table}_delete', "
-                . "handler: new HandlerReference({$controllerClass}::class, 'delete')),";
-
-            $guidance = "A plugin already exists at {$pluginPath} — it is left untouched (editing "
-                . "existing host code is outside this generator's deterministic write model). Add "
-                . "`use {$entityNamespace}\\{$context->name};`, `use {$controllerNamespace}\\{$controllerClass};`, "
-                . '`use Milpa\\Data\\RepositoryFactory;`, `use Milpa\\Runtime\\Config;`, `use Milpa\\Http\\HttpMethod;`, '
-                . '`use Milpa\\Http\\Routing\\HandlerReference;`, `use Milpa\\Http\\Routing\\Route;`, '
-                . '`use Milpa\\Runtime\\Http\\RouteProviderInterface;` and `use Milpa\\Runtime\\Support\\RootResolver;` '
-                . "imports, implement RouteProviderInterface if not already, add this to its boot():\n\n{$bootSnippet}\n\n"
-                . "and this to its routes():\n\n{$routesSnippet}\n\n"
-                . "The backend is one config line: set storage.driver in config/app.php to file, sqlite, "
-                . "mysql or memory (with its path/dsn); with no storage block the default above persists "
-                . "to var/{$table}.json. Resolve the repository later via \$container->get({$repositoryId}).";
-
-            return ['file' => null, 'guidance' => $guidance, 'suppressEntityGuidance' => false];
+            return $this->wireExistingPlugin(
+                $context,
+                (string) file_get_contents($pluginPath),
+                $pluginPath,
+                $entityNamespace,
+                $controllerNamespace,
+                $controllerClass,
+                $table,
+            );
         }
 
         $pluginContents = $this->renderer->render($this->stubs . '/crud-plugin.runtime.php.stub', [
@@ -315,19 +269,24 @@ final class CrudGenerator implements GeneratorInterface
     }
 
     /**
-     * F1: auto-wires into `$existing` at whichever of {@see Markers::SERVICES}/{@see Markers::ROUTES}
-     * it carries — called only once {@see wireCrudPlugin()} has confirmed at least one is present.
-     * Each insertion uses fully-qualified inline class references (`\Foo\Bar::class`) rather than
-     * adding `use` imports, so this never has to touch (or even inspect) `$existing`'s import block —
-     * a second, riskier anchor this deterministic splice deliberately avoids needing.
+     * Materializes the repository+controller registration AND the 5 REST routes into an EXISTING
+     * plugin file, each half resolved independently through the same ladder: a half already present
+     * (semantic needle — the same one {@see \Milpa\DevTools\Make\PostconditionVerifier} checks) is
+     * left alone; a `// {coa:*}` anchor takes the {@see \Milpa\DevTools\Make\MarkerInserter} splice;
+     * an unmarked half is inserted structurally via {@see \Milpa\DevTools\Make\PluginSurgeon}; and
+     * only a half the surgeon refuses falls back to guidance NAMING the reason. Every snippet uses
+     * fully-qualified inline class references (`\Foo\Bar::class`) rather than `use` imports, so no
+     * path ever has to touch (or even inspect) `$existing`'s import block — a second, riskier
+     * anchor this deterministic splice deliberately avoids needing.
      *
-     * `suppressEntityGuidance` is true exactly when {@see Markers::SERVICES} was found (the
-     * repository+controller registration was itself auto-wired) — see {@see generateRuntime()} for
-     * why that specific case needs to drop {@see EntityGenerator}'s own separate guidance.
+     * `suppressEntityGuidance` is true exactly when the boot() half was handled here (wired, or
+     * found already wired) — {@see EntityGenerator}'s own separate "add this to its boot()" advice,
+     * produced by the isolated {@see generateEntity()} call, would then describe a step already done
+     * and read as self-contradictory next to "Auto-wired"; see {@see generateRuntime()}.
      *
-     * @return array{file: PlannedFile, guidance: string, suppressEntityGuidance: bool}
+     * @return array{file: ?PlannedFile, guidance: string, suppressEntityGuidance: bool}
      */
-    private function autoWireCrudPlugin(
+    private function wireExistingPlugin(
         GenerationContext $context,
         string $existing,
         string $pluginPath,
@@ -335,85 +294,137 @@ final class CrudGenerator implements GeneratorInterface
         string $controllerNamespace,
         string $controllerClass,
         string $table,
-        bool $hasServicesMarker,
-        bool $hasRoutesMarker,
     ): array {
         $repositoryId = "{$context->name}::class . 'Repository'";
         $entityFqcn = $entityNamespace . '\\' . $context->name;
         $controllerFqcn = $controllerNamespace . '\\' . $controllerClass;
         $force = $context->flag('force');
+        $reason = $this->surgeon->diagnose($existing);
 
         $merged = $existing;
-        $wiredMarkers = [];
-        $missingGuidance = [];
+        $wired = [];
+        $fallbacks = [];
+        $bootHandled = false;
 
-        if ($hasServicesMarker) {
-            // Grafted through RepositoryFactory, exactly like EntityGenerator's own snippet — not a
-            // hardcoded FileRepository. `milpa/data` ships four backends behind one interface and the
-            // factory picks by config; pinning the generated wiring to JSON files made the choice for
-            // the app and, worse, made `make entity` and `make crud` answer the same question two
-            // different ways. Someone who moved to SQLite had to know that the second command had
-            // quietly opted them out.
-            $bootSnippet = "\$storage = \$this->container->get(\\Milpa\\Runtime\\Config::class)->get('storage', [\n"
-                . "    'driver' => 'file',\n"
-                . "    'path' => (new \\Milpa\\Runtime\\Support\\RootResolver())->resolve() . '/var/{$table}.json',\n"
-                . "]);\n"
-                . "\\assert(\\is_array(\$storage));\n"
-                . "\n"
-                . "\$repository = \\Milpa\\Data\\RepositoryFactory::fromConfig(\$storage, \\{$entityFqcn}::class);\n\n"
-                . "\$this->container->registerService(\n"
-                . "    \\{$entityFqcn}::class . 'Repository',\n"
-                . "    \$repository,\n"
-                . ");\n"
-                . "\$this->container->registerService(\n"
-                . "    \\{$controllerFqcn}::class,\n"
-                . "    new \\{$controllerFqcn}(\$repository),\n"
-                . ');';
-
+        $bootSnippet = $this->fullyQualifiedBootSnippet($entityFqcn, $controllerFqcn, $table);
+        if (str_contains($merged, $repositoryId)) {
+            $bootHandled = true;
+        } elseif ($this->markers->hasMarker($merged, Markers::SERVICES)) {
             $merged = $this->markers->insertBefore($merged, Markers::SERVICES, $bootSnippet, $force);
-            $wiredMarkers[] = Markers::SERVICES;
+            $wired[] = 'boot() at // {' . Markers::SERVICES . '}';
+            $bootHandled = true;
+        } elseif ($reason === null) {
+            try {
+                $merged = $this->surgeon->hasMethod($merged, 'boot')
+                    ? $this->surgeon->insertIntoMethod($merged, 'boot', $bootSnippet)
+                    : $this->surgeon->appendMethod(
+                        $merged,
+                        $this->surgeon->wrapMethod('public function boot(): void', $bootSnippet),
+                    );
+                $wired[] = 'boot(), structurally';
+                $bootHandled = true;
+            } catch (\RuntimeException $e) {
+                $fallbacks[] = 'The repository+controller registration could not be inserted ('
+                    . $e->getMessage() . ") — add this to its boot() (fully qualified, no imports "
+                    . "needed):\n\n{$bootSnippet}";
+            }
         } else {
-            $missingGuidance[] = "No // {" . Markers::SERVICES . "} marker — add the repository+controller "
-                . "registration to its boot() by hand:\n\n\$storage = \$this->container->get(Config::class)"
-                . "->get('storage', ['driver' => 'file', 'path' => (new RootResolver())->resolve() . "
-                . "'/var/{$table}.json']);\n\$repository = RepositoryFactory::fromConfig(\$storage, "
-                . "{$context->name}::class);\n\n\$this->container->registerService("
-                . "{$repositoryId}, \$repository);\n\$this->container->registerService({$controllerClass}::class, "
-                . "new {$controllerClass}(\$repository));";
+            $fallbacks[] = "The repository+controller registration could not be inserted ({$reason}) "
+                . "— add this to its boot() (fully qualified, no imports needed):\n\n{$bootSnippet}";
         }
 
-        if ($hasRoutesMarker) {
-            $routesSnippet = "new \\Milpa\\Http\\Routing\\Route(path: '/{$table}', methods: \\Milpa\\Http\\HttpMethod::GET, "
-                . "name: '{$table}_index', handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'index')),\n"
-                . "new \\Milpa\\Http\\Routing\\Route(path: '/{$table}/{id}', methods: \\Milpa\\Http\\HttpMethod::GET, "
-                . "name: '{$table}_show', handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'show')),\n"
-                . "new \\Milpa\\Http\\Routing\\Route(path: '/{$table}', methods: \\Milpa\\Http\\HttpMethod::POST, "
-                . "name: '{$table}_create', handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'create')),\n"
-                . "new \\Milpa\\Http\\Routing\\Route(path: '/{$table}/{id}', methods: \\Milpa\\Http\\HttpMethod::PUT, "
-                . "name: '{$table}_update', handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'update')),\n"
-                . "new \\Milpa\\Http\\Routing\\Route(path: '/{$table}/{id}', methods: \\Milpa\\Http\\HttpMethod::DELETE, "
-                . "name: '{$table}_delete', handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'delete')),";
-
+        $routesSnippet = $this->fullyQualifiedRoutesSnippet($controllerFqcn, $table);
+        if (str_contains($merged, "'{$table}_index'")) {
+            // all 5 names travel together in every shape this engine emits; index stands for the set.
+        } elseif ($this->markers->hasMarker($merged, Markers::ROUTES)) {
             $merged = $this->markers->insertBefore($merged, Markers::ROUTES, $routesSnippet, $force);
-            $wiredMarkers[] = Markers::ROUTES;
+            $wired[] = 'routes() at // {' . Markers::ROUTES . '}';
+        } elseif ($reason === null) {
+            try {
+                if ($this->surgeon->hasMethod($merged, 'routes')) {
+                    $merged = $this->surgeon->insertIntoReturnArray($merged, 'routes', $routesSnippet);
+                } else {
+                    $merged = $this->surgeon->appendMethod(
+                        $this->surgeon->ensureImplements($merged, 'Milpa\\Runtime\\Http\\RouteProviderInterface'),
+                        $this->surgeon->wrapMethod(
+                            '/** @return list<\\Milpa\\Http\\Routing\\Route> */' . "\npublic function routes(): array",
+                            "return [\n" . (string) preg_replace('/^(?=.)/m', '    ', $routesSnippet) . "\n];",
+                        ),
+                    );
+                }
+                $wired[] = 'routes(), structurally';
+            } catch (\RuntimeException $e) {
+                $fallbacks[] = 'The 5 REST routes could not be inserted (' . $e->getMessage()
+                    . ") — add these to its routes() (fully qualified, no imports needed):\n\n{$routesSnippet}";
+            }
         } else {
-            $missingGuidance[] = "No // {" . Markers::ROUTES . '} marker — add the 5 REST routes to its '
-                . "routes() by hand (see make:controller's own guidance shape for the Route/HandlerReference "
-                . 'imports needed).';
+            $fallbacks[] = "The 5 REST routes could not be inserted ({$reason}) — add these to its "
+                . "routes() (fully qualified, no imports needed):\n\n{$routesSnippet}";
         }
 
-        $wiredList = implode(', ', array_map(static fn (string $marker): string => '// {' . $marker . '}', $wiredMarkers));
-        $guidance = "Auto-wired into the existing plugin at {$pluginPath} ({$wiredList} marker(s) found). "
+        if ($merged === $existing) {
+            $guidance = $fallbacks === []
+                ? "Already wired: {$pluginPath} already registers the {$context->name} repository and "
+                    . 'declares its routes — nothing to add. Resolve the repository later via '
+                    . "\$container->get({$repositoryId})."
+                : "A plugin already exists at {$pluginPath} but could not be auto-wired — the file is "
+                    . "left untouched.\n\n" . implode("\n\n", $fallbacks);
+
+            return ['file' => null, 'guidance' => $guidance, 'suppressEntityGuidance' => $bootHandled];
+        }
+
+        $guidance = "Auto-wired into the existing plugin at {$pluginPath} (" . implode('; ', $wired) . '). '
             . "Resolve the repository later via \$container->get({$repositoryId}).";
-        if ($missingGuidance !== []) {
-            $guidance .= "\n\n" . implode("\n\n", $missingGuidance);
+        if ($fallbacks !== []) {
+            $guidance .= "\n\n" . implode("\n\n", $fallbacks);
         }
 
         return [
             'file' => new PlannedFile($pluginPath, $merged, merge: true),
             'guidance' => $guidance,
-            'suppressEntityGuidance' => $hasServicesMarker,
+            'suppressEntityGuidance' => $bootHandled,
         ];
+    }
+
+    /**
+     * The combined repository+controller `boot()` registration, fully qualified inline — grafted
+     * through RepositoryFactory, exactly like EntityGenerator's own snippet, not a hardcoded
+     * FileRepository: `milpa/data` ships four backends behind one interface and the factory picks by
+     * config; pinning the generated wiring to JSON files made the choice for the app and made
+     * `make entity` and `make crud` answer the same question two different ways.
+     */
+    private function fullyQualifiedBootSnippet(string $entityFqcn, string $controllerFqcn, string $table): string
+    {
+        return "\$storage = \$this->container->get(\\Milpa\\Runtime\\Config::class)->get('storage', [\n"
+            . "    'driver' => 'file',\n"
+            . "    'path' => (new \\Milpa\\Runtime\\Support\\RootResolver())->resolve() . '/var/{$table}.json',\n"
+            . "]);\n"
+            . "\\assert(\\is_array(\$storage));\n"
+            . "\n"
+            . "\$repository = \\Milpa\\Data\\RepositoryFactory::fromConfig(\$storage, \\{$entityFqcn}::class);\n\n"
+            . "\$this->container->registerService(\n"
+            . "    \\{$entityFqcn}::class . 'Repository',\n"
+            . "    \$repository,\n"
+            . ");\n"
+            . "\$this->container->registerService(\n"
+            . "    \\{$controllerFqcn}::class,\n"
+            . "    new \\{$controllerFqcn}(\$repository),\n"
+            . ');';
+    }
+
+    /** The 5 REST route entries (one per line, trailing commas), fully qualified inline. */
+    private function fullyQualifiedRoutesSnippet(string $controllerFqcn, string $table): string
+    {
+        return "new \\Milpa\\Http\\Routing\\Route(path: '/{$table}', methods: \\Milpa\\Http\\HttpMethod::GET, "
+            . "name: '{$table}_index', handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'index')),\n"
+            . "new \\Milpa\\Http\\Routing\\Route(path: '/{$table}/{id}', methods: \\Milpa\\Http\\HttpMethod::GET, "
+            . "name: '{$table}_show', handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'show')),\n"
+            . "new \\Milpa\\Http\\Routing\\Route(path: '/{$table}', methods: \\Milpa\\Http\\HttpMethod::POST, "
+            . "name: '{$table}_create', handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'create')),\n"
+            . "new \\Milpa\\Http\\Routing\\Route(path: '/{$table}/{id}', methods: \\Milpa\\Http\\HttpMethod::PUT, "
+            . "name: '{$table}_update', handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'update')),\n"
+            . "new \\Milpa\\Http\\Routing\\Route(path: '/{$table}/{id}', methods: \\Milpa\\Http\\HttpMethod::DELETE, "
+            . "name: '{$table}_delete', handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'delete')),";
     }
 
     /**

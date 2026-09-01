@@ -21,7 +21,7 @@
   "require": {
     "php": ">=8.3",
     "composer-runtime-api": "^2.2",
-    "milpa/command": ">=0.7 <1.0",
+    "milpa/command": ">=0.20 <1.0",
     "milpa/data": ">=0.2 <1.0",
     "milpa/plugin": ">=0.7 <1.0",
     "milpa/core": ">=0.6.2 <1.0"
@@ -36,7 +36,7 @@
     "psr/http-message": "^2.0"
   },
   "suggest": {
-    "doctrine/orm": "Required to scaffold or verify Doctrine entities (coa:make entity / EntityVerifier) \u2014 the CONTROLLER path never needs it."
+    "doctrine/orm": "Required to scaffold or verify Doctrine entities (coa:make entity / EntityVerifier) — the CONTROLLER path never needs it."
   },
   "autoload": {
     "psr-4": {

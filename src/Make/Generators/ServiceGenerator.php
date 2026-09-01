@@ -20,6 +20,7 @@ use Milpa\DevTools\Make\GenerationContext;
 use Milpa\DevTools\Make\GenerationResult;
 use Milpa\DevTools\Make\GeneratorInterface;
 use Milpa\DevTools\Make\MarkerInserter;
+use Milpa\DevTools\Make\PluginSurgeon;
 use Milpa\DevTools\Make\Markers;
 use Milpa\DevTools\Make\PlannedFile;
 use Milpa\DevTools\Make\StubRenderer;
@@ -44,10 +45,9 @@ use Milpa\DevTools\Support\ComposerAutoload;
  * - One already exists AND carries the {@see \Milpa\DevTools\Make\Markers::SERVICES} anchor (F1) ->
  *   the registration is INSERTED at that marker via {@see \Milpa\DevTools\Make\MarkerInserter} — a
  *   deterministic splice at a known anchor, not a rewrite — see {@see self::wireService()}.
- * - One already exists but carries NO marker (a hand-written plugin, or one predating F1) -> it is
- *   NOT edited (parsing/rewriting arbitrary host PHP is exactly the fragile AST surgery this
- *   generator's deterministic `PlannedFile`/`WriteGuard` model exists to avoid). The exact
- *   `registerService()` snippet to add by hand is returned via {@see GenerationResult::$guidance} instead.
+ * - One already exists but carries NO marker -> the registration is spliced STRUCTURALLY into its
+ *   `boot()` via {@see \Milpa\DevTools\Make\PluginSurgeon} (same ladder as `make:crud`); only a
+ *   file the surgeon refuses (naming the reason) falls back to a guidance snippet.
  *
  * Only a RUNTIME convention exists — see {@see generate()} for why LEGACY throws.
  */
@@ -59,6 +59,7 @@ final class ServiceGenerator implements GeneratorInterface
         private readonly StubRenderer $renderer = new StubRenderer(),
         private readonly ConventionDetector $detector = new ConventionDetector(),
         private readonly MarkerInserter $markers = new MarkerInserter(),
+        private readonly PluginSurgeon $surgeon = new PluginSurgeon(),
     ) {
         $this->stubs = \dirname(__DIR__) . '/stubs';
     }
@@ -164,8 +165,9 @@ final class ServiceGenerator implements GeneratorInterface
      * - One exists AND carries the anchor -> the registration is INSERTED at the marker (F1) via
      *   {@see MarkerInserter} — `$file` becomes the merged plugin, marked {@see PlannedFile::$merge}
      *   so {@see WriteGuard} does not require `--force` to write it.
-     * - One exists but carries no anchor -> unchanged pre-F1 behavior: guidance only, the file is left
-     *   untouched.
+     * - One exists but carries no anchor -> the semantic needle is checked first (already wired ->
+     *   nothing to add), then the registration is spliced structurally into `boot()` via
+     *   {@see PluginSurgeon}; guidance remains ONLY for a file the surgeon refuses, naming the reason.
      *
      * Existence is checked on the FILESYSTEM only (`is_file()`), not via reflection/autoloading —
      * consistent with the rest of this deterministic generate step, and safe to call from a
@@ -205,22 +207,45 @@ final class ServiceGenerator implements GeneratorInterface
                 return ['file' => new PlannedFile($pluginPath, $merged, merge: true), 'guidance' => $guidance];
             }
 
-            $snippet = "\$this->container->registerService(\n"
-                . "    {$registrationClass}::class,\n"
-                . "    new {$context->name}(),\n"
-                . ');';
+            // No anchor — the pre-F1 contract returned the snippet as prose here, narrating a
+            // consequence this generator fully knows. It now follows the same resolution ladder as
+            // {@see CrudGenerator::wireExistingPlugin()}: semantic needle (already wired) ->
+            // structural splice via the surgeon -> guidance ONLY on refusal, naming the reason.
+            $registrationFqcn = $serviceNamespace . '\\' . $registrationClass;
+            $serviceFqcn = $serviceNamespace . '\\' . $context->name;
+            $snippet = $this->registrationSnippet($registrationFqcn, $serviceFqcn);
 
-            $importLines = ["`use {$serviceNamespace}\\{$context->name};`"];
-            if ($interfaceClass !== null) {
-                $importLines[] = "`use {$serviceNamespace}\\{$interfaceClass};`";
+            if (str_contains($existing, $registrationClass . '::class')) {
+                $guidance = "Already wired: {$pluginPath} already registers {$registrationClass} — "
+                    . 'nothing to add. Resolve it later via $container->get('
+                    . $registrationClass . '::class).';
+
+                return ['file' => null, 'guidance' => $guidance];
             }
-            $importsText = \count($importLines) > 1
-                ? implode(', ', \array_slice($importLines, 0, -1)) . ' and ' . end($importLines)
-                : $importLines[0];
 
-            $guidance = "A plugin already exists at {$pluginPath} — it is left untouched (editing "
-                . "existing host code is outside this generator's deterministic write model). Add "
-                . "{$importsText} import" . (\count($importLines) > 1 ? 's' : '') . " and this to its boot():\n\n{$snippet}\n\n"
+            $reason = $this->surgeon->diagnose($existing);
+            if ($reason === null) {
+                try {
+                    $merged = $this->surgeon->hasMethod($existing, 'boot')
+                        ? $this->surgeon->insertIntoMethod($existing, 'boot', $snippet)
+                        : $this->surgeon->appendMethod(
+                            $existing,
+                            $this->surgeon->wrapMethod('public function boot(): void', $snippet),
+                        );
+
+                    $guidance = "Auto-wired into the existing plugin at {$pluginPath} (boot(), "
+                        . 'structurally). Resolve it later via $container->get('
+                        . $registrationClass . '::class).';
+
+                    return ['file' => new PlannedFile($pluginPath, $merged, merge: true), 'guidance' => $guidance];
+                } catch (\RuntimeException $e) {
+                    $reason = $e->getMessage();
+                }
+            }
+
+            $guidance = "A plugin already exists at {$pluginPath} but could not be auto-wired "
+                . "({$reason}) — the file is left untouched. Add this to its boot() (fully "
+                . "qualified, no imports needed):\n\n{$snippet}\n\n"
                 . "Resolve it later via \$container->get({$registrationClass}::class).";
 
             return ['file' => null, 'guidance' => $guidance];

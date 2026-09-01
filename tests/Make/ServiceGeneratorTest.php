@@ -152,11 +152,64 @@ final class ServiceGeneratorTest extends TestCase
         $this->assertPhpLints($code);
     }
 
-    public function testExistingPluginIsNotEditedAndGetsARegistrationSnippetInGuidanceInstead(): void
+    public function testAMarkerlessPluginWithABootGetsTheRegistrationSplicedStructurally(): void
     {
         $pluginDir = $this->root . '/src/Plugins/BoardPlugin';
         mkdir($pluginDir, 0o775, true);
-        $existing = "<?php\n// hand-written plugin — must not be touched\n";
+        $existing = "<?php\n\nnamespace App\\Plugins\\BoardPlugin;\n\nfinal class BoardPlugin\n{\n"
+            . "    public function boot(): void\n    {\n        // existing wiring stays\n    }\n}\n";
+        file_put_contents($pluginDir . '/BoardPlugin.php', $existing);
+
+        $ctx = new GenerationContext(
+            plugin: 'BoardPlugin',
+            name: 'WorkflowService',
+            options: ['flavor' => 'runtime'],
+            root: $this->root,
+        );
+
+        $result = (new ServiceGenerator())->generate($ctx);
+        $plugin = $this->fileNamed($result->files, 'BoardPlugin.php');
+
+        $this->assertTrue($plugin->merge, 'the spliced plugin is a merge, not an overwrite');
+        $this->assertStringContainsString('// existing wiring stays', $plugin->contents);
+        $this->assertStringContainsString(
+            '\\App\\Plugins\\BoardPlugin\\Services\\WorkflowService::class',
+            $plugin->contents,
+        );
+        $this->assertStringContainsString('Auto-wired', (string) $result->guidance);
+        $this->assertPhpLints($plugin->contents);
+    }
+
+    public function testAMarkerlessPluginWithoutABootGainsOneCarryingTheRegistration(): void
+    {
+        $pluginDir = $this->root . '/src/Plugins/BoardPlugin';
+        mkdir($pluginDir, 0o775, true);
+        $existing = "<?php\n\nnamespace App\\Plugins\\BoardPlugin;\n\nfinal class BoardPlugin\n{\n}\n";
+        file_put_contents($pluginDir . '/BoardPlugin.php', $existing);
+
+        $ctx = new GenerationContext(
+            plugin: 'BoardPlugin',
+            name: 'WorkflowService',
+            options: ['flavor' => 'runtime'],
+            root: $this->root,
+        );
+
+        $result = (new ServiceGenerator())->generate($ctx);
+        $plugin = $this->fileNamed($result->files, 'BoardPlugin.php');
+
+        $this->assertStringContainsString('public function boot(): void', $plugin->contents);
+        $this->assertStringContainsString('registerService(', $plugin->contents);
+        $this->assertPhpLints($plugin->contents);
+    }
+
+    public function testAPluginAlreadyRegisteringTheServiceIsLeftAloneAndSaysSo(): void
+    {
+        $pluginDir = $this->root . '/src/Plugins/BoardPlugin';
+        mkdir($pluginDir, 0o775, true);
+        $existing = "<?php\n\nnamespace App\\Plugins\\BoardPlugin;\n\nfinal class BoardPlugin\n{\n"
+            . "    public function boot(): void\n    {\n        \$this->container->registerService(\n"
+            . "            \\App\\Plugins\\BoardPlugin\\Services\\WorkflowService::class,\n"
+            . "            new \\App\\Plugins\\BoardPlugin\\Services\\WorkflowService(),\n        );\n    }\n}\n";
         file_put_contents($pluginDir . '/BoardPlugin.php', $existing);
 
         $ctx = new GenerationContext(
@@ -168,17 +221,34 @@ final class ServiceGeneratorTest extends TestCase
 
         $result = (new ServiceGenerator())->generate($ctx);
 
-        $this->assertCount(1, $result->files, 'the existing plugin file must not be (re)written');
+        $this->assertCount(1, $result->files, 'only the service class is planned — nothing to re-wire');
         $this->assertSame('WorkflowService.php', basename($result->files[0]->path));
-        $this->assertSame($existing, file_get_contents($pluginDir . '/BoardPlugin.php'), 'existing plugin file must be untouched on disk');
+        $this->assertStringContainsString('Already wired', (string) $result->guidance);
+    }
 
-        $this->assertNotNull($result->guidance);
+    public function testAPluginTheSurgeonRefusesFallsBackToGuidanceNamingTheReason(): void
+    {
+        $pluginDir = $this->root . '/src/Plugins/BoardPlugin';
+        mkdir($pluginDir, 0o775, true);
+        $existing = "<?php\nnamespace App\\Plugins\\BoardPlugin;\nfinal class BoardPlugin\n{\n"
+            . "    public function boot(): void\n    {\n";
+        file_put_contents($pluginDir . '/BoardPlugin.php', $existing);
+
+        $ctx = new GenerationContext(
+            plugin: 'BoardPlugin',
+            name: 'WorkflowService',
+            options: ['flavor' => 'runtime'],
+            root: $this->root,
+        );
+
+        $result = (new ServiceGenerator())->generate($ctx);
+
+        $this->assertCount(1, $result->files, 'the refused plugin file must not be (re)written');
+        $this->assertSame('WorkflowService.php', basename($result->files[0]->path));
+        $this->assertSame($existing, file_get_contents($pluginDir . '/BoardPlugin.php'), 'refused file untouched on disk');
         $guidance = (string) $result->guidance;
-        $this->assertStringContainsString('already exists', $guidance);
+        $this->assertStringContainsString('could not be auto-wired', $guidance);
         $this->assertStringContainsString('registerService(', $guidance);
-        $this->assertStringContainsString('WorkflowService::class,', $guidance);
-        $this->assertStringContainsString('new WorkflowService(),', $guidance);
-        $this->assertStringContainsString('use App\\Plugins\\BoardPlugin\\Services\\WorkflowService;', $guidance);
     }
 
     /**
@@ -280,11 +350,13 @@ final class ServiceGeneratorTest extends TestCase
         $this->assertSame(2, substr_count($twice, 'new \\App\\Plugins\\BoardPlugin\\Services\\WorkflowService()'));
     }
 
-    public function testExistingPluginWithInterfaceFlagListsBothImportsInGuidance(): void
+    public function testInterfaceFlagSplicesTheInterfaceRegistrationIntoAMarkerlessPlugin(): void
     {
         $pluginDir = $this->root . '/src/Plugins/BoardPlugin';
         mkdir($pluginDir, 0o775, true);
-        file_put_contents($pluginDir . '/BoardPlugin.php', "<?php\n// hand-written plugin\n");
+        $existing = "<?php\n\nnamespace App\\Plugins\\BoardPlugin;\n\nfinal class BoardPlugin\n{\n"
+            . "    public function boot(): void\n    {\n    }\n}\n";
+        file_put_contents($pluginDir . '/BoardPlugin.php', $existing);
 
         $ctx = new GenerationContext(
             plugin: 'BoardPlugin',
@@ -294,13 +366,19 @@ final class ServiceGeneratorTest extends TestCase
         );
 
         $result = (new ServiceGenerator())->generate($ctx);
-        $guidance = (string) $result->guidance;
+        $plugin = $this->fileNamed($result->files, 'BoardPlugin.php');
 
-        $this->assertStringContainsString('use App\\Plugins\\BoardPlugin\\Services\\WorkflowService;', $guidance);
-        $this->assertStringContainsString('use App\\Plugins\\BoardPlugin\\Services\\WorkflowServiceInterface;', $guidance);
-        $this->assertStringContainsString(' and ', $guidance);
-        $this->assertStringContainsString('imports', $guidance);
-        $this->assertStringContainsString('WorkflowServiceInterface::class,', $guidance);
+        $this->assertStringContainsString(
+            '\\App\\Plugins\\BoardPlugin\\Services\\WorkflowServiceInterface::class',
+            $plugin->contents,
+            'the registration id is the INTERFACE — callers resolve the contract, not the concretion',
+        );
+        $this->assertStringContainsString(
+            'new \\App\\Plugins\\BoardPlugin\\Services\\WorkflowService()',
+            $plugin->contents,
+        );
+        $this->assertStringContainsString('Auto-wired', (string) $result->guidance);
+        $this->assertPhpLints($plugin->contents);
     }
 
     public function testLegacyFlavorThrowsAClearError(): void

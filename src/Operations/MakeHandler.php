@@ -25,6 +25,7 @@ use Milpa\DevTools\Make\Generators\PluginGenerator;
 use Milpa\DevTools\Make\Generators\ServiceGenerator;
 use Milpa\DevTools\Make\Generators\TestGenerator;
 use Milpa\DevTools\Make\Generators\ToolGenerator;
+use Milpa\DevTools\Make\PostconditionVerifier;
 use Milpa\DevTools\Make\VerifyRunner;
 use Milpa\DevTools\Make\WriteGuard;
 use Milpa\DevTools\Support\RootResolver;
@@ -104,9 +105,16 @@ final class MakeHandler
      * la forma de preguntar «¿qué harías?» sin causarlo — y la que una superficie de agente debería
      * usar antes de la de verdad.
      *
+     * When the produced class passes its shape verify but a promised CONSEQUENCE is missing — a
+     * referenced enum with no file, a repository/controller/routes registration that landed as
+     * guidance instead of code — the run is `incomplete`: `ok` is `false`, an `incomplete` flag is
+     * set, and the `postconditions` report names what is missing. The written files are NOT rolled
+     * back in that case (they are valid, only unwired); rollback stays reserved for a shape-verify
+     * failure. See {@see \Milpa\DevTools\Make\PostconditionVerifier}.
+     *
      * @param array<string, mixed> $input
      *
-     * @return array{ok: bool, files: list<array{path: string, action: string}>, verify: array{ok: bool, output: string}|null, guidance: string|null, error?: string}
+     * @return array{ok: bool, files: list<array{path: string, action: string}>, verify: array{ok: bool, output: string}|null, guidance: string|null, postconditions?: array{ok: bool, checks: list<array{name: string, ok: bool, required: bool, detail: string}>, missing: list<string>}, incomplete?: bool, error?: string}
      */
     public function handle(array $input): array
     {
@@ -256,9 +264,9 @@ final class MakeHandler
             );
         }
 
-        $ok = $verify === null || $verify['ok'];
+        $verifyOk = $verify === null || $verify['ok'];
 
-        if (!$ok) {
+        if (!$verifyOk) {
             $borrados = [];
             foreach ($nuevos as $ruta) {
                 if (is_file($ruta)) {
@@ -278,6 +286,31 @@ final class MakeHandler
             }
         }
 
+        // POSTCONDICIONES: que `ok:true` SIGNIFIQUE que las consecuencias prometidas existen.
+        //
+        // El verify de forma dice que la clase producida cumple su convención; no dice nada de lo que
+        // esa clase NECESITA para no colgar —el enum que un campo nombró, el registro del repositorio,
+        // las rutas—. Un agente real molió ~18 ediciones y 20 negativas por referencias colgadas que
+        // `make` reportaba como PASS. Aquí se le pregunta al disco por cada consecuencia; si falta una
+        // OBLIGATORIA, el veredicto es `incomplete`, no PASS —y NO se deshace lo escrito: los archivos
+        // son válidos, sólo les falta el cableado, así que borrarlos sería castigar al que casi llegó—.
+        // Corre bajo la misma compuerta que el verify: `dry_run` y `no_verify` la saltan, porque quien
+        // pidió no verificar pidió no verificar.
+        $postcondiciones = null;
+        $incompleto = false;
+        if (
+            $verifyOk
+            && !$ensayo
+            && ($input['no_verify'] ?? false) !== true
+            && ($que === 'crud' || $que === 'entity')
+        ) {
+            $reporte = (new PostconditionVerifier())->verify($que, $contexto, $resultado->flavor ?? Flavor::Runtime);
+            $postcondiciones = $reporte->toArray();
+            $incompleto = !$reporte->ok();
+        }
+
+        $ok = $verifyOk && !$incompleto;
+
         // La GUÍA sí llega a quien llamó.
         //
         // Los seis generadores la producen —«registra este plugin en config/plugins.php», «agrega el
@@ -285,10 +318,19 @@ final class MakeHandler
         // en todo el paquete. Con `plugin` cableado eso pasa de desperdicio a defecto: un plugin recién
         // andamiado que el kernel no bootea hasta que alguien lo declara, y nada que lo diga, es un
         // artefacto que parece terminado y no lo está. Se omite cuando se deshizo lo escrito: decirle a
-        // alguien cómo seguir con archivos que ya no existen es mandarlo a un lugar vacío.
-        $guia = $ok ? $resultado->guidance : null;
+        // alguien cómo seguir con archivos que ya no existen es mandarlo a un lugar vacío. Un
+        // `incomplete` SÍ la conserva: ahí la guía es justo lo que falta por hacer.
+        $guia = $verifyOk ? $resultado->guidance : null;
 
-        return ['ok' => $ok, 'files' => $archivos, 'verify' => $verify, 'guidance' => $guia];
+        $salida = ['ok' => $ok, 'files' => $archivos, 'verify' => $verify, 'guidance' => $guia];
+        if ($postcondiciones !== null) {
+            $salida['postconditions'] = $postcondiciones;
+        }
+        if ($incompleto) {
+            $salida['incomplete'] = true;
+        }
+
+        return $salida;
     }
 
     /**

@@ -265,8 +265,9 @@ final class DevToolsOperations implements CommandProvider
                 inputSchema: [
                     'type' => 'object',
                     'properties' => [
-                        'name' => ['type' => 'string', 'description' => 'La clase o enum a inspeccionar (ej. «PrioridadTarea», «Tarea»)'],
+                        'name' => ['type' => 'string', 'description' => 'The class or enum to inspect: a bare name (e.g. «Tarea») searches the app plugins; a FQCN with backslashes (e.g. «Milpa\\Data\\RepositoryInterface») resolves through the app autoloader and reaches installed vendor code'],
                         'plugin' => ['type' => 'string', 'description' => 'El plugin donde buscar — opcional; si se omite, busca en todos'],
+                        'member' => ['type' => 'string', 'description' => 'Narrow the answer: «constructor», «methods», or one method name — a small answer instead of the whole contract'],
                     ],
                     'required' => ['name'],
                 ],
@@ -390,6 +391,75 @@ final class DevToolsOperations implements CommandProvider
                     'required' => [],
                 ],
                 mutating: true,
+                surfaces: ['cli', 'tui', 'mcp'],
+            ),
+            new Operation(
+                name: 'contract:search',
+                effects: new EffectProfile(
+                    Mutation::None,
+                    Externality::None,
+                    Reversibility::Guaranteed,
+                    Authority::Read,
+                    subject: Subject::None,
+                    rollbackContract: 'nothing-to-roll-back',
+                ),
+                description: 'Search class, interface, and enum names across the app plugins AND installed vendor code — find the right name to ask for before guessing an API',
+                handler: [ContractSearchHandler::class, 'handle'],
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'q' => ['type' => 'string', 'description' => 'Name fragment to match, case-insensitive (e.g. «Repository»); end with a backslash to match whole namespaces (e.g. «Milpa\\Data\\»)'],
+                        'package' => ['type' => 'string', 'description' => 'Optional «vendor/name» package that narrows the search to its code (e.g. «milpa/data»)'],
+                    ],
+                    'required' => ['q'],
+                ],
+                mutating: false,
+                surfaces: ['cli', 'tui', 'mcp'],
+            ),
+            new Operation(
+                name: 'package:artifacts',
+                effects: new EffectProfile(
+                    Mutation::None,
+                    Externality::None,
+                    Reversibility::Guaranteed,
+                    Authority::Read,
+                    subject: Subject::None,
+                    rollbackContract: 'nothing-to-roll-back',
+                ),
+                description: 'List the classes, interfaces, and enums an installed package declares through its autoload roots',
+                handler: [PackageArtifactsHandler::class, 'handle'],
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'package' => ['type' => 'string', 'description' => 'The installed package to enumerate, as «vendor/name» (e.g. «milpa/data»)'],
+                    ],
+                    'required' => ['package'],
+                ],
+                mutating: false,
+                surfaces: ['cli', 'tui', 'mcp'],
+            ),
+            new Operation(
+                name: 'source:read',
+                effects: new EffectProfile(
+                    Mutation::None,
+                    Externality::None,
+                    Reversibility::Guaranteed,
+                    Authority::Read,
+                    subject: Subject::None,
+                    rollbackContract: 'nothing-to-roll-back',
+                ),
+                description: 'Read a slice of one source file inside the app root — read first, so an edit can find-replace verbatim text instead of reconstructing the file from memory',
+                handler: [SourceReadHandler::class, 'handle'],
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'path' => ['type' => 'string', 'description' => 'The file to read, relative to the app root (or absolute inside it)'],
+                        'from' => ['type' => 'integer', 'description' => '1-based line to start from (default 1)'],
+                        'lines' => ['type' => 'integer', 'description' => 'How many lines to return (default 120, max 400)'],
+                    ],
+                    'required' => ['path'],
+                ],
+                mutating: false,
                 surfaces: ['cli', 'tui', 'mcp'],
             ),
         ];

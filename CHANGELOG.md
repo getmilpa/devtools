@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.21.0](https://github.com/getmilpa/devtools/compare/v0.20.0...v0.21.0) (2026-09-01)
+
+
+### Features
+
+* discover — finding has one shape ([#60](https://github.com/getmilpa/devtools/issues/60)) ([f5dee13](https://github.com/getmilpa/devtools/commit/f5dee13563cb9fbd37f45e653afb1196752ea8f6))
+
 ## [0.20.0](https://github.com/getmilpa/devtools/compare/v0.19.0...v0.20.0) (2026-09-01)
 
 

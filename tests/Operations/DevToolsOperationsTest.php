@@ -56,7 +56,7 @@ final class DevToolsOperationsTest extends TestCase
         }
 
         self::assertSame(
-            ['validate', 'make', 'implement', 'edit', 'test', 'artifact:contract', 'artifact:list', 'test:list', 'test:show', 'test:baseline', 'test:delta', 'contract:search', 'package:artifacts', 'source:read'],
+            ['validate', 'make', 'implement', 'edit', 'test', 'artifact:contract', 'artifact:list', 'test:list', 'test:show', 'test:baseline', 'test:delta', 'contract:search', 'package:artifacts', 'source:read', 'discover'],
             array_keys($porNombre),
         );
 
@@ -66,7 +66,7 @@ final class DevToolsOperationsTest extends TestCase
         self::assertFalse($porNombre['artifact:contract']->mutating, 'leer un contrato sólo lee');
         self::assertFalse($porNombre['artifact:contract']->requiresConfirmation);
 
-        foreach (['artifact:list', 'test:list', 'test:show', 'contract:search', 'package:artifacts', 'source:read'] as $readOperation) {
+        foreach (['artifact:list', 'test:list', 'test:show', 'contract:search', 'package:artifacts', 'source:read', 'discover'] as $readOperation) {
             self::assertFalse($porNombre[$readOperation]->mutating, "{$readOperation} only reads");
             self::assertFalse($porNombre[$readOperation]->requiresConfirmation);
             self::assertSame(Mutation::None, $porNombre[$readOperation]->effects?->mutation);

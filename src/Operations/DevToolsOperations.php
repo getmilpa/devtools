@@ -58,15 +58,10 @@ use Milpa\Command\Operation;
 final class DevToolsOperations implements CommandProvider
 {
     /**
-     * Los TRES átomos que este paquete publica: validar un plugin, andamiar un artefacto y correr la
-     * suite de pruebas de la app.
+     * The package's generate, verify, execute, and read-only introspection operations.
      *
-     * Los tres son un lazo: se escribe, se revisa que cumpla la convención, y se ejecuta para saber si
-     * además HACE lo que debía. Sin el tercero el lazo se cierra en la forma y no en el
-     * comportamiento — y quien sólo tenga los dos primeros aprende a confiar en la mitad barata.
-     *
-     * Se construyen en cada llamada y no se cachean: una `Operation` es un valor inerte y barato, y
-     * guardarla obligaría a decidir cuándo invalidarla — una pregunta que no tiene por qué existir.
+     * They are rebuilt on each call rather than cached: an `Operation` is an inert, inexpensive value,
+     * while caching it would introduce an invalidation decision this provider does not need.
      *
      * @return list<Operation>
      */
@@ -272,6 +267,75 @@ final class DevToolsOperations implements CommandProvider
                     'properties' => [
                         'name' => ['type' => 'string', 'description' => 'La clase o enum a inspeccionar (ej. «PrioridadTarea», «Tarea»)'],
                         'plugin' => ['type' => 'string', 'description' => 'El plugin donde buscar — opcional; si se omite, busca en todos'],
+                    ],
+                    'required' => ['name'],
+                ],
+                mutating: false,
+                surfaces: ['cli', 'tui', 'mcp'],
+            ),
+            new Operation(
+                name: 'artifact:list',
+                effects: new EffectProfile(
+                    Mutation::None,
+                    Externality::None,
+                    Reversibility::Guaranteed,
+                    Authority::Read,
+                    subject: Subject::None,
+                    rollbackContract: 'nothing-to-roll-back',
+                ),
+                description: 'List class, enum, and interface declarations in one or all plugins without loading their bodies',
+                handler: [ArtifactListHandler::class, 'handle'],
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'plugin' => ['type' => 'string', 'description' => 'Optional plugin identifier; omit it to list every plugin'],
+                    ],
+                    'required' => [],
+                ],
+                mutating: false,
+                surfaces: ['cli', 'tui', 'mcp'],
+            ),
+            new Operation(
+                name: 'test:list',
+                effects: new EffectProfile(
+                    Mutation::None,
+                    Externality::None,
+                    Reversibility::Guaranteed,
+                    Authority::Read,
+                    subject: Subject::None,
+                    rollbackContract: 'nothing-to-roll-back',
+                ),
+                description: 'List test classes without running them, optionally filtered by artifact, plugin, or criterion',
+                handler: [TestDiscoveryHandler::class, 'handleList'],
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'artifact' => ['type' => 'string', 'description' => 'Artifact whose conventional <Artifact>Test class should be listed'],
+                        'plugin' => ['type' => 'string', 'description' => 'Plugin whose tests should be listed'],
+                        'criterion' => ['type' => 'string', 'description' => 'Text found in a test method, criterion summary, or assertion name'],
+                    ],
+                    'required' => [],
+                ],
+                mutating: false,
+                surfaces: ['cli', 'tui', 'mcp'],
+            ),
+            new Operation(
+                name: 'test:show',
+                effects: new EffectProfile(
+                    Mutation::None,
+                    Externality::None,
+                    Reversibility::Guaranteed,
+                    Authority::Read,
+                    subject: Subject::None,
+                    rollbackContract: 'nothing-to-roll-back',
+                ),
+                description: 'Show one test class, its test methods, criteria, and assertion calls without running it',
+                handler: [TestDiscoveryHandler::class, 'handleShow'],
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'name' => ['type' => 'string', 'description' => 'Test class name or fully qualified class name'],
+                        'plugin' => ['type' => 'string', 'description' => 'Optional plugin used to disambiguate the test class'],
                     ],
                     'required' => ['name'],
                 ],

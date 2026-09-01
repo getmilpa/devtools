@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Milpa\DevTools\Tests\Operations;
 
+use Milpa\Command\Effect\Authority;
+use Milpa\Command\Effect\Mutation;
 use Milpa\DevTools\Operations\DevToolsOperations;
 use Milpa\DevTools\Operations\MakeHandler;
 use Milpa\DevTools\Operations\ValidateHandler;
@@ -53,13 +55,24 @@ final class DevToolsOperationsTest extends TestCase
             $porNombre[$op->name] = $op;
         }
 
-        self::assertSame(['validate', 'make', 'implement', 'edit', 'test', 'artifact:contract'], array_keys($porNombre));
+        self::assertSame(
+            ['validate', 'make', 'implement', 'edit', 'test', 'artifact:contract', 'artifact:list', 'test:list', 'test:show'],
+            array_keys($porNombre),
+        );
 
         self::assertFalse($porNombre['validate']->mutating, 'validar sólo lee');
         self::assertFalse($porNombre['validate']->requiresConfirmation);
 
         self::assertFalse($porNombre['artifact:contract']->mutating, 'leer un contrato sólo lee');
         self::assertFalse($porNombre['artifact:contract']->requiresConfirmation);
+
+        foreach (['artifact:list', 'test:list', 'test:show'] as $readOperation) {
+            self::assertFalse($porNombre[$readOperation]->mutating, "{$readOperation} only reads");
+            self::assertFalse($porNombre[$readOperation]->requiresConfirmation);
+            self::assertSame(Mutation::None, $porNombre[$readOperation]->effects?->mutation);
+            self::assertSame(Authority::Read, $porNombre[$readOperation]->effects?->authority);
+            self::assertSame(['cli', 'tui', 'mcp'], $porNombre[$readOperation]->surfaces);
+        }
 
         self::assertTrue($porNombre['make']->mutating, 'andamiar escribe archivos y tiene que decirlo');
         self::assertFalse(
@@ -125,6 +138,19 @@ final class DevToolsOperationsTest extends TestCase
             ['what', 'plugin', 'name'],
             \array_slice(array_keys($make->inputSchema['properties']), 0, 3),
         );
+    }
+
+    /** The new read operations declare only the inputs their handlers actually require. */
+    public function testReadOperationRequiredInputsMatchTheirContracts(): void
+    {
+        $byName = [];
+        foreach ((new DevToolsOperations())->operations() as $operation) {
+            $byName[$operation->name] = $operation;
+        }
+
+        self::assertSame([], $byName['artifact:list']->inputSchema['required']);
+        self::assertSame([], $byName['test:list']->inputSchema['required']);
+        self::assertSame(['name'], $byName['test:show']->inputSchema['required']);
     }
 
     /**

@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.20.0](https://github.com/getmilpa/devtools/compare/v0.19.0...v0.20.0) (2026-09-01)
+
+
+### Features
+
+* **contract:** make and test declare their contracts, postcondition names under one authority ([#58](https://github.com/getmilpa/devtools/issues/58)) ([b0c8c6b](https://github.com/getmilpa/devtools/commit/b0c8c6ba0bafb874ee5c0ea381d9c8202098e5ae))
+
 ## [0.19.0](https://github.com/getmilpa/devtools/compare/v0.18.0...v0.19.0) (2026-09-01)
 
 

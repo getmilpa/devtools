@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [0.21.1](https://github.com/getmilpa/devtools/compare/v0.21.0...v0.21.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* make runtime belongsTo errors honest ([#63](https://github.com/getmilpa/devtools/issues/63)) ([8e814b5](https://github.com/getmilpa/devtools/commit/8e814b5f4c37ca36e0d64b32dc33321bb0e1814f))
+* **make:** do not double the Test suffix or teach a circular judge cycle ([#62](https://github.com/getmilpa/devtools/issues/62)) ([afe3613](https://github.com/getmilpa/devtools/commit/afe3613d90771116ee5675bfa2d704946bdf63ac))
+
 ## [0.21.0](https://github.com/getmilpa/devtools/compare/v0.20.0...v0.21.0) (2026-09-01)
 
 

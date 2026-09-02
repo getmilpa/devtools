@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.23.0](https://github.com/getmilpa/devtools/compare/v0.22.0...v0.23.0) (2026-09-02)
+
+
+### Features
+
+* **implement:** stage piece-wise partials off the bootable file, publish atomically ([#67](https://github.com/getmilpa/devtools/issues/67)) ([311ffdb](https://github.com/getmilpa/devtools/commit/311ffdb8220af83fc24f5ec795c4d94446515846))
+
 ## [0.22.0](https://github.com/getmilpa/devtools/compare/v0.21.1...v0.22.0) (2026-09-02)
 
 

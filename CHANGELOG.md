@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.22.0](https://github.com/getmilpa/devtools/compare/v0.21.1...v0.22.0) (2026-09-02)
+
+
+### Features
+
+* **implement:** cap inline content and open the piece-wise door (start/append/finish) ([#65](https://github.com/getmilpa/devtools/issues/65)) ([e886d62](https://github.com/getmilpa/devtools/commit/e886d624da45eda60c0a20cbcf23382c714a5e05))
+
 ## [0.21.1](https://github.com/getmilpa/devtools/compare/v0.21.0...v0.21.1) (2026-09-02)
 
 

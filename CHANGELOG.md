@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.24.0](https://github.com/getmilpa/devtools/compare/v0.23.0...v0.24.0) (2026-09-02)
+
+
+### Features
+
+* implement declares it creates its named target (createsNamedTarget) ([#69](https://github.com/getmilpa/devtools/issues/69)) ([24ac8c8](https://github.com/getmilpa/devtools/commit/24ac8c811bd75f72fdea9d4ecc2ecb24b242715e))
+
 ## [0.23.0](https://github.com/getmilpa/devtools/compare/v0.22.0...v0.23.0) (2026-09-02)
 
 

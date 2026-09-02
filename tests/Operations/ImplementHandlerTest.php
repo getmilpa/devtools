@@ -404,6 +404,12 @@ final class ImplementHandlerTest extends TestCase
         return $this->raiz . '/src/Plugins/Demo/Services/GreeterService.php';
     }
 
+    /** The staging sibling a parts author writes to — never the live scaffold the app boots. */
+    private function staging(): string
+    {
+        return $this->archivo() . ImplementHandler::STAGING_SUFFIX;
+    }
+
     /**
      * THE measured killer, refused at the gate: content over the cap never reaches a write — the
      * scaffold survives byte for byte — and the refusal names the constant and all three modes,
@@ -524,14 +530,167 @@ final class ImplementHandlerTest extends TestCase
         self::assertStringContainsString('finish', $r['partial']);
     }
 
-    /** The sections land VERBATIM — the caller owns the bytes; an injected newline would corrupt them. */
+    /**
+     * The sections land VERBATIM — the caller owns the bytes; an injected newline would corrupt them.
+     *
+     * STRENGTHENED for the staging discipline: the concatenation is asserted on the STAGING sibling
+     * (that is where partials live now), and the live scaffold is asserted BYTE-IDENTICAL to what
+     * `make` left — on origin/main this same append wrote 'ABCD' straight into the live file.
+     */
     public function testAppendIsVerbatimByteConcatenation(): void
     {
+        $cascaron = (string) file_get_contents($this->archivo());
         $h = $this->handler();
         $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'start', 'content' => 'AB']);
         $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'append', 'content' => 'CD']);
 
-        self::assertSame('ABCD', (string) file_get_contents($this->archivo()));
+        self::assertSame('ABCD', (string) file_get_contents($this->staging()));
+        self::assertSame($cascaron, (string) file_get_contents($this->archivo()), 'a partial reached the live scaffold');
+    }
+
+    // ── The staging discipline (devtools 0.23): a partial NEVER touches the bootable file ─────────
+    //
+    // Measured live (greenhouse fixture series, run 12): mode=append wrote each section straight to
+    // the live plugin source the app loads at boot; one append left an unclosed brace, that
+    // half-written file was loaded at boot, and the whole app — the agent included — died inside a
+    // process that would not boot. The discipline: partials live at a `.milpa-part` sibling, invisible
+    // to every `*.php` autoloader/glob; the live scaffold stays byte-identical through authoring; only
+    // finish, having judged the assembly green, publishes it atomically (temp file + rename).
+
+    /**
+     * D-11 CORE: through start and every append — before finish — the live scaffold is BYTE-IDENTICAL
+     * to what `make` left, so a mid-authoring boot loads valid PHP; the partial lives only at staging.
+     * (Mutate the start/append arms to write the live file directly and this goes red.)
+     */
+    public function testDuringStartAndAppendTheLiveScaffoldStaysByteIdentical(): void
+    {
+        $cascaron = (string) file_get_contents($this->archivo());
+        $h = $this->handler();
+
+        $start = $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'start',
+            'content' => "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\X;\n\nfinal class GreeterService\n{\n"]);
+        self::assertTrue($start['ok'], $start['error'] ?? '');
+        self::assertSame($cascaron, (string) file_get_contents($this->archivo()), 'mode=start touched the live scaffold');
+
+        $append = $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'append',
+            'content' => "    public string \$name = 'x';\n"]);
+        self::assertTrue($append['ok'], $append['error'] ?? '');
+        self::assertSame($cascaron, (string) file_get_contents($this->archivo()), 'mode=append touched the live scaffold');
+
+        // The partial — deliberately unclosed (no class-closing brace), exactly the run-12 killer —
+        // lives at staging, and the staging path does NOT end in .php, so no autoloader keyed on
+        // *.php can ever load it, and `php -l` confirms it would not parse if one did.
+        self::assertFileExists($this->staging());
+        self::assertStringEndsWith('.php' . ImplementHandler::STAGING_SUFFIX, $this->staging());
+        self::assertStringNotContainsString('}', (string) file_get_contents($this->staging()));
+        exec('php -l ' . escapeshellarg($this->staging()) . ' 2>&1', $out, $code);
+        self::assertNotSame(0, $code, 'the deliberately-unclosed partial parsed — the fixture is wrong');
+    }
+
+    /**
+     * FINISH PUBLISHES ATOMICALLY ON GREEN: a valid assembly becomes the live file byte-identical to
+     * single-shot with the same content, the staging sibling is deleted, and the result says
+     * verified. The live file was the untouched scaffold right up until finish published it.
+     */
+    public function testFinishPublishesTheGreenAssemblyAtomicallyAndDeletesStaging(): void
+    {
+        $cascaron = (string) file_get_contents($this->archivo());
+        $c = $this->contenidoValido();
+        $mitad = intdiv(\strlen($c), 2);
+        $h = $this->handler();
+
+        $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'start', 'content' => substr($c, 0, $mitad)]);
+        $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'append', 'content' => substr($c, $mitad)]);
+        // Still scaffold, right up to the moment before finish.
+        self::assertSame($cascaron, (string) file_get_contents($this->archivo()), 'the live file moved before finish');
+
+        $fin = $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'finish']);
+        self::assertTrue($fin['ok'], $fin['error'] ?? '');
+        self::assertStringContainsString('syntax', $fin['verified']);
+
+        // The live file now holds the assembly; the staging sibling is spent and gone.
+        self::assertStringContainsString("return 'hola ' . \$name;", (string) file_get_contents($this->archivo()));
+        self::assertFileDoesNotExist($this->staging());
+
+        // Byte-identical to landing the same content single-shot.
+        file_put_contents($this->archivo(), $cascaron);
+        $solo = $this->handler()->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'content' => $c]);
+        self::assertTrue($solo['ok'], $solo['error'] ?? '');
+        self::assertSame((string) file_get_contents($this->archivo()), file_get_contents($this->raiz . '/' . $fin['file']));
+    }
+
+    /**
+     * FINISH DISCARDS ON RED: an assembly the class's own test judges red leaves the live file the
+     * UNTOUCHED scaffold and the staging file KEPT — the caller can append a fix and finish again.
+     * The bootable file never carries the red assembly.
+     */
+    public function testFinishOnRedKeepsStagingAndLeavesTheLiveFileScaffold(): void
+    {
+        $this->conJuezConductual();
+        $cascaron = (string) file_get_contents($this->archivo());
+        $h = $this->handlerConJuez();
+        $falso = str_replace("'hola ' . \$name", "'bye ' . \$name", $this->contenidoValido());
+        $mitad = intdiv(\strlen($falso), 2);
+
+        $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'start', 'content' => substr($falso, 0, $mitad)]);
+        $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'append', 'content' => substr($falso, $mitad)]);
+        $fin = $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'finish']);
+
+        self::assertFalse($fin['ok']);
+        self::assertStringContainsString('behavior', $fin['error']);
+        self::assertSame($cascaron, (string) file_get_contents($this->archivo()), 'the red assembly reached the bootable file');
+        self::assertFileExists($this->staging(), 'the caller work was destroyed on red');
+        self::assertStringContainsString("'bye ' . \$name", (string) file_get_contents($this->staging()));
+
+        // And the caller can fix and finish again over the SAME staging.
+        $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'start', 'content' => $this->contenidoValido()]);
+        $ok = $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'finish']);
+        self::assertTrue($ok['ok'], $ok['error'] ?? '');
+        self::assertFileDoesNotExist($this->staging());
+    }
+
+    /**
+     * append and finish need STAGING, not merely a scaffold: even with the scaffold present, without a
+     * prior mode=start there is nothing staged, and the refusal teaches mode=start. (On 0.22 the
+     * scaffold existing was sufficient; the invariant is stronger now — staging must exist.)
+     */
+    public function testAppendAndFinishWithoutStagingAreRefusedEvenWhenTheScaffoldExists(): void
+    {
+        foreach (['append', 'finish'] as $mode) {
+            self::assertFileDoesNotExist($this->staging(), "a prior arm left staging before mode={$mode}");
+            $input = ['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => $mode];
+            if ($mode === 'append') {
+                $input['content'] = '// x';
+            }
+            $r = $this->handler()->handle($input);
+
+            self::assertFalse($r['ok'], "mode={$mode} accepted with a scaffold but no staging");
+            self::assertStringContainsString('mode=start', $r['error']);
+        }
+    }
+
+    /** GOLDEN: a single-shot lands directly — no staging sibling is ever created, live bytes as before. */
+    public function testASingleShotLeavesNoStagingSibling(): void
+    {
+        $r = $this->implement($this->contenidoValido());
+
+        self::assertTrue($r['ok'], $r['error'] ?? '');
+        self::assertFileDoesNotExist($this->staging());
+        self::assertStringContainsString("return 'hola ' . \$name;", (string) file_get_contents($this->archivo()));
+    }
+
+    /**
+     * The atomic publish is invisible past the bytes: the temp+rename keeps the scaffold's file mode,
+     * never narrowing the published source to tempnam's owner-only 0600. (Durability is a detail; a
+     * source silently made unreadable to the group would be an observable regression.)
+     */
+    public function testTheAtomicPublishPreservesTheFileMode(): void
+    {
+        chmod($this->archivo(), 0o644);
+        $r = $this->implement($this->contenidoValido());
+
+        self::assertTrue($r['ok'], $r['error'] ?? '');
+        self::assertSame(0o644, fileperms($this->archivo()) & 0o777);
     }
 
     /** A part without a scaffold has nowhere to land — and the refusal teaches the order. */

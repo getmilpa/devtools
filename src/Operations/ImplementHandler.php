@@ -85,6 +85,23 @@ final class ImplementHandler
      */
     public const MAX_INLINE_CHARS = 4000;
 
+    /**
+     * The suffix of the staging sibling a parts author writes to, never the live scaffold.
+     *
+     * ── WHY A PARTIAL MUST NOT BE A BOOTABLE FILE ────────────────────────────────────────────────
+     *
+     * Measured live (greenhouse fixture series, run 12): mode=append wrote each section DIRECTLY to
+     * the live plugin source the app registers and loads at boot. One append left an unclosed brace,
+     * that half-written file was loaded at boot, and the WHOLE app died — the agent that had to
+     * repair it included — inside a process that would no longer boot. So a partial lives BESIDE the
+     * scaffold, at `<scaffold>.php<STAGING_SUFFIX>`, until finish validates and publishes it. The
+     * suffix is appended AFTER `.php` (the path ends `.milpa-part`, not `.php`), so every autoloader
+     * or glob that keys on the `*.php` extension is blind to it — the staging file can never be
+     * mistaken for a source the app loads. The live scaffold stays valid and untouched through the
+     * whole start→append authoring; only finish, having judged the assembly green, publishes it.
+     */
+    public const STAGING_SUFFIX = '.milpa-part';
+
     /** The modes of the parts door; absent means single-shot, today's behavior byte for byte. */
     private const MODES = ['start', 'append', 'finish'];
 
@@ -196,43 +213,82 @@ final class ImplementHandler
             ];
         }
 
-        // ── The partial writes: a partial file is not valid PHP, so NOTHING verifies here ────────
+        // The staging sibling: a partial writes HERE, never to the live scaffold the app boots.
+        $staging = $file . self::STAGING_SUFFIX;
+
+        // append and finish assemble what an EARLIER start opened — the scaffold existing is no
+        // longer enough, the staging file must exist. Its absence teaches mode=start first.
+        if (($mode === 'append' || $mode === 'finish') && !is_file($staging)) {
+            return [
+                'ok' => false,
+                'error' => "nothing to {$mode}: no staged work for class «{$class}» in plugin «{$plugin}» — "
+                    . 'open the file with mode=start, which writes the first section beside the scaffold',
+            ];
+        }
+
+        // ── The partial writes: they land at STAGING, unjudged, and the live scaffold stays byte ──
+        // ── for byte what `make` left — a mid-authoring boot loads valid PHP, never a partial. ────
         //
         // The results carry no `verified` key and no postcondition a caller could quote as green —
         // the work-protocol doctrine: a claimable green from a partial would be a lie wearing keys.
         if ($mode === 'start') {
-            if (file_put_contents($file, $content) === false) {
-                return ['ok' => false, 'error' => "could not write {$file}"];
+            // Truncate any stale staging: mode=start always opens a fresh assembly.
+            if (file_put_contents($staging, $content) === false) {
+                return ['ok' => false, 'error' => "could not open staging beside {$file}"];
             }
 
             return [
                 'ok' => true,
                 'file' => substr($file, \strlen($root) + 1),
-                'partial' => 'started — nothing verified, nothing judged: a partial file is not valid PHP. '
-                    . 'Send each next section with mode=append (each under ' . self::MAX_INLINE_CHARS
-                    . ' chars), then mode=finish to verify and judge.',
+                'partial' => 'started (staged, nothing live) — nothing verified, nothing judged: a partial file '
+                    . 'is not valid PHP, and the live scaffold stays untouched. Send each next section with '
+                    . 'mode=append (each under ' . self::MAX_INLINE_CHARS
+                    . ' chars), then mode=finish to verify, judge, and publish.',
             ];
         }
         if ($mode === 'append') {
-            if (file_put_contents($file, $content, \FILE_APPEND) === false) {
-                return ['ok' => false, 'error' => "could not append to {$file}"];
+            if (file_put_contents($staging, $content, \FILE_APPEND) === false) {
+                return ['ok' => false, 'error' => "could not append to staging beside {$file}"];
             }
 
             return [
                 'ok' => true,
                 'file' => substr($file, \strlen($root) + 1),
-                'partial' => 'appended verbatim — nothing verified, nothing judged. More sections go through '
-                    . 'mode=append; mode=finish verifies and judges the assembled file.',
+                'partial' => 'appended verbatim to staging — nothing verified, nothing judged, live scaffold '
+                    . 'untouched. More sections go through mode=append; mode=finish verifies, judges, and '
+                    . 'publishes the assembled file.',
             ];
         }
 
-        // finish: the assembled file IS the content, and from here the pipeline is single-shot's —
-        // same checks, same judge, same result shape. Two doors, one landing gate.
+        // finish: the assembly is READ FROM STAGING (never the still-scaffold live file), judged
+        // through the SAME landing gate a single-shot passes. Only a GREEN assembly is published —
+        // atomically over the live file — and its staging deleted. On RED the live file is still the
+        // untouched scaffold and the staging is KEPT, so the caller can append a fix and finish again;
+        // the red assembly never reaches a bootable file. Two doors, one landing gate.
         if ($mode === 'finish') {
-            $content = (string) file_get_contents($file);
+            $result = $this->land($root, $file, $plugin, $class, (string) file_get_contents($staging));
+            if (($result['ok'] ?? false) === true) {
+                @unlink($staging);
+            }
+
+            return $result;
         }
 
-        // ── The landing gate: everything verifies on a copy, or nothing lands ────────────────────
+        // Single-shot: the content lands directly (no staging) through the same gate, published atomically.
+        return $this->land($root, $file, $plugin, $class, $content);
+    }
+
+    /**
+     * The one landing gate both doors pass — single-shot's assembled content and finish's staged
+     * assembly alike. Everything verifies (syntax, strict_types, class, namespace, static
+     * conformance, the class's own test), or nothing lands; a green assembly is PUBLISHED ATOMICALLY
+     * (temp file + rename — a crash never leaves the live file half-written) and a red one leaves the
+     * live file byte for byte the scaffold it was.
+     *
+     * @return array<string, mixed>
+     */
+    private function land(string $root, string $file, string $plugin, string $class, string $content): array
+    {
         if (!str_contains($content, 'declare(strict_types=1)')) {
             return ['ok' => false, 'error' => 'refused: every PHP file in this house declares strict_types=1'];
         }
@@ -282,12 +338,15 @@ final class ImplementHandler
 
         // ── Static conformance, when the app ships an analyzer ───────────────────────────────────
         //
-        // The candidate is analyzed IN PLACE: linkage — does the interface exist, do the
-        // signatures match — is only visible with the app's autoloader, which a staged temp file
-        // does not have. The original is held in memory and restored byte for byte on any finding,
-        // so the transactional guarantee moves from «never touched» to «atomically restored».
+        // The candidate is placed IN PLACE — analysis and the behavioral test see linkage (does the
+        // interface exist, do the signatures match, does the class DO what its test demands) only
+        // through the app's autoloader, which a staged temp file does not have. The placement and
+        // every restore go through publishAtomically (temp file + rename): the assembly is always
+        // COMPLETE and either the good scaffold or the finished candidate is on disk — never a
+        // half-written file, on any crash. The original is held in memory and, on any finding,
+        // restored byte for byte, so the guarantee is «atomically restored to the scaffold».
         $previous = (string) file_get_contents($file);
-        if (file_put_contents($file, $content) === false) {
+        if (!$this->publishAtomically($file, $content)) {
             return ['ok' => false, 'error' => "verified clean but could not write {$file}"];
         }
 
@@ -295,7 +354,7 @@ final class ImplementHandler
         if ($analyzer !== null) {
             exec($analyzer . ' ' . escapeshellarg($file) . ' 2>&1', $findings, $verdict);
             if ($verdict !== 0) {
-                file_put_contents($file, $previous);
+                $this->publishAtomically($file, $previous);
                 // Only the findings travel — `path:line:message`, the raw format's shape. The
                 // analyzer's banners and tips would bury the one line the model corrects from.
                 $lines = array_values(array_filter(
@@ -339,7 +398,7 @@ final class ImplementHandler
             } else {
                 exec($runner . ' ' . escapeshellarg($testFile) . ' 2>&1', $verdictLines, $verdictCode);
                 if ($verdictCode !== 0) {
-                    file_put_contents($file, $previous);
+                    $this->publishAtomically($file, $previous);
                     $tail = implode("\n", \array_slice(array_values(array_filter(
                         $verdictLines,
                         static fn (string $l): bool => trim($l) !== '',
@@ -363,6 +422,36 @@ final class ImplementHandler
                 . ($analyzer !== null ? ' and static conformance' : ' — static analysis unavailable in this app')
                 . $verdictNote,
         ];
+    }
+
+    /**
+     * Land `$content` on `$file` ATOMICALLY: a sibling temp file carries the bytes, then a single
+     * rename swaps it in. rename(2) is atomic on POSIX within one filesystem — which is why the temp
+     * lives in the target's OWN directory, never sys_get_temp_dir (a cross-device rename would fail).
+     * A crash mid-write corrupts only the temp; the live file is always either its whole prior
+     * content or the whole new content, never a truncate-then-write half. This is the ONLY writer of
+     * the live source in the landing gate — both the publish and every restore go through it.
+     *
+     * The temp inherits the target's file mode before the swap, so a rename (which carries the temp's
+     * own inode and perms) leaves the published file with the scaffold's mode — the durability is
+     * invisible past the bytes, never a source silently narrowed from 0644 to tempnam's 0600.
+     */
+    private function publishAtomically(string $file, string $content): bool
+    {
+        $temp = @tempnam(\dirname($file), '.milpa-land-');
+        if ($temp === false) {
+            return false;
+        }
+        $mode = @fileperms($file);
+        if (@file_put_contents($temp, $content) === false
+            || ($mode !== false && !@chmod($temp, $mode & 0o777))
+            || !@rename($temp, $file)) {
+            @unlink($temp);
+
+            return false;
+        }
+
+        return true;
     }
 
     /** The class's behavioral test under `tests/Plugins/<plugin>/`, or `null` when none declares it. */

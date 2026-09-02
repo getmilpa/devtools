@@ -109,6 +109,28 @@ final class DevToolsOperationsTest extends TestCase
     }
 
     /**
+     * The parts door lives in the CONTRACT, not in a nudge: `mode` is offered as the enum
+     * start/append/finish, `content` moves OUT of the schema's required list (finish takes none —
+     * the handler enforces per-mode with teaching refusals), plugin and class stay required for
+     * every caller, and the description teaches the cap so a model reads the door before hitting
+     * the refusal. Measured killer behind it: inline bodies at size break the caller's own
+     * tool-call JSON (greenhouse fixture series, runs 10-11).
+     */
+    public function testImplementOffersThePartsDoorInItsSchema(): void
+    {
+        $porNombre = [];
+        foreach ((new DevToolsOperations())->operations() as $op) {
+            $porNombre[$op->name] = $op;
+        }
+        $schema = $porNombre['implement']->inputSchema;
+
+        self::assertSame(['plugin', 'class'], $schema['required'], 'content is per-mode — the handler teaches; finish needs none');
+        self::assertSame(['start', 'append', 'finish'], $schema['properties']['mode']['enum']);
+        self::assertStringContainsString('parts', $porNombre['implement']->description);
+        self::assertSame('class', $porNombre['implement']->namedTarget, 'every mode names the class — the intent gate keeps working');
+    }
+
+    /**
      * `test` NO se ofrece por HTTP.
      *
      * Una petición web que dispara la suite de la app es una superficie que nadie quiso: en desarrollo

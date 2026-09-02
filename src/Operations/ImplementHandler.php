@@ -60,9 +60,34 @@ use Milpa\DevTools\Support\RootResolver;
  *
  * Running the class's test EXECUTES the written code, in a subprocess — the same risk class as the
  * `test` operation, accepted for the same reason and said here. Fuller isolation is ADR-0045's.
+ *
+ * ── THE CAP: THE OLD CONTRACT WAS BREAKING ITS OWN CALLER ────────────────────────────────────────
+ *
+ * Measured twice on the greenhouse fixture series (runs 10-11): a model writing a WHOLE PHP file
+ * inline as one JSON string argument broke its own tool-call JSON with high per-attempt probability
+ * at size — «Failed to parse tool call arguments as JSON … missing closing quote» at column 5,389
+ * and at column 15,248 — and a gateway-side retry did not absorb the double flake. The root is the
+ * contract: it INVITED unbounded inline bodies. So the fix is architecture, not a nudge: content
+ * over MAX_INLINE_CHARS is refused before any write, and the refusal teaches the piece-wise door —
+ * `mode=start` writes the file header and first section, `mode=append` each next section (verbatim:
+ * the caller owns the bytes), `mode=finish` verifies and judges the assembled file through the SAME
+ * gate a single-shot passes. A partial file is not valid PHP, so start and append verify NOTHING
+ * and their results say so plainly — no green is claimable until finish.
  */
 final class ImplementHandler
 {
+    /**
+     * The inline-content ceiling, in characters.
+     *
+     * Calibrated under both measured breaks: the tool-call JSON snapped at column 5,389 on one run
+     * and at column 15,248 on another (greenhouse fixture series, runs 10-11). Anything over this
+     * is refused toward the parts door, whose sections each stay under it.
+     */
+    public const MAX_INLINE_CHARS = 4000;
+
+    /** The modes of the parts door; absent means single-shot, today's behavior byte for byte. */
+    private const MODES = ['start', 'append', 'finish'];
+
     /**
      * @param string|null $analyzer       the static-analysis command, or `null` to derive it from
      *                                    the app (`vendor/bin/phpstan`, when present). Tests
@@ -91,6 +116,7 @@ final class ImplementHandler
         $plugin = \is_string($input['plugin'] ?? null) ? trim($input['plugin']) : '';
         $class = \is_string($input['class'] ?? null) ? trim($input['class']) : '';
         $content = \is_string($input['content'] ?? null) ? $input['content'] : '';
+        $mode = $input['mode'] ?? null;
 
         // A bare PHP identifier or nothing: anything path-shaped is refused before touching disk.
         if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $class) !== 1) {
@@ -99,8 +125,49 @@ final class ImplementHandler
         if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $plugin) !== 1) {
             return ['ok' => false, 'error' => "«{$plugin}» is not a plugin directory name"];
         }
-        if ($content === '') {
-            return ['ok' => false, 'error' => 'nothing to land: `content` is the complete PHP file'];
+        if ($mode !== null && !\in_array($mode, self::MODES, true)) {
+            return [
+                'ok' => false,
+                'error' => 'unknown mode — omit it to land the complete file in one call, or land in parts: '
+                    . 'mode=start, then mode=append per section, then mode=finish',
+            ];
+        }
+
+        // `content` is a per-mode obligation, not a schema-wide one: finish assembles what start and
+        // append already landed, so a section riding on it would be silently half-landed — refused.
+        if ($mode === 'finish' && $content !== '') {
+            return [
+                'ok' => false,
+                'error' => 'mode=finish takes no `content` — sections travel with mode=append; '
+                    . 'finish verifies and judges what the parts assembled',
+            ];
+        }
+        if ($mode !== 'finish' && $content === '') {
+            return [
+                'ok' => false,
+                'error' => $mode === null
+                    ? 'nothing to land: `content` is the complete PHP file'
+                    : "nothing to land: mode={$mode} carries one section of the file in `content`",
+            ];
+        }
+
+        // ── The cap: the measured killer is refused BEFORE any write, teaching the door ──────────
+        if ($mode !== 'finish' && \strlen($content) > self::MAX_INLINE_CHARS) {
+            if ($mode === null) {
+                return [
+                    'ok' => false,
+                    'error' => 'refused: `content` is ' . \strlen($content) . ' chars, over MAX_INLINE_CHARS ('
+                        . self::MAX_INLINE_CHARS . ') — a body that size breaks the caller\'s own tool-call JSON. '
+                        . 'Write it in parts: mode=start with the file header and first section, mode=append for '
+                        . 'each next section (each under the cap), mode=finish to verify and judge.',
+                ];
+            }
+
+            return [
+                'ok' => false,
+                'error' => 'refused: this section is ' . \strlen($content) . ' chars, over MAX_INLINE_CHARS ('
+                    . self::MAX_INLINE_CHARS . ') — split it into smaller sections, each under the cap',
+            ];
         }
 
         $root = rtrim($this->roots->resolve(), '/');
@@ -115,10 +182,54 @@ final class ImplementHandler
         $file = $this->fileFor($tree, $class)
             ?? (is_dir($root . '/tests/Plugins/' . $plugin) ? $this->fileFor($root . '/tests/Plugins/' . $plugin, $class) : null);
         if ($file === null) {
+            if ($mode === 'append' || $mode === 'finish') {
+                return [
+                    'ok' => false,
+                    'error' => "nothing to {$mode}: no scaffold declares class «{$class}» in plugin «{$plugin}» — "
+                        . 'scaffold it with `make`, then land the first section with mode=start',
+                ];
+            }
+
             return [
                 'ok' => false,
                 'error' => "no scaffold declares class «{$class}» in plugin «{$plugin}» — filling is not creating; scaffold it first with `make`",
             ];
+        }
+
+        // ── The partial writes: a partial file is not valid PHP, so NOTHING verifies here ────────
+        //
+        // The results carry no `verified` key and no postcondition a caller could quote as green —
+        // the work-protocol doctrine: a claimable green from a partial would be a lie wearing keys.
+        if ($mode === 'start') {
+            if (file_put_contents($file, $content) === false) {
+                return ['ok' => false, 'error' => "could not write {$file}"];
+            }
+
+            return [
+                'ok' => true,
+                'file' => substr($file, \strlen($root) + 1),
+                'partial' => 'started — nothing verified, nothing judged: a partial file is not valid PHP. '
+                    . 'Send each next section with mode=append (each under ' . self::MAX_INLINE_CHARS
+                    . ' chars), then mode=finish to verify and judge.',
+            ];
+        }
+        if ($mode === 'append') {
+            if (file_put_contents($file, $content, \FILE_APPEND) === false) {
+                return ['ok' => false, 'error' => "could not append to {$file}"];
+            }
+
+            return [
+                'ok' => true,
+                'file' => substr($file, \strlen($root) + 1),
+                'partial' => 'appended verbatim — nothing verified, nothing judged. More sections go through '
+                    . 'mode=append; mode=finish verifies and judges the assembled file.',
+            ];
+        }
+
+        // finish: the assembled file IS the content, and from here the pipeline is single-shot's —
+        // same checks, same judge, same result shape. Two doors, one landing gate.
+        if ($mode === 'finish') {
+            $content = (string) file_get_contents($file);
         }
 
         // ── The landing gate: everything verifies on a copy, or nothing lands ────────────────────

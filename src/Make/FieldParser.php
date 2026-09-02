@@ -17,7 +17,9 @@ namespace Milpa\DevTools\Make;
 /**
  * Parses the `--fields` DSL (`name:type[:mods]`, comma-separated; leading `?` = nullable) into a
  * list of {@see FieldSpec}. Supports scalars (+ length / precision,scale mods), `enum:<Enum>`, and
- * `<name>:belongsTo:<Target>` (ManyToOne). Throws on any unrecognised token.
+ * `<name>:belongsTo:<Target>` for callers that can honor or deliberately degrade a relation token.
+ * Runtime entity callers pass `supportsRelations: false`, which removes that token from unknown-type
+ * suggestions and routes every explicit relation token to the scalar-first refusal.
  */
 final class FieldParser
 {
@@ -38,9 +40,11 @@ final class FieldParser
     /**
      * Parses the full `--fields` DSL string into a list of {@see FieldSpec}.
      *
+     * @param bool $supportsRelations Whether the caller can honor a `belongsTo:<Entity>` token
+     *
      * @return list<FieldSpec>
      */
-    public function parse(string $dsl): array
+    public function parse(string $dsl, bool $supportsRelations = true): array
     {
         $dsl = trim($dsl);
         if ($dsl === '') {
@@ -53,13 +57,13 @@ final class FieldParser
             if ($token === '') {
                 continue;
             }
-            $out[] = $this->parseField($token);
+            $out[] = $this->parseField($token, $supportsRelations);
         }
 
         return $out;
     }
 
-    private function parseField(string $token): FieldSpec
+    private function parseField(string $token, bool $supportsRelations): FieldSpec
     {
         $nullable = false;
         if (str_starts_with($token, '?')) {
@@ -97,6 +101,10 @@ final class FieldParser
         }
 
         if ($type === 'belongsTo') {
+            if (!$supportsRelations) {
+                throw $this->unsupportedRuntimeRelation($name);
+            }
+
             $target = trim($parts[2] ?? '');
             if ($target === '') {
                 throw new \InvalidArgumentException("relation field '{$name}' needs a target (name:belongsTo:Target)");
@@ -111,9 +119,11 @@ final class FieldParser
             // an agent scaffolding a CRUD made exactly that guess, and the old message sent it to
             // read this file instead of letting it retry. An error that lists the alternatives is
             // the difference between one wasted step and a dead end.
+            $relationType = $supportsRelations ? ', or belongsTo:<Entity>' : '';
+
             throw new \InvalidArgumentException(
                 "unknown field type '{$type}' for field '{$name}' — valid: "
-                . implode(', ', array_keys(self::SCALARS)) . ', or belongsTo:<Entity>',
+                . implode(', ', array_keys(self::SCALARS)) . $relationType,
             );
         }
 
@@ -121,6 +131,15 @@ final class FieldParser
         $modifiers = $this->modifiers($type, $parts, $name);
 
         return new FieldSpec($name, 'scalar', $phpType, $columnType, $nullable, $modifiers);
+    }
+
+    private function unsupportedRuntimeRelation(string $name): \InvalidArgumentException
+    {
+        return new \InvalidArgumentException(
+            "field '{$name}': store the related id as a plain scalar field (e.g. '{$name}:int'); "
+            . 'runtime entities do not support belongsTo relations yet because milpa/data has no relation concept. '
+            . 'Use --flavor=legacy for a Doctrine relation',
+        );
     }
 
     /**

@@ -202,16 +202,33 @@ final class DevToolsOperations implements CommandProvider
                     escalatesOn: ['class'],
                     subject: Subject::Executable,
                 ),
-                description: 'Write the body of a class that make scaffolded, verified before it lands',
+                description: 'Write the body of a class that make scaffolded, verified before it lands. '
+                    . 'Inline content is capped (MAX_INLINE_CHARS = ' . ImplementHandler::MAX_INLINE_CHARS
+                    . ' chars — larger bodies break the tool-call JSON, measured); over it, write in parts: '
+                    . 'mode=start with the first section, mode=append per section, mode=finish to verify and judge',
                 handler: [ImplementHandler::class, 'handle'],
                 inputSchema: [
                     'type' => 'object',
                     'properties' => [
                         'plugin' => ['type' => 'string', 'description' => 'The plugin directory that owns the class'],
                         'class' => ['type' => 'string', 'description' => 'The class to fill — one bare identifier, no paths'],
-                        'content' => ['type' => 'string', 'description' => 'The COMPLETE PHP file: strict_types, the namespace its location dictates, and a class by that name'],
+                        'content' => [
+                            'type' => 'string',
+                            'description' => 'The COMPLETE PHP file (strict_types, the namespace its location dictates, '
+                                . 'a class by that name) — or, with mode=start/append, ONE section of it, each under '
+                                . ImplementHandler::MAX_INLINE_CHARS . ' chars; mode=finish takes none',
+                        ],
+                        'mode' => [
+                            'type' => 'string',
+                            'enum' => ['start', 'append', 'finish'],
+                            'description' => 'Omit to land the complete file in one call. To land in parts: start '
+                                . '(write the header and first section), append (each next section, verbatim), '
+                                . 'finish (verify and judge the assembled file — only finish claims any green)',
+                        ],
                     ],
-                    'required' => ['plugin', 'class', 'content'],
+                    // `content` is a per-mode obligation the handler enforces with teaching refusals —
+                    // finish takes none. plugin and class stay required for every caller.
+                    'required' => ['plugin', 'class'],
                 ],
                 mutating: true,
                 // The target is named by the human (ADR-0044), and here the target is THE CLASS: a

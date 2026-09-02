@@ -35,11 +35,14 @@ final class ImplementHandlerTest extends TestCase
     {
         $this->raiz = sys_get_temp_dir() . '/milpa-implement-' . bin2hex(random_bytes(4));
         mkdir($this->raiz . '/src/Plugins/Demo/Services', 0o775, true);
-        file_put_contents(
-            $this->raiz . '/src/Plugins/Demo/Services/GreeterService.php',
-            "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Plugins\\Demo\\Services;\n\n"
-            . "final class GreeterService\n{\n    // Fill me.\n}\n",
-        );
+        file_put_contents($this->raiz . '/src/Plugins/Demo/Services/GreeterService.php', $this->cascaron());
+    }
+
+    /** The scaffold shell exactly as `make` leaves it — tests restore it to reset an arm. */
+    private function cascaron(): string
+    {
+        return "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Plugins\\Demo\\Services;\n\n"
+            . "final class GreeterService\n{\n    // Fill me.\n}\n";
     }
 
     protected function tearDown(): void
@@ -385,5 +388,200 @@ final class ImplementHandlerTest extends TestCase
         chmod($bin, 0o755);
 
         return new ImplementHandler(new RootResolver($this->raiz), $bin);
+    }
+
+    // ── The parts door: the inline cap, and start / append / finish ──────────────────────────────
+    //
+    // Measured twice on the greenhouse fixture series (runs 10-11): a model writing a WHOLE PHP
+    // file inline as one JSON string argument broke its own tool-call JSON — «missing closing
+    // quote» at column 5,389 and at column 15,248 — and a gateway-side retry did not absorb the
+    // double flake. The root is the contract: it invited unbounded inline bodies. The fix is
+    // architecture, not a nudge: an oversized body is REFUSED, the refusal teaching the door.
+
+    /** The path of the scaffolded class, relative reads spelled once. */
+    private function archivo(): string
+    {
+        return $this->raiz . '/src/Plugins/Demo/Services/GreeterService.php';
+    }
+
+    /**
+     * THE measured killer, refused at the gate: content over the cap never reaches a write — the
+     * scaffold survives byte for byte — and the refusal names the constant and all three modes,
+     * because the refusal IS the documentation the model corrects from.
+     */
+    public function testAnOversizedSingleShotIsRefusedBeforeAnyWriteTeachingTheParts(): void
+    {
+        $antes = (string) file_get_contents($this->archivo());
+        $grande = $this->contenidoValido() . str_repeat("\n// padding to cross the inline cap", 200);
+
+        $r = $this->implement($grande);
+
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('MAX_INLINE_CHARS', $r['error']);
+        self::assertStringContainsString('mode=start', $r['error']);
+        self::assertStringContainsString('mode=append', $r['error']);
+        self::assertStringContainsString('mode=finish', $r['error']);
+        self::assertSame($antes, (string) file_get_contents($this->archivo()));
+    }
+
+    /** The cap binds the sections too — a part over it defeats the door's whole reason to exist. */
+    public function testAnOversizedSectionIsRefusedInStartAndAppendAlike(): void
+    {
+        $antes = (string) file_get_contents($this->archivo());
+        foreach (['start', 'append'] as $mode) {
+            $r = $this->handler()->handle(['plugin' => 'Demo', 'class' => 'GreeterService',
+                'mode' => $mode, 'content' => str_repeat('x', ImplementHandler::MAX_INLINE_CHARS + 1)]);
+
+            self::assertFalse($r['ok'], "mode={$mode} accepted an oversized section");
+            self::assertStringContainsString('MAX_INLINE_CHARS', $r['error']);
+            self::assertSame($antes, (string) file_get_contents($this->archivo()), "mode={$mode} wrote before refusing");
+        }
+    }
+
+    /**
+     * THE EQUIVALENCE, green arm: start+append+append+finish over an arbitrary 3-way split of C
+     * assembles a file BYTE-IDENTICAL to what single-shot with C lands — including the namespace
+     * the system resolves, which is why C carries a foreign one here — and finish's verify claim
+     * is single-shot's verify claim. Two doors, one landing.
+     */
+    public function testThePartsFlowLandsByteIdenticalToSingleShotWithTheSameVerdict(): void
+    {
+        $c = str_replace(
+            'namespace App\\Plugins\\Demo\\Services;',
+            'namespace App\\Elsewhere;',
+            $this->contenidoValido(),
+        );
+        $tercio = intdiv(\strlen($c), 3);
+        $h = $this->handler();
+
+        foreach ([
+            ['mode' => 'start', 'content' => substr($c, 0, $tercio)],
+            ['mode' => 'append', 'content' => substr($c, $tercio, $tercio)],
+            ['mode' => 'append', 'content' => substr($c, 2 * $tercio)],
+        ] as $paso) {
+            $r = $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService'] + $paso);
+            self::assertTrue($r['ok'], $r['error'] ?? '');
+        }
+        $fin = $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'finish']);
+        self::assertTrue($fin['ok'], $fin['error'] ?? '');
+        $porPartes = (string) file_get_contents($this->archivo());
+
+        file_put_contents($this->archivo(), $this->cascaron());
+        $solo = $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'content' => $c]);
+        self::assertTrue($solo['ok'], $solo['error'] ?? '');
+
+        self::assertSame((string) file_get_contents($this->archivo()), $porPartes);
+        self::assertSame($solo['verified'], $fin['verified']);
+        self::assertSame($solo['class'], $fin['class']);
+    }
+
+    /**
+     * THE EQUIVALENCE, red arm: the body that fakes the behavior is refused by the class's own
+     * test through finish EXACTLY as it is through single-shot — the door changes how content
+     * travels, never what the judge rules.
+     */
+    public function testFinishJudgesRedExactlyAsSingleShotDoes(): void
+    {
+        $this->conJuezConductual();
+        $h = $this->handlerConJuez();
+        $falso = str_replace("'hola ' . \$name", "'bye ' . \$name", $this->contenidoValido());
+        $mitad = intdiv(\strlen($falso), 2);
+
+        $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'start', 'content' => substr($falso, 0, $mitad)]);
+        $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'append', 'content' => substr($falso, $mitad)]);
+        $fin = $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'finish']);
+
+        file_put_contents($this->archivo(), $this->cascaron());
+        $solo = $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'content' => $falso]);
+
+        self::assertFalse($fin['ok']);
+        self::assertFalse($solo['ok']);
+        self::assertStringContainsString('behavior', $fin['error']);
+        self::assertStringContainsString('GreeterServiceTest', $fin['error']);
+        self::assertStringContainsString('GreeterServiceTest', $solo['error']);
+    }
+
+    /**
+     * A partial file is not valid PHP, so a partial landing PROVES nothing — and claims nothing:
+     * no `verified` key, no green a caller could quote. The work-protocol doctrine at the key
+     * level: only finish judges.
+     */
+    public function testStartAndAppendCarryNoVerificationClaims(): void
+    {
+        $h = $this->handler();
+
+        $r = $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'start',
+            'content' => "<?php\n\ndeclare(strict_types=1);\n"]);
+        self::assertTrue($r['ok'], $r['error'] ?? '');
+        self::assertArrayNotHasKey('verified', $r);
+        self::assertStringContainsString('nothing verified', $r['partial']);
+
+        $r = $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'append',
+            'content' => "\n// one more section\n"]);
+        self::assertTrue($r['ok'], $r['error'] ?? '');
+        self::assertArrayNotHasKey('verified', $r);
+        self::assertStringContainsString('nothing verified', $r['partial']);
+        self::assertStringContainsString('finish', $r['partial']);
+    }
+
+    /** The sections land VERBATIM — the caller owns the bytes; an injected newline would corrupt them. */
+    public function testAppendIsVerbatimByteConcatenation(): void
+    {
+        $h = $this->handler();
+        $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'start', 'content' => 'AB']);
+        $h->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'append', 'content' => 'CD']);
+
+        self::assertSame('ABCD', (string) file_get_contents($this->archivo()));
+    }
+
+    /** A part without a scaffold has nowhere to land — and the refusal teaches the order. */
+    public function testAppendAndFinishWithoutAScaffoldAreRefused(): void
+    {
+        $r = $this->handler()->handle(['plugin' => 'Demo', 'class' => 'GhostService', 'mode' => 'append', 'content' => '// x']);
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('mode=start', $r['error']);
+
+        $r = $this->handler()->handle(['plugin' => 'Demo', 'class' => 'GhostService', 'mode' => 'finish']);
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('GhostService', $r['error']);
+    }
+
+    /** finish carries no content — a section riding on it would be silently half-landed otherwise. */
+    public function testFinishWithContentIsRefusedTowardAppend(): void
+    {
+        $r = $this->handler()->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'finish', 'content' => '// x']);
+
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('append', $r['error']);
+    }
+
+    /** start and append without content have nothing to land, and the error says so per mode. */
+    public function testStartAndAppendWithoutContentAreRefused(): void
+    {
+        foreach (['start', 'append'] as $mode) {
+            $r = $this->handler()->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => $mode]);
+            self::assertFalse($r['ok'], "mode={$mode} accepted an empty section");
+            self::assertStringContainsString($mode, $r['error']);
+        }
+    }
+
+    /** A mode outside the enum is refused naming the three that exist. */
+    public function testAnUnknownModeIsRefusedNamingTheThree(): void
+    {
+        $r = $this->handler()->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'assemble', 'content' => '// x']);
+
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('start', $r['error']);
+        self::assertStringContainsString('append', $r['error']);
+        self::assertStringContainsString('finish', $r['error']);
+    }
+
+    /** GOLDEN: a single-shot under the cap keeps exactly the shape it has always had. */
+    public function testASingleShotUnderTheCapKeepsItsExactResultShape(): void
+    {
+        $r = $this->implement($this->contenidoValido());
+
+        self::assertTrue($r['ok'], $r['error'] ?? '');
+        self::assertSame(['ok', 'file', 'class', 'verified'], array_keys($r));
     }
 }

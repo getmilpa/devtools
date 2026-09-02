@@ -231,9 +231,15 @@ final class DevToolsOperations implements CommandProvider
                     'required' => ['plugin', 'class'],
                 ],
                 mutating: true,
-                // The target is named by the human (ADR-0044), and here the target is THE CLASS: a
-                // request that does not name it is exactly the one that should not be filling it.
+                // The target is the CLASS. ADR-0044 asked the human to name it; greenhouse
+                // decisions/0187 (D-05) refines that: implement MATERIALISES a component the plan
+                // implies — WHICH class realises the criterion is the model's interpretive domain, not
+                // a human's decision — so it declares `createsNamedTarget`. A reversible WriteAsUser
+                // build no longer stops to ask «you did not name TareaService»; a grave op still would
+                // (the gate keeps the intent question for the NEVER tier), and selecting an EXISTING
+                // target — `edit` below — keeps the flag false and keeps asking.
                 namedTarget: 'class',
+                createsNamedTarget: true,
             ),
             new Operation(
                 name: 'edit',

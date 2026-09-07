@@ -72,14 +72,7 @@ final class DevToolsOperations implements CommandProvider
         return [
             new Operation(
                 name: 'validate',
-                effects: new EffectProfile(
-                    Mutation::None,
-                    Externality::None,
-                    Reversibility::Guaranteed,
-                    Authority::Read,
-                    subject: Subject::None,
-                    rollbackContract: 'nothing-to-roll-back',
-                ),
+                effects: EffectProfile::readOnly(),
                 description: 'Validate a plugin manifest and the providers it declares',
                 handler: [ValidateHandler::class, 'handle'],
                 inputSchema: [
@@ -334,14 +327,7 @@ final class DevToolsOperations implements CommandProvider
             ),
             new Operation(
                 name: 'artifact:contract',
-                effects: new EffectProfile(
-                    Mutation::None,
-                    Externality::None,
-                    Reversibility::Guaranteed,
-                    Authority::Read,
-                    subject: Subject::None,
-                    rollbackContract: 'nothing-to-roll-back',
-                ),
+                effects: EffectProfile::readOnly(),
                 description: 'Read an artifact\'s contract — an enum\'s cases, a class\'s constructor signature and public methods, what it extends/implements — so you READ a signature instead of provoking an error to learn it',
                 handler: [ContractHandler::class, 'handle'],
                 inputSchema: [
@@ -358,14 +344,7 @@ final class DevToolsOperations implements CommandProvider
             ),
             new Operation(
                 name: 'artifact:list',
-                effects: new EffectProfile(
-                    Mutation::None,
-                    Externality::None,
-                    Reversibility::Guaranteed,
-                    Authority::Read,
-                    subject: Subject::None,
-                    rollbackContract: 'nothing-to-roll-back',
-                ),
+                effects: EffectProfile::readOnly(),
                 description: 'List class, enum, and interface declarations in one or all plugins without loading their bodies',
                 handler: [ArtifactListHandler::class, 'handle'],
                 inputSchema: [
@@ -380,14 +359,7 @@ final class DevToolsOperations implements CommandProvider
             ),
             new Operation(
                 name: 'test:list',
-                effects: new EffectProfile(
-                    Mutation::None,
-                    Externality::None,
-                    Reversibility::Guaranteed,
-                    Authority::Read,
-                    subject: Subject::None,
-                    rollbackContract: 'nothing-to-roll-back',
-                ),
+                effects: EffectProfile::readOnly(),
                 description: 'List test classes without running them, optionally filtered by artifact, plugin, or criterion',
                 handler: [TestDiscoveryHandler::class, 'handleList'],
                 inputSchema: [
@@ -404,14 +376,7 @@ final class DevToolsOperations implements CommandProvider
             ),
             new Operation(
                 name: 'test:show',
-                effects: new EffectProfile(
-                    Mutation::None,
-                    Externality::None,
-                    Reversibility::Guaranteed,
-                    Authority::Read,
-                    subject: Subject::None,
-                    rollbackContract: 'nothing-to-roll-back',
-                ),
+                effects: EffectProfile::readOnly(),
                 description: 'Show one test class, its test methods, criteria, and assertion calls without running it',
                 handler: [TestDiscoveryHandler::class, 'handleShow'],
                 inputSchema: [
@@ -477,14 +442,7 @@ final class DevToolsOperations implements CommandProvider
             ),
             new Operation(
                 name: 'contract:search',
-                effects: new EffectProfile(
-                    Mutation::None,
-                    Externality::None,
-                    Reversibility::Guaranteed,
-                    Authority::Read,
-                    subject: Subject::None,
-                    rollbackContract: 'nothing-to-roll-back',
-                ),
+                effects: EffectProfile::readOnly(),
                 description: 'Search class, interface, and enum names across the app plugins AND installed vendor code — find the right name to ask for before guessing an API',
                 handler: [ContractSearchHandler::class, 'handle'],
                 inputSchema: [
@@ -500,14 +458,7 @@ final class DevToolsOperations implements CommandProvider
             ),
             new Operation(
                 name: 'package:artifacts',
-                effects: new EffectProfile(
-                    Mutation::None,
-                    Externality::None,
-                    Reversibility::Guaranteed,
-                    Authority::Read,
-                    subject: Subject::None,
-                    rollbackContract: 'nothing-to-roll-back',
-                ),
+                effects: EffectProfile::readOnly(),
                 description: 'List the classes, interfaces, and enums an installed package declares through its autoload roots',
                 handler: [PackageArtifactsHandler::class, 'handle'],
                 inputSchema: [
@@ -522,14 +473,7 @@ final class DevToolsOperations implements CommandProvider
             ),
             new Operation(
                 name: 'source:read',
-                effects: new EffectProfile(
-                    Mutation::None,
-                    Externality::None,
-                    Reversibility::Guaranteed,
-                    Authority::Read,
-                    subject: Subject::None,
-                    rollbackContract: 'nothing-to-roll-back',
-                ),
+                effects: EffectProfile::readOnly(),
                 description: 'Read a slice of one source file inside the app root — read first, so an edit can find-replace verbatim text instead of reconstructing the file from memory',
                 handler: [SourceReadHandler::class, 'handle'],
                 inputSchema: [
@@ -546,14 +490,7 @@ final class DevToolsOperations implements CommandProvider
             ),
             new Operation(
                 name: 'discover',
-                effects: new EffectProfile(
-                    Mutation::None,
-                    Externality::None,
-                    Reversibility::Guaranteed,
-                    Authority::Read,
-                    subject: Subject::None,
-                    rollbackContract: 'nothing-to-roll-back',
-                ),
+                effects: EffectProfile::readOnly(),
                 description: 'Find anything by one query — artifacts, contracts, tests, packages — through the existing finders, answered as ONE row shape where each row names the exact operation call that answers in full',
                 handler: [DiscoverHandler::class, 'handle'],
                 inputSchema: [

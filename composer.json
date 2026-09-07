@@ -21,7 +21,7 @@
   "require": {
     "php": ">=8.3",
     "composer-runtime-api": "^2.2",
-    "milpa/command": ">=0.20 <1.0",
+    "milpa/command": ">=0.24 <1.0",
     "milpa/data": ">=0.2 <1.0",
     "milpa/plugin": ">=0.7 <1.0",
     "milpa/core": ">=0.6.2 <1.0"

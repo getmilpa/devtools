@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.25.0](https://github.com/getmilpa/devtools/compare/v0.24.0...v0.25.0) (2026-09-07)
+
+
+### Features
+
+* the scaffolded listing answers a page, not the whole table ([#71](https://github.com/getmilpa/devtools/issues/71)) ([3ec7e4e](https://github.com/getmilpa/devtools/commit/3ec7e4e635475626ab5f645dd7564f5bd323645a))
+
 ## [0.24.0](https://github.com/getmilpa/devtools/compare/v0.23.0...v0.24.0) (2026-09-02)
 
 

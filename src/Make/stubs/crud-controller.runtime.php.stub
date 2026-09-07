@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace {{namespace}};
 
 use {{entityNamespace}}\{{entityClass}};
+use Milpa\Data\PagesResults;
 use Milpa\Data\RepositoryInterface;
 use Milpa\Http\Routing\RouteResult;
 use Nyholm\Psr7\Response;
@@ -21,19 +22,45 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 final class {{class}}
 {
+    /** How many rows `index()` answers when the caller does not say. */
+    private const int PAGE = 50;
+
+    /** The most rows `index()` will answer however large a `?limit=` asks for. */
+    private const int MAX_PAGE = 200;
+
     /** @param RepositoryInterface<{{entityClass}}> $repository */
     public function __construct(private readonly RepositoryInterface $repository)
     {
     }
 
+    /**
+     * A PAGE of {{entityClass}}, never the whole table.
+     *
+     * `?limit=` and `?offset=` bound the read, and the limit is capped: a listing endpoint that returns
+     * everything works on the first hundred rows and falls over on the hundred thousandth, which is the
+     * worst moment to find out. Ask for `?limit=1` and you get one — the caller can always page.
+     *
+     * The repository is asked whether it can page ({@see PagesResults}); a backend that cannot still
+     * answers, from `all()`, because a listing that works is better than one that refuses.
+     */
     public function index(ServerRequestInterface $request): ResponseInterface
     {
-        $rows = array_map(
-            static fn ({{entityClass}} $entity): array => $entity->toArray(),
-            $this->repository->all(),
-        );
+        $query = $request->getQueryParams();
+        $limit = min(self::MAX_PAGE, max(0, (int) ($query['limit'] ?? self::PAGE)));
+        $offset = max(0, (int) ($query['offset'] ?? 0));
 
-        return $this->json(200, $rows);
+        $entities = $this->repository instanceof PagesResults
+            ? $this->repository->page([], $limit, $offset)
+            : \array_slice($this->repository->all(), $offset, $limit);
+
+        return $this->json(200, [
+            'items' => array_map(
+                static fn ({{entityClass}} $entity): array => $entity->toArray(),
+                $entities,
+            ),
+            'limit' => $limit,
+            'offset' => $offset,
+        ]);
     }
 
     public function show(ServerRequestInterface $request): ResponseInterface

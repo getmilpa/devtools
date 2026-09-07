@@ -553,4 +553,49 @@ final class CrudGeneratorTest extends TestCase
         }
         rmdir($dir);
     }
+
+    public function testTheGeneratedListingIsBoundedRatherThanTheWholeTable(): void
+    {
+        // The scaffold is what every app inherits, so an unbounded listing here is an unbounded listing
+        // in every app this framework generates. It worked on the first hundred rows and fell over on the
+        // hundred thousandth — the worst moment to find out (greenhouse decisions/0215, F2).
+        $controller = $this->generatedController();
+
+        // Not the presence of `all()` — the fallback slices it — but the UNBOUNDED shape it had.
+        self::assertStringNotContainsString(
+            "\$this->repository->all(),\n        );",
+            $controller,
+            'the listing must not map over the whole table',
+        );
+        self::assertStringContainsString('array_slice($this->repository->all(), $offset, $limit)', $controller, 'even the fallback is bounded');
+        self::assertStringContainsString('PagesResults', $controller, 'it asks the repository whether it can page');
+        self::assertStringContainsString('->page([], $limit, $offset)', $controller);
+        self::assertStringContainsString("'limit' => \$limit", $controller, 'and it answers WHICH page it gave');
+        self::assertStringContainsString("'offset' => \$offset", $controller);
+    }
+
+    public function testTheGeneratedListingCapsWhatACallerCanAskFor(): void
+    {
+        // A cap is the difference between paging and letting the caller choose to read the whole table.
+        $controller = $this->generatedController();
+
+        self::assertStringContainsString('MAX_PAGE', $controller);
+        self::assertStringContainsString('min(self::MAX_PAGE', $controller);
+        self::assertStringContainsString('max(0, (int) ($query[\'limit\']', $controller, 'a negative limit is floored, never passed down');
+    }
+
+    /** The controller `make:crud` writes, as source. */
+    private function generatedController(): string
+    {
+        $ctx = new GenerationContext(
+            plugin: 'BoardPlugin',
+            name: 'Task',
+            options: ['flavor' => 'runtime', 'fields' => 'title:string:200, status:string:20'],
+            root: $this->root,
+        );
+
+        $result = (new CrudGenerator())->generate($ctx);
+
+        return $this->fileNamed($result->files, 'TaskController.php')->contents;
+    }
 }

@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.28.0](https://github.com/getmilpa/devtools/compare/v0.27.0...v0.28.0) (2026-09-08)
+
+
+### Features
+
+* the capability declares its provider ([#78](https://github.com/getmilpa/devtools/issues/78)) ([9d0233a](https://github.com/getmilpa/devtools/commit/9d0233a85b7526762bc334d58cc5efc665cc11a6))
+
 ## [0.27.0](https://github.com/getmilpa/devtools/compare/v0.26.0...v0.27.0) (2026-09-08)
 
 

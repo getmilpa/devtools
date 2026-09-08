@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.28.1](https://github.com/getmilpa/devtools/compare/v0.28.0...v0.28.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* a class PHP itself defines is not an unresolved package boundary ([#80](https://github.com/getmilpa/devtools/issues/80)) ([7e8eb6d](https://github.com/getmilpa/devtools/commit/7e8eb6d1f4b5712f949620beab01acc8efbf177a))
+
 ## [0.28.0](https://github.com/getmilpa/devtools/compare/v0.27.0...v0.28.0) (2026-09-08)
 
 

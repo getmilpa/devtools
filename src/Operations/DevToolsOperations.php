@@ -185,6 +185,44 @@ final class DevToolsOperations implements CommandProvider
                 ],
                 observableEvidence: 'the files list with per-file actions and, for entity/crud/resource, the postcondition report in the result',
             ),
+            // THE STUBS ARE THE APP'S TO OVERRIDE (greenhouse decisions/0216, point 6): `make` reads
+            // <root>/stubs/<name> before the package's copy, and this is how a copy gets there.
+            new Operation(
+                name: 'stubs:publish',
+                effects: new EffectProfile(
+                    Mutation::Persistent,
+                    Externality::None,
+                    // Files under stubs/: delete them and make reads the package's again.
+                    Reversibility::ManualRecovery,
+                    Authority::WriteAsUser,
+                    subject: Subject::Executable,
+                ),
+                description: 'Copy the generators\' stubs into this app\'s stubs/ so make reads your edited copies first; copies already there are kept unless force is given',
+                handler: [StubsPublishHandler::class, 'handle'],
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'only' => ['type' => 'string', 'description' => 'Comma-separated stub names to publish (default: every stub the package ships)'],
+                        'force' => ['type' => 'boolean', 'description' => 'Overwrite copies already published — your edits to them are lost'],
+                    ],
+                    'required' => [],
+                ],
+                outputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'ok' => ['type' => 'boolean'],
+                        'dir' => ['type' => 'string'],
+                        'published' => ['type' => 'array', 'items' => ['type' => 'string']],
+                        'kept' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Already in stubs/ and left untouched'],
+                        'hint' => ['type' => 'string'],
+                        'error' => ['type' => 'string'],
+                    ],
+                    'required' => ['ok'],
+                ],
+                mutating: true,
+                surfaces: ['cli', 'tui', 'mcp'],
+                observableEvidence: 'stubs/<name> exists after the call, and a make that uses that stub writes what the copy says',
+            ),
             new Operation(
                 name: 'implement',
                 effects: new EffectProfile(

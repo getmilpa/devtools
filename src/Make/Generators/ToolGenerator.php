@@ -22,6 +22,7 @@ use Milpa\DevTools\Make\GeneratorInterface;
 use Milpa\DevTools\Make\MarkerInserter;
 use Milpa\DevTools\Make\Markers;
 use Milpa\DevTools\Make\PlannedFile;
+use Milpa\DevTools\Make\StubLocator;
 use Milpa\DevTools\Make\StubRenderer;
 use Milpa\DevTools\Support\ComposerAutoload;
 
@@ -68,14 +69,15 @@ use Milpa\DevTools\Support\ComposerAutoload;
  */
 final class ToolGenerator implements GeneratorInterface
 {
-    private string $stubs;
+    private StubLocator $stubs;
 
     public function __construct(
         private readonly StubRenderer $renderer = new StubRenderer(),
         private readonly ConventionDetector $detector = new ConventionDetector(),
         private readonly MarkerInserter $markers = new MarkerInserter(),
+        private readonly StubLocator $locator = new StubLocator(),
     ) {
-        $this->stubs = \dirname(__DIR__) . '/stubs';
+        $this->stubs = $this->locator;
     }
 
     /** The `<what>` token this generator answers to: `'tool'`. */
@@ -92,6 +94,9 @@ final class ToolGenerator implements GeneratorInterface
      */
     public function generate(GenerationContext $context): GenerationResult
     {
+        // THE APP'S STUBS FIRST: bound here, once per generation, so every helper below reads the same
+        // resolution — a copy under <root>/stubs/ wins for that one name, the package fills the rest.
+        $this->stubs = $this->locator->at($context->root);
         $flavor = $this->detector->detect($context->root, $context->option('flavor'));
 
         return $flavor === Flavor::Runtime
@@ -129,7 +134,7 @@ final class ToolGenerator implements GeneratorInterface
         $description = $this->escapeSingleQuoted($this->deriveDescription($context));
         $needs = $this->parseNeeds($context);
 
-        $contents = $this->renderer->render($this->stubs . '/tool.runtime.php.stub', [
+        $contents = $this->renderer->render($this->stubs->path('tool.runtime.php.stub'), [
             'namespace' => $toolNamespace,
             'class' => $context->name,
             'toolName' => $toolName,
@@ -241,7 +246,7 @@ final class ToolGenerator implements GeneratorInterface
             return ['file' => null, 'guidance' => $guidance];
         }
 
-        $pluginContents = $this->renderer->render($this->stubs . '/tool-plugin.runtime.php.stub', [
+        $pluginContents = $this->renderer->render($this->stubs->path('tool-plugin.runtime.php.stub'), [
             'namespace' => $pluginNamespace,
             'class' => $context->plugin,
             'toolNamespace' => $toolNamespace,

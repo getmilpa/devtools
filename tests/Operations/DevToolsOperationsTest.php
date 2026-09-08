@@ -56,7 +56,7 @@ final class DevToolsOperationsTest extends TestCase
         }
 
         self::assertSame(
-            ['validate', 'make', 'implement', 'edit', 'test', 'artifact:contract', 'artifact:list', 'test:list', 'test:show', 'test:baseline', 'test:delta', 'contract:search', 'package:artifacts', 'source:read', 'discover'],
+            ['validate', 'make', 'stubs:publish', 'implement', 'edit', 'test', 'artifact:contract', 'artifact:list', 'test:list', 'test:show', 'test:baseline', 'test:delta', 'contract:search', 'package:artifacts', 'source:read', 'discover'],
             array_keys($porNombre),
         );
 
@@ -79,6 +79,13 @@ final class DevToolsOperationsTest extends TestCase
             $porNombre['make']->requiresConfirmation,
             'su daño lo acotan WriteGuard y el rollback del verify, más finos que una firma',
         );
+
+        self::assertTrue($porNombre['stubs:publish']->mutating, 'publishing writes files under stubs/ and says so');
+        self::assertFalse(
+            $porNombre['stubs:publish']->requiresConfirmation,
+            'its damage is bounded by the handler: a copy already there is kept unless force is given',
+        );
+        self::assertSame(Mutation::Persistent, $porNombre['stubs:publish']->effects?->mutation);
 
         self::assertTrue($porNombre['implement']->mutating, 'landing a body writes a file and says so');
         self::assertFalse(

@@ -30,4 +30,49 @@ final class StubLocator
         private readonly ?string $app = null,
     ) {
     }
+
+    /** The locator bound to an app root: `<root>/stubs/` is consulted before the package. */
+    public function at(string $root): self
+    {
+        return new self($this->package, rtrim($root, '/') . '/stubs');
+    }
+
+    /** The file to render for `$name` — the app's copy when it has one, the package's otherwise. */
+    public function path(string $name): string
+    {
+        if ($this->app !== null && is_file($this->app . '/' . $name)) {
+            return $this->app . '/' . $name;
+        }
+        $shipped = $this->package . '/' . $name;
+        if (is_file($shipped)) {
+            return $shipped;
+        }
+
+        throw new \InvalidArgumentException(sprintf(
+            'no stub named «%s»: not in %s%s',
+            $name,
+            $this->package,
+            $this->app === null ? '' : ' nor in ' . $this->app,
+        ));
+    }
+
+    /**
+     * Every stub the package ships, by name, sorted.
+     *
+     * @return list<string>
+     */
+    public function names(): array
+    {
+        $files = glob($this->package . '/*.stub') ?: [];
+        $names = array_map(static fn (string $f): string => basename($f), $files);
+        sort($names);
+
+        return $names;
+    }
+
+    /** The package's stub directory. */
+    public function package(): string
+    {
+        return $this->package;
+    }
 }

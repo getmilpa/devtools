@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.27.0](https://github.com/getmilpa/devtools/compare/v0.26.0...v0.27.0) (2026-09-08)
+
+
+### Features
+
+* the app's stubs override the package's — StubLocator and stubs:publish ([#75](https://github.com/getmilpa/devtools/issues/75)) ([cae6777](https://github.com/getmilpa/devtools/commit/cae67776cd0f0e832a976661b7270bf85168bf6f))
+
 ## [0.26.0](https://github.com/getmilpa/devtools/compare/v0.25.0...v0.26.0) (2026-09-07)
 
 

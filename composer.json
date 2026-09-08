@@ -1,76 +1,79 @@
 {
-  "name": "milpa/devtools",
-  "description": "The coa generate-verify-inspect developer loop for the Milpa PHP framework: deterministic controller/entity scaffolding (Make engine), framework health + plugin-manifest + capability-graph validators, and BaseController/Doctrine-entity convention verifiers.",
-  "keywords": [
-    "php",
-    "milpa",
-    "framework",
-    "scaffolding",
-    "code-generation",
-    "cli",
-    "developer-tools"
-  ],
-  "type": "milpa-capability",
-  "license": "Apache-2.0",
-  "authors": [
-    {
-      "name": "Rodrigo Vicente - TeamX Agency",
-      "homepage": "https://x.com/rodrigoteamx"
-    }
-  ],
-  "require": {
-    "php": ">=8.3",
-    "composer-runtime-api": "^2.2",
-    "milpa/command": ">=0.24 <1.0",
-    "milpa/data": ">=0.2 <1.0",
-    "milpa/plugin": ">=0.7 <1.0",
-    "milpa/core": ">=0.6.2 <1.0"
-  },
-  "require-dev": {
-    "doctrine/orm": "^3",
-    "friendsofphp/php-cs-fixer": "^3.65",
-    "milpa/runtime": ">=0.7 <1.0",
-    "phpstan/phpdoc-parser": "^2.3",
-    "phpstan/phpstan": "^2.1",
-    "phpunit/phpunit": "^11.5",
-    "psr/http-message": "^2.0"
-  },
-  "suggest": {
-    "doctrine/orm": "Required to scaffold or verify Doctrine entities (coa:make entity / EntityVerifier) — the CONTROLLER path never needs it."
-  },
-  "autoload": {
-    "psr-4": {
-      "Milpa\\DevTools\\": "src/"
-    }
-  },
-  "autoload-dev": {
-    "psr-4": {
-      "Milpa\\DevTools\\Tests\\": "tests/",
-      "Milpa\\Docs\\": "vendor/milpa/core/tools/gen-docs/"
-    },
-    "files": [
-      "tests/Fixtures/HostStubs.php",
-      "tests/Fixtures/SampleContract.php"
-    ]
-  },
-  "extra": {
-    "milpa": {
-      "capability": {
-        "id": "devtools",
-        "title": "Scaffolding and diagnosis: generate artifacts and explain the app without booting it",
-        "unlocks": [
-          "coa doctor"
-        ],
-        "provides": [
-          "dev.generator",
-          "dev.doctor"
-        ],
-        "briefing": "You can scaffold plugins, controllers and entities with `make`, and diagnose with `doctor`.",
-        "contracts": {
-          "dev.generator": "Milpa\\DevTools\\Make\\Generators\\CrudGenerator",
-          "dev.doctor": "Milpa\\DevTools\\Doctor\\AppDoctor"
+    "name": "milpa/devtools",
+    "description": "The coa generate-verify-inspect developer loop for the Milpa PHP framework: deterministic controller/entity scaffolding (Make engine), framework health + plugin-manifest + capability-graph validators, and BaseController/Doctrine-entity convention verifiers.",
+    "keywords": [
+        "php",
+        "milpa",
+        "framework",
+        "scaffolding",
+        "code-generation",
+        "cli",
+        "developer-tools"
+    ],
+    "type": "milpa-capability",
+    "license": "Apache-2.0",
+    "authors": [
+        {
+            "name": "Rodrigo Vicente - TeamX Agency",
+            "homepage": "https://x.com/rodrigoteamx"
         }
-      }
+    ],
+    "require": {
+        "php": ">=8.3",
+        "composer-runtime-api": "^2.2",
+        "milpa/command": ">=0.24 <1.0",
+        "milpa/data": ">=0.2 <1.0",
+        "milpa/plugin": ">=0.7 <1.0",
+        "milpa/core": ">=0.6.2 <1.0"
+    },
+    "require-dev": {
+        "doctrine/orm": "^3",
+        "friendsofphp/php-cs-fixer": "^3.65",
+        "milpa/runtime": ">=0.7 <1.0",
+        "phpstan/phpdoc-parser": "^2.3",
+        "phpstan/phpstan": "^2.1",
+        "phpunit/phpunit": "^11.5",
+        "psr/http-message": "^2.0"
+    },
+    "suggest": {
+        "doctrine/orm": "Required to scaffold or verify Doctrine entities (coa:make entity / EntityVerifier) — the CONTROLLER path never needs it."
+    },
+    "autoload": {
+        "psr-4": {
+            "Milpa\\DevTools\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Milpa\\DevTools\\Tests\\": "tests/",
+            "Milpa\\Docs\\": "vendor/milpa/core/tools/gen-docs/"
+        },
+        "files": [
+            "tests/Fixtures/HostStubs.php",
+            "tests/Fixtures/SampleContract.php"
+        ]
+    },
+    "extra": {
+        "milpa": {
+            "capability": {
+                "id": "devtools",
+                "title": "Scaffolding and diagnosis: generate artifacts and explain the app without booting it",
+                "unlocks": [
+                    "coa doctor"
+                ],
+                "provides": [
+                    "dev.generator",
+                    "dev.doctor"
+                ],
+                "briefing": "You can scaffold plugins, controllers and entities with `make`, and diagnose with `doctor`.",
+                "contracts": {
+                    "dev.generator": "Milpa\\DevTools\\Make\\Generators\\CrudGenerator",
+                    "dev.doctor": "Milpa\\DevTools\\Doctor\\AppDoctor"
+                },
+                "operations": [
+                    "Milpa\\DevTools\\Operations\\DevToolsOperations"
+                ]
+            }
+        }
     }
-  }
 }

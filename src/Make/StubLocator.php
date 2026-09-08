@@ -56,12 +56,6 @@ final class StubLocator
         ));
     }
 
-    /** Whether `$name` is currently read from the app's copy rather than the package's. */
-    public function isOverridden(string $name): bool
-    {
-        return $this->app !== null && is_file($this->app . '/' . $name);
-    }
-
     /**
      * Every stub the package ships, by name, sorted.
      *
@@ -80,11 +74,5 @@ final class StubLocator
     public function package(): string
     {
         return $this->package;
-    }
-
-    /** The app's stub directory once bound, `null` before. */
-    public function app(): ?string
-    {
-        return $this->app;
     }
 }

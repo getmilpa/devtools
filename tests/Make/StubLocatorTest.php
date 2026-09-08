@@ -46,10 +46,8 @@ final class StubLocatorTest extends TestCase
     {
         $locator = new StubLocator();
 
-        $this->assertNull($locator->app());
         $this->assertStringEndsWith('/src/Make/stubs/plugin.standalone.runtime.php.stub', $locator->path('plugin.standalone.runtime.php.stub'));
         $this->assertContains('plugin.standalone.runtime.php.stub', $locator->names());
-        $this->assertFalse($locator->isOverridden('plugin.standalone.runtime.php.stub'));
 
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('no stub named «nope.stub»');
@@ -61,14 +59,11 @@ final class StubLocatorTest extends TestCase
         file_put_contents($this->root . '/stubs/plugin.standalone.runtime.php.stub', 'MINE');
         $bound = (new StubLocator())->at($this->root);
 
-        $this->assertSame($this->root . '/stubs', $bound->app());
         $this->assertSame($this->root . '/stubs/plugin.standalone.runtime.php.stub', $bound->path('plugin.standalone.runtime.php.stub'));
-        $this->assertTrue($bound->isOverridden('plugin.standalone.runtime.php.stub'));
         // THE REST STILL COMES FROM THE PACKAGE: overriding one stub is not adopting all of them.
         $this->assertStringEndsWith('/src/Make/stubs/entity.runtime.php.stub', $bound->path('entity.runtime.php.stub'));
-        $this->assertFalse($bound->isOverridden('entity.runtime.php.stub'));
         // And `at()` did not touch the unbound one.
-        $this->assertNull((new StubLocator())->app());
+        $this->assertStringEndsWith('/src/Make/stubs/plugin.standalone.runtime.php.stub', (new StubLocator())->path('plugin.standalone.runtime.php.stub'));
     }
 
     public function testBoundTheRefusalNamesBothPlaces(): void

@@ -143,6 +143,60 @@ final class PackageBoundaryValidatorTest extends TestCase
         self::assertFalse($result->ok(), 'A check that could not see must not report success.');
     }
 
+    public function test_a_class_php_itself_defines_is_not_an_unanswered_question(): void
+    {
+        // What kept this validator off every real tree. `DOMDocument` has no file by definition, so
+        // no locator can produce one — but that is an answer, not a failed lookup: a class compiled
+        // into PHP belongs to no composer package and therefore cannot cross a package boundary.
+        // Pointed at vendor/milpa/live-web/src it reported zero violations and nine unresolved
+        // entries, eight of them DOM*, and failed for a reason that was never about a boundary.
+        //
+        // Both branches on purpose: DOMDocument is an internal CLASS, Stringable an internal
+        // INTERFACE, and a check that only asked class_exists() would report the second one.
+        $this->plugin('Compiler', "use DOMDocument;\nuse DOMElement;\nuse Stringable;\n");
+
+        $result = $this->validator()->validate([$this->rule()], $this->root)[0];
+
+        self::assertSame([], $result->unresolved);
+        self::assertTrue($result->ok(), 'A class PHP defines cannot violate a package boundary.');
+    }
+
+    public function test_php_internals_do_not_hide_the_ghost_next_to_them(): void
+    {
+        // The pairing is the point. Excusing internals must not be a door that lets the real
+        // blindness through with them, so one file carries all three cases at once: a class PHP
+        // owns, a class nobody installed, and a genuine crossing. Exactly one of them is a
+        // violation and exactly one is unresolved.
+        $this->plugin('Mixed', "use DOMDocument;\nuse Some\\Package\\That\\Is\\Not\\Installed;\nuse Milpa\\Live\\Rendering\\DashboardHtmlRenderer;\n");
+
+        $result = $this->validator()->validate([$this->rule()], $this->root)[0];
+
+        self::assertCount(1, $result->violations);
+        self::assertStringContainsString('DashboardHtmlRenderer', $result->violations[0]);
+        self::assertCount(1, $result->unresolved);
+        self::assertStringContainsString('Some\\Package\\That\\Is\\Not\\Installed', $result->unresolved[0]);
+        self::assertStringNotContainsString('DOMDocument', implode("\n", $result->unresolved));
+    }
+
+    public function test_the_default_resolver_does_not_report_a_class_php_defines(): void
+    {
+        // The production path, where the defect was measured: reflection against the installed tree
+        // rather than the injected seam. Skipping internals must be the validator's own knowledge,
+        // not something each host is expected to remember to build into its resolver.
+        $this->plugin('Dom', "use DOMDocument;\n");
+
+        $rule = new PackageBoundaryRule(
+            label: 'internals are nobody\'s package',
+            dir: 'plugins',
+            forbiddenPackages: ['milpa/live-web'],
+        );
+
+        $result = (new PackageBoundaryValidator())->validate([$rule], $this->root)[0];
+
+        self::assertSame([], $result->unresolved);
+        self::assertTrue($result->ok());
+    }
+
     public function test_a_whitelisted_file_is_exempt(): void
     {
         $this->plugin('Bridge', "use Milpa\\Live\\Adapters\\Alpine;\n");

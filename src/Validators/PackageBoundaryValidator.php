@@ -27,6 +27,13 @@ namespace Milpa\DevTools\Validators;
  * autoloader would empty the evidence and the rule would pass for having found nothing to object to.
  * Unresolved entries surface as their own finding so the reader knows the difference between "no
  * violations" and "no answers".
+ *
+ * The one thing that is not an unanswered question is a class PHP itself defines. `DOMDocument` has
+ * no file by definition, so reflection cannot hand one over, and it belongs to no composer package —
+ * which makes it incapable of crossing a package boundary rather than unknown. Counting it as
+ * unresolved is what kept this check off every real tree: `vendor/milpa/live-web/src` alone answered
+ * with zero violations and nine unresolved entries, eight of them `DOM*`, and the rule failed for a
+ * reason that was never about a boundary.
  */
 final class PackageBoundaryValidator
 {
@@ -111,6 +118,13 @@ final class PackageBoundaryValidator
                 $owner = $this->ownerOf($class);
 
                 if ($owner === null) {
+                    // Asked only once the locator has already failed, so the common path pays
+                    // nothing for it — and so the question is the right one at the point it is
+                    // asked: not "where is this class?" but "is there a file to find at all?".
+                    if ($this->isDefinedByPhpItself($class)) {
+                        continue;
+                    }
+
                     $unresolved[] = "{$rule->dir}/{$relative} → {$class}";
                     continue;
                 }
@@ -228,5 +242,27 @@ final class PackageBoundaryValidator
         }
 
         return null;
+    }
+
+    /**
+     * Whether PHP itself defines this class, rather than some package shipping it.
+     *
+     * `DOMDocument`, `ArrayObject`, `Stringable`: compiled in, no file, no composer package. That is
+     * an ANSWER, not a failed lookup — a class with no owning package cannot reach across a package
+     * boundary, so the rule has nothing to say about it either way. The distinction the surrounding
+     * check exists to protect is between "the boundary held" and "I could not see"; putting these in
+     * the second bucket sold noise as blindness and made every real tree fail.
+     *
+     * Deliberately asked of PHP and not of the injected locator. A host swapping in its own resolver
+     * is answering "which package ships this class", a question that has no answer here; making the
+     * seam responsible for recognising internals would hand every implementor the same trap.
+     */
+    private function isDefinedByPhpItself(string $class): bool
+    {
+        if (!class_exists($class) && !interface_exists($class) && !trait_exists($class) && !enum_exists($class)) {
+            return false;
+        }
+
+        return (new \ReflectionClass($class))->isInternal();
     }
 }

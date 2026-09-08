@@ -23,6 +23,7 @@ use Milpa\DevTools\Make\MarkerInserter;
 use Milpa\DevTools\Make\Markers;
 use Milpa\DevTools\Make\PlannedFile;
 use Milpa\DevTools\Make\PluginSurgeon;
+use Milpa\DevTools\Make\StubLocator;
 use Milpa\DevTools\Make\StubRenderer;
 use Milpa\DevTools\Support\ComposerAutoload;
 
@@ -51,7 +52,7 @@ use Milpa\DevTools\Support\ComposerAutoload;
  */
 final class CrudGenerator implements GeneratorInterface
 {
-    private string $stubs;
+    private StubLocator $stubs;
 
     public function __construct(
         private readonly EntityGenerator $entityGenerator = new EntityGenerator(),
@@ -59,8 +60,9 @@ final class CrudGenerator implements GeneratorInterface
         private readonly ConventionDetector $detector = new ConventionDetector(),
         private readonly MarkerInserter $markers = new MarkerInserter(),
         private readonly PluginSurgeon $surgeon = new PluginSurgeon(),
+        private readonly StubLocator $locator = new StubLocator(),
     ) {
-        $this->stubs = \dirname(__DIR__) . '/stubs';
+        $this->stubs = $this->locator;
     }
 
     /** The `<what>` token this generator answers to: `'crud'`. */
@@ -77,6 +79,9 @@ final class CrudGenerator implements GeneratorInterface
      */
     public function generate(GenerationContext $context): GenerationResult
     {
+        // THE APP'S STUBS FIRST: bound here, once per generation, so every helper below reads the same
+        // resolution — a copy under <root>/stubs/ wins for that one name, the package fills the rest.
+        $this->stubs = $this->locator->at($context->root);
         $flavor = $this->detector->detect($context->root, $context->option('flavor'));
 
         return $flavor === Flavor::Runtime
@@ -130,7 +135,7 @@ final class CrudGenerator implements GeneratorInterface
             . '/Controllers/' . $controllerClass . '.php';
         $table = $context->option('table') ?? strtolower($context->name) . 's';
 
-        $controllerContents = $this->renderer->render($this->stubs . '/crud-controller.runtime.php.stub', [
+        $controllerContents = $this->renderer->render($this->stubs->path('crud-controller.runtime.php.stub'), [
             'namespace' => $controllerNamespace,
             'class' => $controllerClass,
             'entityNamespace' => $entityNamespace,
@@ -248,7 +253,7 @@ final class CrudGenerator implements GeneratorInterface
             );
         }
 
-        $pluginContents = $this->renderer->render($this->stubs . '/crud-plugin.runtime.php.stub', [
+        $pluginContents = $this->renderer->render($this->stubs->path('crud-plugin.runtime.php.stub'), [
             'namespace' => $pluginNamespace,
             'class' => $context->plugin,
             'entityNamespace' => $entityNamespace,

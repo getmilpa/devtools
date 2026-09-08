@@ -25,6 +25,7 @@ use Milpa\DevTools\Make\MarkerInserter;
 use Milpa\DevTools\Make\Markers;
 use Milpa\DevTools\Make\PlannedFile;
 use Milpa\DevTools\Make\PluginSurgeon;
+use Milpa\DevTools\Make\StubLocator;
 use Milpa\DevTools\Make\StubRenderer;
 use Milpa\DevTools\Support\ComposerAutoload;
 use Milpa\DevTools\Support\DoctrineAvailability;
@@ -54,7 +55,7 @@ use Milpa\DevTools\Support\DoctrineAvailability;
  */
 final class EntityGenerator implements GeneratorInterface
 {
-    private string $stubs;
+    private StubLocator $stubs;
 
     /**
      * @param bool|null $doctrineAvailable override for testing; `null` (the default) auto-detects via
@@ -71,8 +72,9 @@ final class EntityGenerator implements GeneratorInterface
         private readonly ?bool $doctrineAvailable = null,
         private readonly MarkerInserter $markers = new MarkerInserter(),
         private readonly PluginSurgeon $surgeon = new PluginSurgeon(),
+        private readonly StubLocator $locator = new StubLocator(),
     ) {
-        $this->stubs = \dirname(__DIR__) . '/stubs';
+        $this->stubs = $this->locator;
     }
 
     /** The `<what>` token this generator answers to: `'entity'`. */
@@ -84,6 +86,9 @@ final class EntityGenerator implements GeneratorInterface
     /** Renders the entity (+ repository wiring for runtime) per the detected/overridden {@see Flavor}. */
     public function generate(GenerationContext $context): GenerationResult
     {
+        // THE APP'S STUBS FIRST: bound here, once per generation, so every helper below reads the same
+        // resolution — a copy under <root>/stubs/ wins for that one name, the package fills the rest.
+        $this->stubs = $this->locator->at($context->root);
         $flavor = $this->detector->detect($context->root, $context->option('flavor'));
 
         return $flavor === Flavor::Runtime
@@ -124,7 +129,7 @@ final class EntityGenerator implements GeneratorInterface
             }
         }
 
-        $contents = $this->renderer->render($this->stubs . '/entity.php.stub', [
+        $contents = $this->renderer->render($this->stubs->path('entity.php.stub'), [
             'namespace' => $namespace,
             'class' => $context->name,
             'table' => $table,
@@ -218,7 +223,7 @@ final class EntityGenerator implements GeneratorInterface
             $fromArrayLines[] = "            \$row['{$field->name}'],";
         }
 
-        $contents = $this->renderer->render($this->stubs . '/entity.runtime.php.stub', [
+        $contents = $this->renderer->render($this->stubs->path('entity.runtime.php.stub'), [
             'namespace' => $entityNamespace,
             'class' => $context->name,
             'uses' => $uses === [] ? '' : implode("\n", array_unique($uses)) . "\n",
@@ -355,7 +360,7 @@ final class EntityGenerator implements GeneratorInterface
             return ['file' => null, 'guidance' => $guidance];
         }
 
-        $pluginContents = $this->renderer->render($this->stubs . '/entity-plugin.runtime.php.stub', [
+        $pluginContents = $this->renderer->render($this->stubs->path('entity-plugin.runtime.php.stub'), [
             'namespace' => $pluginNamespace,
             'class' => $context->plugin,
             'entityNamespace' => $entityNamespace,
@@ -400,7 +405,7 @@ final class EntityGenerator implements GeneratorInterface
         $phpType = ($field->nullable ? '?' : '') . $this->phpType($field);
 
         if ($field->kind === 'belongsTo') {
-            return $this->renderer->render($this->stubs . '/entity-manytoone.stub', [
+            return $this->renderer->render($this->stubs->path('entity-manytoone.stub'), [
                 'target' => (string) $field->target,
                 'name' => $field->name,
                 'nullableBool' => $field->nullable ? 'true' : 'false',
@@ -417,7 +422,7 @@ final class EntityGenerator implements GeneratorInterface
             $nullableArg = $field->nullable ? ', nullable: true' : '';
             $enumPhpType = ($field->nullable ? '?' : '') . 'string';
 
-            return $this->renderer->render($this->stubs . '/entity-enum.stub', [
+            return $this->renderer->render($this->stubs->path('entity-enum.stub'), [
                 'lengthArg' => $lengthArg,
                 'nullableArg' => $nullableArg,
                 'phpType' => $enumPhpType,
@@ -426,7 +431,7 @@ final class EntityGenerator implements GeneratorInterface
             ]);
         }
 
-        return $this->renderer->render($this->stubs . '/entity-scalar.stub', [
+        return $this->renderer->render($this->stubs->path('entity-scalar.stub'), [
             'column' => $this->columnArgs($field),
             'phpType' => $phpType,
             'name' => $field->name,

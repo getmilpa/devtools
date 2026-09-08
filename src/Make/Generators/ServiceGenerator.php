@@ -23,6 +23,7 @@ use Milpa\DevTools\Make\MarkerInserter;
 use Milpa\DevTools\Make\PluginSurgeon;
 use Milpa\DevTools\Make\Markers;
 use Milpa\DevTools\Make\PlannedFile;
+use Milpa\DevTools\Make\StubLocator;
 use Milpa\DevTools\Make\StubRenderer;
 use Milpa\DevTools\Support\ComposerAutoload;
 
@@ -53,15 +54,16 @@ use Milpa\DevTools\Support\ComposerAutoload;
  */
 final class ServiceGenerator implements GeneratorInterface
 {
-    private string $stubs;
+    private StubLocator $stubs;
 
     public function __construct(
         private readonly StubRenderer $renderer = new StubRenderer(),
         private readonly ConventionDetector $detector = new ConventionDetector(),
         private readonly MarkerInserter $markers = new MarkerInserter(),
         private readonly PluginSurgeon $surgeon = new PluginSurgeon(),
+        private readonly StubLocator $locator = new StubLocator(),
     ) {
-        $this->stubs = \dirname(__DIR__) . '/stubs';
+        $this->stubs = $this->locator;
     }
 
     /** The `<what>` token this generator answers to: `'service'`. */
@@ -78,6 +80,9 @@ final class ServiceGenerator implements GeneratorInterface
      */
     public function generate(GenerationContext $context): GenerationResult
     {
+        // THE APP'S STUBS FIRST: bound here, once per generation, so every helper below reads the same
+        // resolution — a copy under <root>/stubs/ wins for that one name, the package fills the rest.
+        $this->stubs = $this->locator->at($context->root);
         $flavor = $this->detector->detect($context->root, $context->option('flavor'));
 
         return $flavor === Flavor::Runtime
@@ -116,7 +121,7 @@ final class ServiceGenerator implements GeneratorInterface
         $withInterface = $context->flag('interface');
         $interfaceClass = $withInterface ? $context->name . 'Interface' : null;
 
-        $serviceContents = $this->renderer->render($this->stubs . '/service.runtime.php.stub', [
+        $serviceContents = $this->renderer->render($this->stubs->path('service.runtime.php.stub'), [
             'namespace' => $serviceNamespace,
             'class' => $context->name,
             'implementsClause' => $interfaceClass !== null ? ' implements ' . $interfaceClass : '',
@@ -127,7 +132,7 @@ final class ServiceGenerator implements GeneratorInterface
         if ($interfaceClass !== null) {
             $interfacePath = $context->root . '/' . $appDir . '/Plugins/' . $context->plugin
                 . '/Services/' . $interfaceClass . '.php';
-            $interfaceContents = $this->renderer->render($this->stubs . '/service-interface.runtime.php.stub', [
+            $interfaceContents = $this->renderer->render($this->stubs->path('service-interface.runtime.php.stub'), [
                 'namespace' => $serviceNamespace,
                 'class' => $interfaceClass,
             ]);
@@ -256,7 +261,7 @@ final class ServiceGenerator implements GeneratorInterface
             $uses .= "use {$serviceNamespace}\\{$interfaceClass};\n";
         }
 
-        $pluginContents = $this->renderer->render($this->stubs . '/service-plugin.runtime.php.stub', [
+        $pluginContents = $this->renderer->render($this->stubs->path('service-plugin.runtime.php.stub'), [
             'namespace' => $pluginNamespace,
             'class' => $context->plugin,
             'uses' => $uses,

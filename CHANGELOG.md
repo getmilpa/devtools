@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.29.0](https://github.com/getmilpa/devtools/compare/v0.28.1...v0.29.0) (2026-09-12)
+
+
+### Features
+
+* connect local source inputs to the artifact catalogue ([78a7dd6](https://github.com/getmilpa/devtools/commit/78a7dd6f6dd7e5efb41ef79fe9674f2839cc8669))
+
 ## [0.28.1](https://github.com/getmilpa/devtools/compare/v0.28.0...v0.28.1) (2026-09-08)
 
 

@@ -122,6 +122,18 @@ it** to find out whether it also does what it was supposed to. Without the last 
 form and never on behaviour — an entity can satisfy `EntityInterface` perfectly and still return the
 wrong field from `toArray()`.
 
+### Catalogue relationships for local source
+
+`artifact:list` declares its output schema, including each artifact's `plugin` directory. Call it
+without a filter to discover local code, including code whose plugin is not registered yet.
+The plugin inputs of `make`, `implement`, `edit`, `artifact:contract`, `artifact:list`, `test:list`
+and `test:show`, plus `validate.target`, point to that producer through `x-milpa-source`.
+
+These references teach where to find existing directories. They do not restrict inputs to an
+enum: scaffolding a new plugin still accepts a new name, and validation also accepts a manifest
+path. A directory's existence does not promise that it contains the requested class or test.
+Use the plugin management catalogue for registry names; they can differ from source directories.
+
 ### `implement` and `edit`: writing code through a gate, not around it
 
 `make` scaffolds; these two fill. Both target **a class `make` already scaffolded** — the target is

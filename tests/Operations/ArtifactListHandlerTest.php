@@ -135,6 +135,37 @@ final class ArtifactListHandlerTest extends TestCase
         return new ArtifactListHandler(new RootResolver($this->root));
     }
 
+    /** Local source directories remain discoverable before any plugin has been registered. */
+    public function testTheCatalogueSourcesLocalInputsFromTheUnfilteredArtifactInventory(): void
+    {
+        $this->writeArtifact('Unregistered', 'Services', 'Draft', 'final class Draft {}');
+        $operations = [];
+        foreach ((new \Milpa\DevTools\Operations\DevToolsOperations())->operations() as $operation) {
+            $operations[$operation->name] = $operation;
+        }
+        $inventory = $operations['artifact:list'];
+        self::assertSame([], $inventory->inputSchema['required']);
+        self::assertNotNull($inventory->outputSchema);
+        $result = $this->handler()->handle([]);
+        self::assertTrue($result['ok']);
+        self::assertSame('Unregistered', $result['artifacts'][0]['plugin']);
+        $row = $inventory->outputSchema['properties']['artifacts']['items'];
+        self::assertEqualsCanonicalizing(array_keys($result['artifacts'][0]), $row['required']);
+        self::assertEqualsCanonicalizing(array_keys($result['artifacts'][0]), array_keys($row['properties']));
+        self::assertSame($result, $this->handler()->handle(['plugin' => $result['artifacts'][0]['plugin']]));
+        foreach (['make', 'implement', 'edit', 'artifact:contract', 'artifact:list', 'test:list', 'test:show', 'validate'] as $name) {
+            $key = $name === 'validate' ? 'target' : 'plugin';
+            self::assertSame(
+                ['tool' => 'artifact:list', 'key' => 'plugin'],
+                $operations[$name]->inputSchema['properties'][$key]['x-milpa-source'] ?? null,
+            );
+        }
+        self::assertArrayNotHasKey('enum', $operations['make']->inputSchema['properties']['plugin']);
+        self::assertArrayNotHasKey('x-milpa-source', $operations['make']->inputSchema['properties']['name']);
+        self::assertArrayNotHasKey('x-milpa-source', $operations['implement']->inputSchema['properties']['content']);
+        self::assertFalse($this->handler()->handle(['plugin' => 'Missing'])['ok']);
+    }
+
     private function writeArtifact(string $plugin, string $subdir, string $name, string $body): void
     {
         $dir = $this->root . '/src/Plugins/' . $plugin . '/' . $subdir;

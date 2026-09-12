@@ -80,7 +80,8 @@ final class DevToolsOperations implements CommandProvider
                     'properties' => [
                         'target' => [
                             'type' => 'string',
-                            'description' => 'Nombre del plugin, o ruta a un milpa.json',
+                            'description' => 'Local plugin directory, or the path to a milpa.json manifest',
+                            'x-milpa-source' => ['tool' => 'artifact:list', 'key' => 'plugin'],
                         ],
                     ],
                     'required' => ['target'],
@@ -119,7 +120,11 @@ final class DevToolsOperations implements CommandProvider
                             'enum' => ['plugin', 'controller', 'entity', 'crud', 'resource', 'service', 'tool', 'test'],
                             'description' => 'Qué artefacto. Con «plugin», los dos nombres siguientes son el mismo',
                         ],
-                        'plugin' => ['type' => 'string', 'description' => 'Identificador del plugin destino: UNA palabra `^[A-Za-z_][A-Za-z0-9_]*$`, sin slashes ni ruta (ej. «Tareas», no «Plugins/Tareas»)'],
+                        'plugin' => [
+                            'type' => 'string',
+                            'description' => 'Target plugin directory: one identifier ^[A-Za-z_][A-Za-z0-9_]*$, no paths. Use an existing directory when adding artifacts, or choose a new name when scaffolding a plugin.',
+                            'x-milpa-source' => ['tool' => 'artifact:list', 'key' => 'plugin'],
+                        ],
                         'name' => ['type' => 'string', 'description' => 'Nombre de la clase a crear'],
                         'fields' => ['type' => 'string', 'description' => 'Campos `nombre:tipo` separados por coma; prefija el nombre con `?` para nullable. Ej: «titulo:string, ?fecha_limite:date, hecha:bool». Tipos escalares: string, text, int, bigint, bool, float, decimal, date, datetime, json. «enum:<Clase>(caso1,caso2,…)» GENERA el enum con esas cases (ej. «prioridad:enum:PrioridadTarea(baja,media,alta)») — declara siempre las cases para no dejar un enum colgando. «belongsTo:<Entidad>» crea una relación solo para entity con --flavor=legacy; resource runtime la degrada a <entidad>_id:int y la nombra en las postcondiciones; entity y crud runtime deben recibir el id escalar directamente (ej. «lista:int»). Mods de escalar: longitud («titulo:string:120») o precisión en decimal («precio:decimal:10,2»). NO existe «default» ni «:nullable» — la nullabilidad es el `?`'],
                         'route' => ['type' => 'string', 'description' => 'Ruta base, para controller y crud'],
@@ -241,7 +246,11 @@ final class DevToolsOperations implements CommandProvider
                 inputSchema: [
                     'type' => 'object',
                     'properties' => [
-                        'plugin' => ['type' => 'string', 'description' => 'The plugin directory that owns the class'],
+                        'plugin' => [
+                            'type' => 'string',
+                            'description' => 'The plugin directory that owns the class',
+                            'x-milpa-source' => ['tool' => 'artifact:list', 'key' => 'plugin'],
+                        ],
                         'class' => ['type' => 'string', 'description' => 'The class to fill — one bare identifier, no paths'],
                         'content' => [
                             'type' => 'string',
@@ -287,7 +296,11 @@ final class DevToolsOperations implements CommandProvider
                 inputSchema: [
                     'type' => 'object',
                     'properties' => [
-                        'plugin' => ['type' => 'string', 'description' => 'The plugin directory that owns the class'],
+                        'plugin' => [
+                            'type' => 'string',
+                            'description' => 'The plugin directory that owns the class',
+                            'x-milpa-source' => ['tool' => 'artifact:list', 'key' => 'plugin'],
+                        ],
                         'class' => ['type' => 'string', 'description' => 'The class to edit — one bare identifier, no paths'],
                         'edits' => [
                             'type' => 'array',
@@ -372,7 +385,11 @@ final class DevToolsOperations implements CommandProvider
                     'type' => 'object',
                     'properties' => [
                         'name' => ['type' => 'string', 'description' => 'The class or enum to inspect: a bare name (e.g. «Tarea») searches the app plugins; a FQCN with backslashes (e.g. «Milpa\\Data\\RepositoryInterface») resolves through the app autoloader and reaches installed vendor code'],
-                        'plugin' => ['type' => 'string', 'description' => 'El plugin donde buscar — opcional; si se omite, busca en todos'],
+                        'plugin' => [
+                            'type' => 'string',
+                            'description' => 'Optional plugin directory to search; omit it to search all plugins',
+                            'x-milpa-source' => ['tool' => 'artifact:list', 'key' => 'plugin'],
+                        ],
                         'member' => ['type' => 'string', 'description' => 'Narrow the answer: «constructor», «methods», or one method name — a small answer instead of the whole contract'],
                     ],
                     'required' => ['name'],
@@ -388,9 +405,37 @@ final class DevToolsOperations implements CommandProvider
                 inputSchema: [
                     'type' => 'object',
                     'properties' => [
-                        'plugin' => ['type' => 'string', 'description' => 'Optional plugin identifier; omit it to list every plugin'],
+                        'plugin' => [
+                            'type' => 'string',
+                            'description' => 'Optional plugin directory; omit it to list every plugin',
+                            'x-milpa-source' => ['tool' => 'artifact:list', 'key' => 'plugin'],
+                        ],
                     ],
                     'required' => [],
+                ],
+                // List without a filter first: local directories exist before registry enrollment.
+                // Greenhouse decisions/0324, evidence/0640.
+                outputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'ok' => ['type' => 'boolean'],
+                        'artifacts' => [
+                            'type' => 'array',
+                            'items' => [
+                                'type' => 'object',
+                                'properties' => [
+                                    'name' => ['type' => 'string'],
+                                    'fqcn' => ['type' => 'string'],
+                                    'plugin' => ['type' => 'string'],
+                                    'kind' => ['type' => 'string'],
+                                    'path' => ['type' => 'string'],
+                                ],
+                                'required' => ['name', 'fqcn', 'plugin', 'kind', 'path'],
+                            ],
+                        ],
+                        'error' => ['type' => 'string'],
+                    ],
+                    'required' => ['ok', 'artifacts'],
                 ],
                 mutating: false,
                 surfaces: ['cli', 'tui', 'mcp'],
@@ -404,7 +449,11 @@ final class DevToolsOperations implements CommandProvider
                     'type' => 'object',
                     'properties' => [
                         'artifact' => ['type' => 'string', 'description' => 'Artifact whose conventional <Artifact>Test class should be listed'],
-                        'plugin' => ['type' => 'string', 'description' => 'Plugin whose tests should be listed'],
+                        'plugin' => [
+                            'type' => 'string',
+                            'description' => 'Plugin directory whose tests should be listed',
+                            'x-milpa-source' => ['tool' => 'artifact:list', 'key' => 'plugin'],
+                        ],
                         'criterion' => ['type' => 'string', 'description' => 'Text found in a test method, criterion summary, or assertion name'],
                     ],
                     'required' => [],
@@ -421,7 +470,11 @@ final class DevToolsOperations implements CommandProvider
                     'type' => 'object',
                     'properties' => [
                         'name' => ['type' => 'string', 'description' => 'Test class name or fully qualified class name'],
-                        'plugin' => ['type' => 'string', 'description' => 'Optional plugin used to disambiguate the test class'],
+                        'plugin' => [
+                            'type' => 'string',
+                            'description' => 'Optional plugin directory used to disambiguate the test class',
+                            'x-milpa-source' => ['tool' => 'artifact:list', 'key' => 'plugin'],
+                        ],
                     ],
                     'required' => ['name'],
                 ],

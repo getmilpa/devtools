@@ -150,6 +150,12 @@ once** — measured on real sessions: re-generating a whole file is where a mode
 in, and a pair that matches nothing returns the CURRENT file verbatim, so the next pair is built
 against ground truth instead of memory.
 
+`make service` creates a plain class by default, suitable as a presentation helper or as the
+starting point for a renderer. Its optional boolean `--interface` generates a new local
+`<Name>Interface` companion. To implement an existing SDK contract such as
+`ComponentRendererInterface`, omit that flag and add the contract when implementing the class.
+The `interface` tool input takes a boolean, not an interface name.
+
 And landing conformant is not behaving: when the class has its own test
 (`tests/Plugins/<Plugin>/<Class>Test.php`), the gate **runs it** — the behavioural judge. A judge
 is never asked to judge itself, so a TDD red is landable: `coa make test` scaffolds the judge

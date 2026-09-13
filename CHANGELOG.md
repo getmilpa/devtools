@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [0.29.1](https://github.com/getmilpa/devtools/compare/v0.29.0...v0.29.1) (2026-09-13)
+
+
+### Bug Fixes
+
+* describe service interface generation as a boolean flag ([adb045e](https://github.com/getmilpa/devtools/commit/adb045ecb685f96744bf4d1e821e254167a4aec6))
+* describe service interface generation as a boolean flag ([7667ca7](https://github.com/getmilpa/devtools/commit/7667ca7fc3cde06eb542a0d4ecbbbeaea24e0ed3))
+
 ## [0.29.0](https://github.com/getmilpa/devtools/compare/v0.28.1...v0.29.0) (2026-09-12)
 
 

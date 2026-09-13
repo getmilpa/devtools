@@ -132,7 +132,7 @@ final class DevToolsOperations implements CommandProvider
                         'table' => ['type' => 'string', 'description' => 'Nombre de tabla, para entity, crud y resource'],
                         'provides' => ['type' => 'string', 'description' => 'Capacidades que ofrece, separadas por coma, para plugin'],
                         'requires' => ['type' => 'string', 'description' => 'Capacidades que necesita, separadas por coma, para plugin'],
-                        'interface' => ['type' => 'string', 'description' => 'Interfaz que el servicio implementa, para service'],
+                        'interface' => ['type' => 'boolean', 'description' => 'Generate a local <Name>Interface companion for a service. Omit for a plain class; this flag does not select an existing interface.'],
                         'needs' => ['type' => 'string', 'description' => 'Dependencias que el tool recibe, separadas por coma, para tool'],
                         'tool_name' => ['type' => 'string', 'description' => 'Nombre con el que se registra el tool, si no el derivado'],
                         'description' => ['type' => 'string', 'description' => 'Descripción del tool, la que lee un agente'],

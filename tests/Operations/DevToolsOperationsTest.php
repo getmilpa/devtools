@@ -177,6 +177,18 @@ final class DevToolsOperationsTest extends TestCase
         );
     }
 
+    /** The service option generates a companion; it does not name an existing SDK contract. */
+    public function testTheServiceCompanionInterfaceIsAnOptionalBooleanFlag(): void
+    {
+        $make = (new DevToolsOperations())->operations()[1];
+        $schema = $make->inputSchema;
+
+        self::assertSame('boolean', $schema['properties']['interface']['type']);
+        self::assertNotContains('interface', $schema['required']);
+        self::assertStringContainsString('companion', $schema['properties']['interface']['description']);
+        self::assertStringContainsString('<Name>Interface', $schema['properties']['interface']['description']);
+    }
+
     /** The new read operations declare only the inputs their handlers actually require. */
     public function testReadOperationRequiredInputsMatchTheirContracts(): void
     {

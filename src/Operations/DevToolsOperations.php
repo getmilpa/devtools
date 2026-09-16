@@ -580,6 +580,23 @@ final class DevToolsOperations implements CommandProvider
                 surfaces: ['cli', 'tui', 'mcp'],
             ),
             new Operation(
+                name: 'source:page',
+                effects: EffectProfile::readOnly(),
+                description: 'Read complete JSON pages of UTF-8 source within the transport result budget; pass next_cursor unchanged to continue, including inside a long line. A cursor grants no permission.',
+                handler: [SourcePageHandler::class, 'handle'],
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'path' => ['type' => 'string', 'description' => 'Source file inside the app root'],
+                        'cursor' => ['type' => 'string', 'description' => 'The previous next_cursor, unchanged; omit to start'],
+                        'max_chars' => ['type' => 'integer', 'minimum' => 256, 'description' => 'Explicit JSON result character budget outside a model transport; may only tighten the transport budget'],
+                    ],
+                    'required' => ['path'],
+                ],
+                mutating: false,
+                surfaces: ['cli', 'tui', 'mcp'],
+            ),
+            new Operation(
                 name: 'discover',
                 effects: EffectProfile::readOnly(),
                 description: 'Find anything by one query — artifacts, contracts, tests, packages — through the existing finders, answered as ONE row shape where each row names the exact operation call that answers in full',

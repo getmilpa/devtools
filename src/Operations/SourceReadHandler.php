@@ -15,6 +15,7 @@ declare(strict_types=1);
 namespace Milpa\DevTools\Operations;
 
 use Milpa\DevTools\Support\RootResolver;
+use Milpa\DevTools\Support\SourcePath;
 
 /**
  * `source:read` — returns a raw slice of one source file inside the app root, by line range.
@@ -99,23 +100,12 @@ final class SourceReadHandler
      */
     private function insideRoot(string $root, string $path): ?string
     {
-        $candidate = str_starts_with($path, '/') ? $path : $root . '/' . $path;
-        $real = realpath($candidate);
-        $rootReal = realpath($root);
-
-        if ($real === false || $rootReal === false || ! is_file($real)) {
-            return null;
-        }
-
-        return str_starts_with($real, $rootReal . '/') ? $real : null;
+        return SourcePath::inside($root, $path);
     }
 
     /** Returns a stable path relative to the host app root. */
     private function relativePath(string $path, string $root): string
     {
-        $path = str_replace('\\', '/', $path);
-        $prefix = rtrim(str_replace('\\', '/', $root), '/') . '/';
-
-        return str_starts_with($path, $prefix) ? substr($path, \strlen($prefix)) : $path;
+        return SourcePath::relative($path, $root);
     }
 }

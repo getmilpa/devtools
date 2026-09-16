@@ -343,3 +343,16 @@ issues via [SECURITY.md](SECURITY.md), and note that this project follows a
 ---
 
 Milpa is designed, built, and maintained by **[Rodrigo Vicente - TeamX Agency](https://teamx.agency/?utm_source=github&utm_medium=readme&utm_campaign=milpa&utm_content=devtools)**.
+
+## Complete source pages
+
+`source:page` is additive: `source:read` keeps its line-based response and defaults. A page preserves UTF-8 source bytes, including line endings, and returns `ok`, `path`, `sha256`, `offset`, `next_offset`, `total_bytes`, `content`, and `next_cursor`. Offsets count **bytes**; a result budget counts **characters of the whole JSON result**, including metadata and escapes.
+
+```sh
+php bin/coa source:page --path=src/App.php --max_chars=6144 --json
+php bin/coa source:page --path=src/App.php --max_chars=6144 --cursor=PREVIOUS_NEXT_CURSOR --json
+```
+
+MCP exposes `source_page` with the same inputs. Pass `next_cursor` unchanged; `null` means complete. Inside the model loop, the transport supplies the budget. Outside it, specify `max_chars` (integer, at least 256). An explicit value can only tighten a transport budget. Very small budgets may fail because metadata and one character cannot fit. The bound covers the handler's JSON result, not outer CLI/MCP envelopes.
+
+The cursor identifies canonical relative path, whole-file SHA-256 and a UTF-8 byte boundary. Changed files and cross-file cursors fail; restart without a cursor after a content change. Paths resolve through the same realpath boundary as `source:read`, including symlinks. A cursor carries no permission and is not an authenticated token. Each page rereads the whole file: this API does not provide streaming memory bounds or a snapshot across concurrent file writes. Native progress policy can still stop long diagnostic sequences.

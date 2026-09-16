@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [0.30.0](https://github.com/getmilpa/devtools/compare/v0.29.1...v0.30.0) (2026-09-16)
+
+
+### Features
+
+* add complete source pages within the caller result budget ([2bf9503](https://github.com/getmilpa/devtools/commit/2bf9503604f351338456ef59c18070f5f9b3f39a))
+* add complete source pages within the caller result budget ([0300368](https://github.com/getmilpa/devtools/commit/0300368c9b5cdb55641fdff2e86da21d9084de0e))
+
 ## [0.29.1](https://github.com/getmilpa/devtools/compare/v0.29.0...v0.29.1) (2026-09-13)
 
 

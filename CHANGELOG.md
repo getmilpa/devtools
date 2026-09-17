@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.30.1](https://github.com/getmilpa/devtools/compare/v0.30.0...v0.30.1) (2026-09-17)
+
+
+### Bug Fixes
+
+* judge complete inline bodies within an explicit byte limit ([a0f8cd6](https://github.com/getmilpa/devtools/commit/a0f8cd62b308234650ced2a516bdefe7391bbea6))
+
 ## [0.30.0](https://github.com/getmilpa/devtools/compare/v0.29.1...v0.30.0) (2026-09-16)
 
 

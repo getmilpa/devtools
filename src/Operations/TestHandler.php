@@ -109,7 +109,7 @@ final class TestHandler
         $resultado = $this->runner->run($comando, $root, $plazo);
 
         $salida = $this->recortar($resultado['output']);
-        $conteos = $this->conteos($resultado['output']);
+        $conteos = PhpUnitSummary::counts($resultado['output']);
 
         return [
             // El veredicto es el CÓDIGO DE SALIDA de PHPUnit, no lo que diga su texto. Es lo que un CI
@@ -123,36 +123,6 @@ final class TestHandler
             'errors' => $conteos['errors'],
             'output' => $salida,
             'command' => implode(' ', $comando),
-        ];
-    }
-
-    /**
-     * Lee los conteos del resumen de PHPUnit, sin exigir que existan.
-     *
-     * Una corrida verde dice `OK (12 tests, 34 assertions)` y una roja `Tests: 12, Assertions: 34,
-     * Failures: 2.` — dos formas del mismo dato. Cuando ninguna casa (una suite que ni arrancó, un
-     * formato distinto) los conteos van en `null`: cero pruebas y no-pude-contar son respuestas
-     * distintas, y decir `0` a la segunda sería inventar.
-     *
-     * @return array{tests: int|null, assertions: int|null, failures: int|null, errors: int|null}
-     */
-    private function conteos(string $salida): array
-    {
-        $leer = static function (string $patron) use ($salida): ?int {
-            return preg_match($patron, $salida, $m) === 1 ? (int) $m[1] : null;
-        };
-
-        if (preg_match('/OK \((\d+) tests?, (\d+) assertions?\)/', $salida, $m) === 1) {
-            return ['tests' => (int) $m[1], 'assertions' => (int) $m[2], 'failures' => 0, 'errors' => 0];
-        }
-
-        $pruebas = $leer('/\bTests: (\d+)/');
-
-        return [
-            'tests' => $pruebas,
-            'assertions' => $leer('/\bAssertions: (\d+)/'),
-            'failures' => $pruebas === null ? null : ($leer('/\bFailures: (\d+)/') ?? 0),
-            'errors' => $pruebas === null ? null : ($leer('/\bErrors: (\d+)/') ?? 0),
         ];
     }
 

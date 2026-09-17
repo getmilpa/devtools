@@ -243,6 +243,49 @@ final class ImplementHandlerTest extends TestCase
         self::assertSame($antes, (string) file_get_contents($this->raiz . '/src/Plugins/Demo/Services/GreeterService.php'));
     }
 
+    /** The same real judge attributes an execution error to the normalized transient body. */
+    public function testRejectedExecutionCarriesTheJudgedBodyAndRestoredSubject(): void
+    {
+        $this->conJuezConductual();
+        $before = (string) file_get_contents($this->archivo());
+        $content = $this->contenidoValido();
+        $content = str_replace("'hola ' . \$name", "missingGreeting(\$name)", $content);
+        $content = str_replace('namespace App\\Plugins\\Demo\\Services;', 'namespace Wrong;', $content);
+        $handler = $this->handlerConJuez();
+        $inline = $handler->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'content' => $content]);
+        $receipt = $inline['diagnostic'];
+        self::assertFalse($inline['ok']);
+        self::assertSame('milpa.authoring-diagnostic/v1', $receipt['schema']);
+        self::assertSame('behavior', $receipt['phase']);
+        self::assertSame('src/Plugins/Demo/Services/GreeterService.php', $receipt['subject']);
+        self::assertSame(hash('sha256', $content), $receipt['submitted_sha256']);
+        self::assertSame(hash('sha256', str_replace('namespace Wrong;', 'namespace App\\Plugins\\Demo\\Services;', $content)), $receipt['judged_sha256']);
+        self::assertNotSame($receipt['submitted_sha256'], $receipt['judged_sha256']);
+        self::assertSame(hash('sha256', $before), $receipt['restored_sha256']);
+        self::assertTrue($receipt['stable_subject']);
+        self::assertTrue($receipt['rolled_back']);
+        self::assertSame(['exit' => 2, 'tests' => 1, 'assertions' => 0, 'failures' => 0, 'errors' => 1], $receipt['result']);
+        self::assertSame($before, file_get_contents($this->archivo()));
+        self::assertArrayNotHasKey('verified', $inline);
+        $handler->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'start', 'content' => $content]);
+        $finish = $handler->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'finish']);
+        self::assertSame($receipt, $finish['diagnostic'], 'Both doors must judge and identify the same assembly.');
+        self::assertSame($content, file_get_contents($this->staging()));
+        self::assertSame($before, file_get_contents($this->archivo()));
+    }
+
+    /** A runner that never executes PHPUnit cannot invent the missing result counts. */
+    public function testInfrastructureFailureKeepsUnknownCountsAndRollback(): void
+    {
+        $this->conJuezConductual();
+        $handler = new ImplementHandler(new RootResolver($this->raiz), behaviorRunner: 'false');
+        $result = $handler->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'content' => $this->contenidoValido()]);
+        self::assertFalse($result['ok']);
+        self::assertSame(['exit' => 1, 'tests' => null, 'assertions' => null, 'failures' => null, 'errors' => null], $result['diagnostic']['result']);
+        self::assertTrue($result['diagnostic']['rolled_back']);
+        self::assertSame($this->cascaron(), file_get_contents($this->archivo()));
+    }
+
     /** The honest body passes its judge and the landing SAYS which test went green. */
     public function testABodyThatBehavesLandsNamingItsGreenJudge(): void
     {

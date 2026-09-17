@@ -145,6 +145,14 @@ location dictates — and, when the app ships PHPStan, **static conformance anal
 still failed to load). On any finding the original survives byte for byte and the diagnostic travels
 back, which is what a model corrects from.
 
+When the class's own PHPUnit test rejects a complete body, the result also carries
+`diagnostic` with schema `milpa.authoring-diagnostic/v1`: the relative subject and test
+selector, submitted/judged/restored SHA-256 digests, subject stability, rollback status,
+and the existing judge's exit code and counts. Namespace resolution can make the submitted
+and judged digests differ. Inline calls and `mode=finish` use this same gate. Missing counts
+remain `null`; a timeout or an unexecuted suite is not an executed diagnostic. This receipt
+never grants permission, publishes a rejected body, or claims positive verification.
+
 `implement` accepts at most **8192 bytes (8 KiB)** of decoded `content` per call.
 Larger files use `mode=start`, then `mode=append` with sections of at most 8192 bytes,
 and `mode=finish` without content. Sections stay in a staging sibling until `finish`

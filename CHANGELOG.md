@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.31.0](https://github.com/getmilpa/devtools/compare/v0.30.1...v0.31.0) (2026-09-17)
+
+
+### Features
+
+* preserve the judged body in authoring diagnostics ([482f236](https://github.com/getmilpa/devtools/commit/482f2366e188d26e6cfae8ee273fe006a2379aeb))
+
 ## [0.30.1](https://github.com/getmilpa/devtools/compare/v0.30.0...v0.30.1) (2026-09-17)
 
 

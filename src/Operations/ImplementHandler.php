@@ -302,18 +302,9 @@ final class ImplementHandler
         // the location-dictated one instead of refusing: the class name is the author's intent (kept and
         // checked above); the namespace is derived, so a file that would «land unloadable» is made
         // loadable, not rejected. An agent should never re-guess what the system already knows.
-        $expected = $this->namespaceFor($root, $file);
-        if (preg_match('/^namespace\s+[^;]+;/m', $content) === 1) {
-            $content = (string) preg_replace('/^namespace\s+[^;]+;/m', "namespace {$expected};", $content, 1);
-        } else {
-            // No namespace at all — inject it after the opening tag and its declare(), if present.
-            $content = (string) preg_replace(
-                '/\A(<\?php\b[^\n]*\n(?:\s*declare\s*\([^)]*\)\s*;\s*\n)?)/',
-                "$1\nnamespace {$expected};\n",
-                $content,
-                1
-            );
-        }
+        $submitted = hash('sha256', $content);
+        $expected = ImplementationBody::namespaceFor(substr($file, \strlen($root) + 1));
+        $content = ImplementationBody::normalize($content, substr($file, \strlen($root) + 1));
         if (preg_match('/^namespace\s+' . preg_quote($expected, '/') . '\s*;/m', $content) !== 1) {
             return ['ok' => false, 'error' => "could not resolve this file's namespace to `{$expected}` — is the opening `<?php` well-formed?"];
         }
@@ -396,9 +387,15 @@ final class ImplementHandler
             if ($runner === null) {
                 $verdictNote = '; behavior unjudged — a test exists but this app ships no phpunit';
             } else {
+                $judged = hash_file('sha256', $file);
+                $selectorHash = hash_file('sha256', $testFile);
                 exec($runner . ' ' . escapeshellarg($testFile) . ' 2>&1', $verdictLines, $verdictCode);
+                $stable = $judged === hash('sha256', $content)
+                    && $judged === hash_file('sha256', $file)
+                    && $selectorHash === hash_file('sha256', $testFile);
                 if ($verdictCode !== 0) {
-                    $this->publishAtomically($file, $previous);
+                    $restored = $this->publishAtomically($file, $previous)
+                        && hash_file('sha256', $file) === hash('sha256', $previous);
                     $tail = implode("\n", \array_slice(array_values(array_filter(
                         $verdictLines,
                         static fn (string $l): bool => trim($l) !== '',
@@ -408,6 +405,21 @@ final class ImplementHandler
                         'ok' => false,
                         'error' => 'refused: the class\'s own test judges this behavior red — '
                             . basename($testFile, '.php') . " said:\n{$tail}",
+                        // This is a judgment of the transient proposal, never a positive verification.
+                        // Missing counts, timeouts and changed subjects cannot earn diagnostic credit.
+                        'diagnostic' => [
+                            'schema' => 'milpa.authoring-diagnostic/v1',
+                            'phase' => 'behavior',
+                            'subject' => substr($file, \strlen($root) + 1),
+                            'submitted_sha256' => $submitted,
+                            'judged_sha256' => $judged,
+                            'restored_sha256' => hash('sha256', $previous),
+                            'selector' => substr($testFile, \strlen($root) + 1),
+                            'selector_sha256' => $selectorHash,
+                            'stable_subject' => $stable,
+                            'rolled_back' => $restored,
+                            'result' => ['exit' => $verdictCode, ...PhpUnitSummary::counts(implode("\n", $verdictLines))],
+                        ],
                     ];
                 }
                 $verdictNote = ', behavior (' . basename($testFile, '.php') . ' green)';
@@ -516,17 +528,4 @@ final class ImplementHandler
         return null;
     }
 
-    /** The namespace this file's location dictates: `src/` maps to `App\`, `tests/` to `App\Tests\`. */
-    private function namespaceFor(string $root, string $file): string
-    {
-        if (str_starts_with($file, $root . '/tests/')) {
-            $relative = substr(\dirname($file), \strlen($root . '/tests/'));
-
-            return 'App\\Tests\\' . str_replace('/', '\\', $relative);
-        }
-
-        $relative = substr(\dirname($file), \strlen($root . '/src/'));
-
-        return 'App\\' . str_replace('/', '\\', $relative);
-    }
 }

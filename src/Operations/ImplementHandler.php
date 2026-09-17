@@ -61,29 +61,29 @@ use Milpa\DevTools\Support\RootResolver;
  * Running the class's test EXECUTES the written code, in a subprocess — the same risk class as the
  * `test` operation, accepted for the same reason and said here. Fuller isolation is ADR-0045's.
  *
- * ── THE CAP: THE OLD CONTRACT WAS BREAKING ITS OWN CALLER ────────────────────────────────────────
+ * ── THE CAP: BOUNDED INPUT AFTER TRANSPORT DECODING ─────────────────────────────────────────────
  *
- * Measured twice on the greenhouse fixture series (runs 10-11): a model writing a WHOLE PHP file
- * inline as one JSON string argument broke its own tool-call JSON with high per-attempt probability
- * at size — «Failed to parse tool call arguments as JSON … missing closing quote» at column 5,389
- * and at column 15,248 — and a gateway-side retry did not absorb the double flake. The root is the
- * contract: it INVITED unbounded inline bodies. So the fix is architecture, not a nudge: content
- * over MAX_INLINE_CHARS is refused before any write, and the refusal teaches the piece-wise door —
- * `mode=start` writes the file header and first section, `mode=append` each next section (verbatim:
- * the caller owns the bytes), `mode=finish` verifies and judges the assembled file through the SAME
- * gate a single-shot passes. A partial file is not valid PHP, so start and append verify NOTHING
- * and their results say so plainly — no green is claimable until finish.
+ * Historical truncated tool calls led to a 4,000-byte ceiling. That cannot repair a transport
+ * which has already decoded the arguments: greenhouse 0763 received a complete 7,854-byte body
+ * which the ceiling refused before any code judge could inspect it. Bound accepted content at
+ * 8 KiB, measured in bytes, and let the SAME syntax, linkage and behavior gates decide whether
+ * a complete body can land. Transport truncation remains a gateway failure, not a size diagnosis.
+ *
+ * Larger bodies use `mode=start` and `mode=append`, each within the same byte ceiling. These
+ * write unverified staging only; `mode=finish` judges the whole assembly through the single-shot
+ * gate. A partial file never claims verification or replaces the live scaffold.
  */
 final class ImplementHandler
 {
+    /** Maximum bytes of inline content per single-shot, start or append call (8 KiB). */
+    public const MAX_INLINE_BYTES = 8192;
+
     /**
-     * The inline-content ceiling, in characters.
+     * Compatibility alias; this ceiling has always counted bytes, not Unicode characters.
      *
-     * Calibrated under both measured breaks: the tool-call JSON snapped at column 5,389 on one run
-     * and at column 15,248 on another (greenhouse fixture series, runs 10-11). Anything over this
-     * is refused toward the parts door, whose sections each stay under it.
+     * @deprecated Use MAX_INLINE_BYTES.
      */
-    public const MAX_INLINE_CHARS = 4000;
+    public const MAX_INLINE_CHARS = self::MAX_INLINE_BYTES;
 
     /**
      * The suffix of the staging sibling a parts author writes to, never the live scaffold.
@@ -168,22 +168,22 @@ final class ImplementHandler
             ];
         }
 
-        // ── The cap: the measured killer is refused BEFORE any write, teaching the door ──────────
-        if ($mode !== 'finish' && \strlen($content) > self::MAX_INLINE_CHARS) {
+        // Bound decoded input before any write; transport validity is already decided upstream.
+        if ($mode !== 'finish' && \strlen($content) > self::MAX_INLINE_BYTES) {
             if ($mode === null) {
                 return [
                     'ok' => false,
-                    'error' => 'refused: `content` is ' . \strlen($content) . ' chars, over MAX_INLINE_CHARS ('
-                        . self::MAX_INLINE_CHARS . ') — a body that size breaks the caller\'s own tool-call JSON. '
+                    'error' => 'refused: `content` is ' . \strlen($content) . ' bytes, over MAX_INLINE_BYTES ('
+                        . self::MAX_INLINE_BYTES . '). '
                         . 'Write it in parts: mode=start with the file header and first section, mode=append for '
-                        . 'each next section (each under the cap), mode=finish to verify and judge.',
+                        . 'each next section (each at or below the cap), mode=finish to verify and judge.',
                 ];
             }
 
             return [
                 'ok' => false,
-                'error' => 'refused: this section is ' . \strlen($content) . ' chars, over MAX_INLINE_CHARS ('
-                    . self::MAX_INLINE_CHARS . ') — split it into smaller sections, each under the cap',
+                'error' => 'refused: this section is ' . \strlen($content) . ' bytes, over MAX_INLINE_BYTES ('
+                    . self::MAX_INLINE_BYTES . ') — split it into smaller sections, each at or below the cap',
             ];
         }
 
@@ -242,8 +242,8 @@ final class ImplementHandler
                 'file' => substr($file, \strlen($root) + 1),
                 'partial' => 'started (staged, nothing live) — nothing verified, nothing judged: a partial file '
                     . 'is not valid PHP, and the live scaffold stays untouched. Send each next section with '
-                    . 'mode=append (each under ' . self::MAX_INLINE_CHARS
-                    . ' chars), then mode=finish to verify, judge, and publish.',
+                    . 'mode=append (each at or below ' . self::MAX_INLINE_BYTES
+                    . ' bytes), then mode=finish to verify, judge, and publish.',
             ];
         }
         if ($mode === 'append') {

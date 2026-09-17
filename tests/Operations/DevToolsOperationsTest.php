@@ -134,6 +134,9 @@ final class DevToolsOperationsTest extends TestCase
         self::assertSame(['plugin', 'class'], $schema['required'], 'content is per-mode — the handler teaches; finish needs none');
         self::assertSame(['start', 'append', 'finish'], $schema['properties']['mode']['enum']);
         self::assertStringContainsString('parts', $porNombre['implement']->description);
+        self::assertStringContainsString('8192 bytes', $porNombre['implement']->description);
+        self::assertStringContainsString('8192 bytes', $schema['properties']['content']['description']);
+        self::assertStringNotContainsString('JSON', $porNombre['implement']->description);
         self::assertSame('class', $porNombre['implement']->namedTarget, 'every mode names the class — the intent gate keeps working');
     }
 

@@ -239,8 +239,8 @@ final class DevToolsOperations implements CommandProvider
                     subject: Subject::Executable,
                 ),
                 description: 'Write the body of a class that make scaffolded, verified before it lands. '
-                    . 'Inline content is capped (MAX_INLINE_CHARS = ' . ImplementHandler::MAX_INLINE_CHARS
-                    . ' chars — larger bodies break the tool-call JSON, measured); over it, write in parts: '
+                    . 'Inline content is capped (MAX_INLINE_BYTES = ' . ImplementHandler::MAX_INLINE_BYTES
+                    . ' bytes); over it, write in parts: '
                     . 'mode=start with the first section, mode=append per section, mode=finish to verify and judge',
                 handler: [ImplementHandler::class, 'handle'],
                 inputSchema: [
@@ -255,8 +255,8 @@ final class DevToolsOperations implements CommandProvider
                         'content' => [
                             'type' => 'string',
                             'description' => 'The COMPLETE PHP file (strict_types, the namespace its location dictates, '
-                                . 'a class by that name) — or, with mode=start/append, ONE section of it, each under '
-                                . ImplementHandler::MAX_INLINE_CHARS . ' chars; mode=finish takes none',
+                                . 'a class by that name) — or, with mode=start/append, ONE section of it, each at most '
+                                . ImplementHandler::MAX_INLINE_BYTES . ' bytes; mode=finish takes none',
                         ],
                         'mode' => [
                             'type' => 'string',

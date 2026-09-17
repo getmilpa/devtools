@@ -392,11 +392,8 @@ final class ImplementHandlerTest extends TestCase
 
     // ── The parts door: the inline cap, and start / append / finish ──────────────────────────────
     //
-    // Measured twice on the greenhouse fixture series (runs 10-11): a model writing a WHOLE PHP
-    // file inline as one JSON string argument broke its own tool-call JSON — «missing closing
-    // quote» at column 5,389 and at column 15,248 — and a gateway-side retry did not absorb the
-    // double flake. The root is the contract: it invited unbounded inline bodies. The fix is
-    // architecture, not a nudge: an oversized body is REFUSED, the refusal teaching the door.
+    // The bound applies to decoded bytes in every writing mode. Complete bodies within it
+    // reach the original judges; oversized sections leave both live and staged files untouched.
 
     /** The path of the scaffolded class, relative reads spelled once. */
     private function archivo(): string
@@ -411,19 +408,19 @@ final class ImplementHandlerTest extends TestCase
     }
 
     /**
-     * THE measured killer, refused at the gate: content over the cap never reaches a write — the
+     * Oversized decoded content is refused at the gate: content over the cap never reaches a write — the
      * scaffold survives byte for byte — and the refusal names the constant and all three modes,
      * because the refusal IS the documentation the model corrects from.
      */
     public function testAnOversizedSingleShotIsRefusedBeforeAnyWriteTeachingTheParts(): void
     {
         $antes = (string) file_get_contents($this->archivo());
-        $grande = $this->contenidoValido() . str_repeat("\n// padding to cross the inline cap", 200);
+        $grande = $this->padded($this->contenidoValido(), 8193);
 
         $r = $this->implement($grande);
 
         self::assertFalse($r['ok']);
-        self::assertStringContainsString('MAX_INLINE_CHARS', $r['error']);
+        self::assertStringContainsString('MAX_INLINE_BYTES', $r['error']);
         self::assertStringContainsString('mode=start', $r['error']);
         self::assertStringContainsString('mode=append', $r['error']);
         self::assertStringContainsString('mode=finish', $r['error']);
@@ -436,12 +433,84 @@ final class ImplementHandlerTest extends TestCase
         $antes = (string) file_get_contents($this->archivo());
         foreach (['start', 'append'] as $mode) {
             $r = $this->handler()->handle(['plugin' => 'Demo', 'class' => 'GreeterService',
-                'mode' => $mode, 'content' => str_repeat('x', ImplementHandler::MAX_INLINE_CHARS + 1)]);
+                'mode' => $mode, 'content' => str_repeat('x', ImplementHandler::MAX_INLINE_BYTES + 1)]);
 
             self::assertFalse($r['ok'], "mode={$mode} accepted an oversized section");
-            self::assertStringContainsString('MAX_INLINE_CHARS', $r['error']);
+            self::assertStringContainsString('MAX_INLINE_BYTES', $r['error']);
             self::assertSame($antes, (string) file_get_contents($this->archivo()), "mode={$mode} wrote before refusing");
         }
+    }
+
+    /** Pad valid PHP with a multibyte comment to an exact byte length. */
+    private function padded(string $content, int $bytes = 8192): string
+    {
+        $content .= "\n// límite á ";
+
+        return $content . str_repeat('x', $bytes - \strlen($content));
+    }
+
+    /** Boundary counts bytes, includes the exact cap, and preserves staged work on refusal. */
+    public function testInlineByteBoundaryAcrossCompleteAndPartialWrites(): void
+    {
+        self::assertSame(8192, ImplementHandler::MAX_INLINE_BYTES);
+        self::assertSame(ImplementHandler::MAX_INLINE_BYTES, ImplementHandler::MAX_INLINE_CHARS);
+        $content = $this->padded($this->contenidoValido());
+        self::assertLessThan(8192, mb_strlen($content, 'UTF-8'));
+        $before = (string) file_get_contents($this->archivo());
+        foreach ([null, 'start', 'append'] as $mode) {
+            file_put_contents($this->archivo(), $before);
+            file_put_contents($this->staging(), 'previous stage');
+            $input = ['plugin' => 'Demo', 'class' => 'GreeterService', 'content' => $content];
+            if ($mode !== null) {
+                $input['mode'] = $mode;
+            }
+            $r = $this->handler()->handle($input);
+            self::assertTrue($r['ok'], $r['error'] ?? '');
+            self::assertSame($mode === null ? $content : $before, file_get_contents($this->archivo()));
+            $stage = (string) file_get_contents($this->staging());
+            self::assertSame(match ($mode) {
+                'start' => $content,
+                'append' => 'previous stage' . $content,
+                default => 'previous stage',
+            }, $stage);
+            $live = (string) file_get_contents($this->archivo());
+            $r = $this->handler()->handle([...$input, 'content' => $content . 'x']);
+            self::assertFalse($r['ok']);
+            self::assertStringContainsString('8193 bytes', $r['error']);
+            self::assertStringNotContainsString('JSON', $r['error']);
+            self::assertSame($live, file_get_contents($this->archivo()));
+            self::assertSame($stage, file_get_contents($this->staging()));
+        }
+    }
+
+    /** A body above the old cap still goes through syntax, linkage and behavioral judges. */
+    public function testLargerCompleteBodiesKeepEveryLandingJudgeAndRollback(): void
+    {
+        $this->conJuezConductual();
+        $before = (string) file_get_contents($this->archivo());
+        $badSyntax = $this->padded($this->contenidoValido() . "\nfunction broken(\n");
+        $r = $this->handlerConJuez()->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'content' => $badSyntax]);
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('syntax', $r['error']);
+        self::assertSame($before, file_get_contents($this->archivo()));
+
+        $good = $this->padded($this->contenidoValido());
+        $r = $this->conAnalizador('echo "GreeterService.php:7:unknown class Demo\\Missing"; exit 1')
+            ->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'content' => $good]);
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('unknown class', $r['error']);
+        self::assertSame($before, file_get_contents($this->archivo()));
+
+        $r = $this->handlerConJuez()->handle(['plugin' => 'Demo', 'class' => 'GreeterService',
+            'content' => str_replace("'hola ' . \$name", "'fake ' . \$name", $good)]);
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('behavior', $r['error']);
+        self::assertSame($before, file_get_contents($this->archivo()));
+
+        $r = $this->handlerConJuez()->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'content' => $good]);
+        self::assertTrue($r['ok'], $r['error'] ?? '');
+        self::assertStringContainsString('GreeterServiceTest green', $r['verified']);
+        self::assertSame($good, file_get_contents($this->archivo()));
     }
 
     /**

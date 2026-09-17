@@ -145,6 +145,12 @@ location dictates — and, when the app ships PHPStan, **static conformance anal
 still failed to load). On any finding the original survives byte for byte and the diagnostic travels
 back, which is what a model corrects from.
 
+`implement` accepts at most **8192 bytes (8 KiB)** of decoded `content` per call.
+Larger files use `mode=start`, then `mode=append` with sections of at most 8192 bytes,
+and `mode=finish` without content. Sections stay in a staging sibling until `finish`
+passes the same syntax, linkage and behavioral checks as a complete-file call.
+The byte ceiling also applies to the assembled file submitted by `edit`.
+
 `implement` takes the complete file; `edit` takes find→replace pairs that must match **exactly
 once** — measured on real sessions: re-generating a whole file is where a model's priors sneak back
 in, and a pair that matches nothing returns the CURRENT file verbatim, so the next pair is built

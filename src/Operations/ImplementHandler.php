@@ -343,24 +343,21 @@ final class ImplementHandler
 
         $analyzer = $this->analyzer ?? $this->defaultAnalyzer($root);
         if ($analyzer !== null) {
-            exec($analyzer . ' ' . escapeshellarg($file) . ' 2>&1', $findings, $verdict);
-            if ($verdict !== 0) {
-                $this->publishAtomically($file, $previous);
-                // Only the findings travel — `path:line:message`, the raw format's shape. The
-                // analyzer's banners and tips would bury the one line the model corrects from.
-                $lines = array_values(array_filter(
-                    $findings,
-                    static fn (string $l): bool => preg_match('/:\d+:/', $l) === 1,
-                ));
-                if ($lines === []) {
-                    $lines = array_slice(array_values(array_filter(
-                        $findings,
-                        static fn (string $l): bool => trim($l) !== '',
-                    )), -6);
+            // PHPStan's configuration note goes to stderr; it must not corrupt its JSON report.
+            $stderr = tempnam(sys_get_temp_dir(), 'milpa-analysis-');
+            $findings = [];
+            $verdict = -1;
+            $detail = 'could not capture static analysis';
+            if ($stderr !== false) {
+                try {
+                    exec($analyzer . ' ' . escapeshellarg($file) . ' 2>' . escapeshellarg($stderr), $findings, $verdict);
+                    $detail = implode("\n", $findings) . "\n" . (string) file_get_contents($stderr);
+                } finally {
+                    @unlink($stderr);
                 }
-                $detail = implode("\n", array_slice($lines, 0, 12));
-
-                return ['ok' => false, 'error' => "refused: the content does not conform — static analysis said:\n{$detail}"];
+            }
+            if ($verdict !== 0) {
+                return $this->staticRejection($root, $file, $previous, $submitted, hash('sha256', $content), $verdict, implode("\n", $findings), $detail);
             }
         }
 
@@ -510,7 +507,39 @@ final class ImplementHandler
         }
 
         return 'timeout 60 ' . escapeshellarg($phpstan)
-            . ' analyse --level=0 --no-progress --error-format=raw --autoload-file=' . escapeshellarg($autoload);
+            . ' analyse --level=0 --no-progress --error-format=json --autoload-file=' . escapeshellarg($autoload);
+    }
+
+    /** Restore every static rejection; only a complete, stable rule report earns a receipt.
+     * @return array<string, mixed>
+     */
+    private function staticRejection(string $root, string $file, string $previous, string $submitted, string $judged, int $exit, string $json, string $detail): array
+    {
+        clearstatcache(true, $file);
+        $stable = is_file($file) && !is_link($file) && hash_file('sha256', $file) === $judged;
+        $published = $this->publishAtomically($file, $previous);
+        clearstatcache(true, $file);
+        $restored = $published && is_file($file) && !is_link($file)
+            && hash_file('sha256', $file) === hash('sha256', $previous);
+        $subject = substr($file, \strlen($root) + 1);
+        $findings = $exit === 1 ? StaticAnalysisFindings::fromJson($json, $file, $root) : null;
+        $lines = $findings === null ? array_values(array_filter(explode("\n", $detail), static fn (string $line): bool => trim($line) !== ''))
+            : array_map(static fn (array $finding): string => $subject . ':' . ($finding['line'] ?? '?') . ': ' . $finding['message'], $findings);
+        $result = ['ok' => false, 'error' => ($restored
+            ? 'refused: the content does not conform — static analysis said:'
+            : 'refused: static analysis failed and the original file could not be restored; inspect the trial before continuing:')
+            . "\n" . implode("\n", array_slice($lines, 0, 12))];
+        if (!$restored || !$stable || $findings === null) {
+            return $result;
+        }
+        $result['diagnostic'] = [
+            'schema' => 'milpa.authoring-diagnostic/v1', 'phase' => 'static-analysis',
+            'subject' => $subject, 'submitted_sha256' => $submitted, 'judged_sha256' => $judged,
+            'restored_sha256' => hash('sha256', $previous), 'stable_subject' => true, 'rolled_back' => true,
+            'result' => ['exit' => $exit, 'errors' => count($findings), 'findings' => $findings,
+                'fingerprint' => StaticAnalysisFindings::fingerprint($findings)],
+        ];
+        return $result;
     }
 
     /** The one file inside the plugin's tree whose basename is the class — or null. */

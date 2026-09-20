@@ -142,11 +142,25 @@ only inside `src/Plugins/<plugin>/`, so escaping the tree is impossible by const
 a **postcondition**: syntax on a staged copy, `strict_types`, the class it claims, the namespace its
 location dictates — and, when the app ships PHPStan, **static conformance analysed in place**
 (unknown collaborators and interface mismatches were the two measured ways a clean-parsing body
-still failed to load). On any finding the original survives byte for byte and the diagnostic travels
-back, which is what a model corrects from.
+still failed to load). Rejected bodies are restored byte for byte; a failed restoration is explicitly
+reported and cannot emit a static diagnostic receipt.
+
+A completed PHPStan rule rejection can carry `milpa.authoring-diagnostic/v1` with phase
+`static-analysis`. It binds the relative subject, submitted/normalized/restored body hashes,
+subject stability and completed rollback to the complete JSON report's findings. It accepts only
+exit 1, consistent positive counts, one matching file, identified rule findings and no global errors.
+Incomplete reports, foreign files, internal errors, timeouts and changed subjects earn no receipt.
+The default analyzer separates JSON stdout from stderr notes; older injected raw analyzers still
+reject and restore, but cannot supply this structured witness.
+
+The static result retains messages, identifiers and lines. Its fingerprint uses the sorted unique
+message/identifier pairs, ignoring lines and duplicate occurrences; local app-root prefixes are
+removed from messages. Thus a comment that only shifts line numbers does not create new information.
+The body hash attributes the judgment; it is not the static novelty key. This is equality of observed
+findings, not semantic equivalence of programs. The installed analyzer remains a trusted producer.
 
 When the class's own PHPUnit test rejects a complete body, the result also carries
-`diagnostic` with schema `milpa.authoring-diagnostic/v1`: the relative subject and test
+`diagnostic` with schema `milpa.authoring-diagnostic/v1` and phase `behavior`: the relative subject and test
 selector, submitted/judged/restored SHA-256 digests, subject stability, rollback status,
 and the existing judge's exit code and counts. Namespace resolution can make the submitted
 and judged digests differ. Inline calls and `mode=finish` use this same gate. Missing counts

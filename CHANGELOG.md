@@ -1,6 +1,22 @@
 # Changelog
 
 
+## [0.33.0](https://github.com/getmilpa/devtools/compare/v0.32.0...v0.33.0) (2026-09-20)
+
+### Features
+
+* Attribute syntax rejections with preserved targets ([#94](https://github.com/getmilpa/devtools/pull/94)).
+
+Native parser failures now carry submitted/judged/preserved body hashes and explicitly state
+that the proposal was never installed. The complete parser message and line remain available;
+repetition and shifted locations do not create new information. The remaining compilation gate
+still rejects compiler and process failures without fabricating parser findings. Behavioral and
+static-analysis receipts retain their existing contracts.
+
+Measured with native recovery, read-scope denial, previous-version contrasts and the full ToDo
+control in Greenhouse evidence 0813 and decision 0438:
+https://github.com/getmilpa/greenhouse/pull/178.
+
 ## [0.32.0](https://github.com/getmilpa/devtools/compare/v0.31.0...v0.32.0) (2026-09-20)
 
 

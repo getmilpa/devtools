@@ -309,19 +309,50 @@ final class ImplementHandler
             return ['ok' => false, 'error' => "could not resolve this file's namespace to `{$expected}` — is the opening `<?php` well-formed?"];
         }
 
+        $preserved = $this->regularFileHash($file);
         $staged = tempnam(sys_get_temp_dir(), 'milpa-implement-');
-        if ($staged === false || file_put_contents($staged, $content) === false) {
+        if ($staged === false) {
             return ['ok' => false, 'error' => 'could not stage the content for verification'];
         }
 
         try {
+            if (file_put_contents($staged, $content) !== strlen($content)) {
+                return ['ok' => false, 'error' => 'could not stage the content for verification'];
+            }
+            $judged = file_get_contents($staged);
+            if ($judged !== $content) {
+                return ['ok' => false, 'error' => 'the staged proposal changed before verification'];
+            }
+            $finding = SyntaxFinding::inspect($judged);
+            if ($finding !== null) {
+                $stable = $this->regularFileHash($staged) === hash('sha256', $judged);
+                $unchanged = is_string($preserved) && $this->regularFileHash($file) === $preserved;
+                return [
+                    'ok' => false,
+                    'error' => 'refused: syntax error in the proposal for ' . substr($file, strlen($root) + 1)
+                        . ' on line ' . $finding['line'] . ': ' . $finding['message']
+                        . ($unchanged ? '; destination preserved, proposal never installed' : '; destination preservation could not be verified'),
+                    'diagnostic' => [
+                        'schema' => 'milpa.authoring-diagnostic/v1',
+                        'phase' => 'syntax',
+                        'subject' => substr($file, strlen($root) + 1),
+                        'submitted_sha256' => $submitted,
+                        'judged_sha256' => hash('sha256', $judged),
+                        'preserved_sha256' => $preserved,
+                        'stable_subject' => $stable,
+                        'candidate_installed' => false,
+                        'destination_preserved' => $unchanged,
+                        'result' => $finding,
+                    ],
+                ];
+            }
             exec('php -l ' . escapeshellarg($staged) . ' 2>&1', $lines, $code);
             if ($code !== 0) {
                 // The diagnostic travels whole — it is what the model corrects from. The temp path
                 // inside it would only mislead, so it is renamed to the file it was meant for.
                 $detail = str_replace($staged, $file, implode("\n", $lines));
 
-                return ['ok' => false, 'error' => "refused: the content does not parse — syntax check said:\n{$detail}"];
+                return ['ok' => false, 'error' => "refused: syntax or compilation check failed (exit {$code}):\n{$detail}"];
             }
         } finally {
             @unlink($staged);
@@ -431,6 +462,13 @@ final class ImplementHandler
                 . ($analyzer !== null ? ' and static conformance' : ' — static analysis unavailable in this app')
                 . $verdictNote,
         ];
+    }
+
+    /** Observe the current regular file, without reusing a cached file type. */
+    private function regularFileHash(string $file): string|false
+    {
+        clearstatcache(true, $file);
+        return is_file($file) && !is_link($file) ? hash_file('sha256', $file) : false;
     }
 
     /**

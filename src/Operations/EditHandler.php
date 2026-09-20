@@ -60,6 +60,9 @@ final class EditHandler
      */
     public function handle(array $input): array
     {
+        if (array_key_exists('source', $input)) {
+            return ['ok' => false, 'error' => 'Recorded sources require a compatible host runtime; this handler only edits the current file.'];
+        }
         $plugin = \is_string($input['plugin'] ?? null) ? trim($input['plugin']) : '';
         $class = \is_string($input['class'] ?? null) ? trim($input['class']) : '';
         $edits = \is_array($input['edits'] ?? null) ? $input['edits'] : [];
@@ -80,33 +83,12 @@ final class EditHandler
             ];
         }
 
-        // ── Apply every pair on the CURRENT content, refusing on absence or ambiguity ───────────
-        $content = (string) file_get_contents($file);
-        foreach ($edits as $i => $edit) {
-            $find = \is_string($edit['find'] ?? null) ? $edit['find'] : '';
-            $replace = \is_string($edit['replace'] ?? null) ? $edit['replace'] : '';
-            if ($find === '') {
-                return ['ok' => false, 'error' => 'edit #' . ($i + 1) . ' has an empty `find`'];
-            }
-
-            $times = substr_count($content, $find);
-            if ($times === 0) {
-                // The CURRENT file travels with the refusal. Measured on the first live run: both
-                // rejected pairs were built against the file the model IMAGINED — one tried to find
-                // the whole header of a file that was never landed. A find can only be exact
-                // against ground truth, and the catalogue has no other way to read it.
-                return [
-                    'ok' => false,
-                    'error' => 'edit #' . ($i + 1) . " matches nothing — this `find` does not appear in the file:\n{$find}\n"
-                        . "The CURRENT file is:\n---\n{$content}\n---\nBuild your pairs against that text exactly.",
-                ];
-            }
-            if ($times > 1) {
-                return ['ok' => false, 'error' => 'edit #' . ($i + 1) . " is ambiguous: `find` appears {$times} times and must appear exactly once — widen it with surrounding lines"];
-            }
-
-            $content = str_replace($find, $replace, $content);
+        // Exact byte editing is shared with recorded-proposal repair; only the lander writes.
+        $edited = EditPairs::apply((string) file_get_contents($file), $edits);
+        if (!$edited['ok']) {
+            return $edited;
         }
+        $content = $edited['content'];
 
         // ── One landing authority: the whole gate is implement's, delegated ──────────────────────
         $landed = $this->lander->handle(['plugin' => $plugin, 'class' => $class, 'content' => $content]);

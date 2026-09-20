@@ -187,6 +187,12 @@ once** — measured on real sessions: re-generating a whole file is where a mode
 in, and a pair that matches nothing returns the CURRENT file verbatim, so the next pair is built
 against ground truth instead of memory.
 
+`EditPairs::apply()` exposes that same exact byte transformation without filesystem writes
+or judgment, so a host runtime can compose repairs of retained proposals with the existing
+`implement` gate. The standalone editor refuses a `source` argument: a compatible runtime
+must first resolve and authorize the recorded proposal. It never silently treats a source
+reference as permission to edit the current host file.
+
 `make service` creates a plain class by default, suitable as a presentation helper or as the
 starting point for a renderer. Its optional boolean `--interface` generates a new local
 `<Name>Interface` companion. To implement an existing SDK contract such as

@@ -72,6 +72,19 @@ final class EditHandlerTest extends TestCase
         self::assertStringContainsString("return 'bye ' . \$name;", $this->original());
     }
 
+    public function testAnOlderHostCannotSilentlyIgnoreARecordedSource(): void
+    {
+        $before = $this->original();
+        $result = (new EditHandler(new RootResolver($this->raiz)))->handle([
+            'plugin' => 'Demo', 'class' => 'GreeterService',
+            'source' => ['session' => 'missing', 'seq' => 1, 'sha256' => str_repeat('0', 64)],
+            'edits' => [['find' => "return 'hola ' . \$name;", 'replace' => "return 'changed ' . \$name;"]],
+        ]);
+        self::assertFalse($result['ok']);
+        self::assertStringContainsString('compatible host runtime', $result['error']);
+        self::assertSame($before, $this->original());
+    }
+
     /** A pair whose `find` is absent refuses NAMING the miss — and nothing on disk moves. */
     public function testAFindThatDoesNotMatchIsRefusedAndNothingMoves(): void
     {

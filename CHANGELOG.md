@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.32.0](https://github.com/getmilpa/devtools/compare/v0.31.0...v0.32.0) (2026-09-20)
+
+
+### Features
+
+* attribute static diagnostics after verified restoration ([#92](https://github.com/getmilpa/devtools/issues/92)) ([27059f0](https://github.com/getmilpa/devtools/commit/27059f0034aeba9f929150f129c7c624cd4c1e66))
+
 ## [0.31.0](https://github.com/getmilpa/devtools/compare/v0.30.1...v0.31.0) (2026-09-17)
 
 

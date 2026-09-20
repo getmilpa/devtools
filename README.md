@@ -142,8 +142,17 @@ only inside `src/Plugins/<plugin>/`, so escaping the tree is impossible by const
 a **postcondition**: syntax on a staged copy, `strict_types`, the class it claims, the namespace its
 location dictates — and, when the app ships PHPStan, **static conformance analysed in place**
 (unknown collaborators and interface mismatches were the two measured ways a clean-parsing body
-still failed to load). Rejected bodies are restored byte for byte; a failed restoration is explicitly
+still failed to load). Bodies rejected after installation are restored byte for byte; a failed restoration is explicitly
 reported and cannot emit a static diagnostic receipt.
+
+A native `TOKEN_PARSE` failure on the normalized staged proposal carries phase `syntax` of
+`milpa.authoring-diagnostic/v1`. Its submitted/judged/preserved SHA-256 digests distinguish the
+proposal from the destination: `candidate_installed:false`, `destination_preserved:true` and
+`stable_subject:true` describe preservation, with no rollback claim. The result retains the
+parser, exact message and line. Its fingerprint excludes the line, including PHP's embedded
+opening-delimiter location in a delimiter mismatch; other numbers in a message stay significant.
+Parsing does not execute the proposal. Bodies without a ParseError still pass the existing
+`php -l` compilation gate; process failures and other compiler errors do not receive syntax receipts.
 
 A completed PHPStan rule rejection can carry `milpa.authoring-diagnostic/v1` with phase
 `static-analysis`. It binds the relative subject, submitted/normalized/restored body hashes,

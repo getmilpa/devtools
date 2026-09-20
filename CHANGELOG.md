@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.34.0](https://github.com/getmilpa/devtools/compare/v0.33.0...v0.34.0) (2026-09-20)
+
+
+### Features
+
+* share exact-pair edits for recorded proposal repair ([#98](https://github.com/getmilpa/devtools/issues/98); Greenhouse 0819) ([e8e48f2](https://github.com/getmilpa/devtools/commit/e8e48f2073b3693361ad9b6483edacd0148e73f4))
+
 ## [0.33.0](https://github.com/getmilpa/devtools/compare/v0.32.0...v0.33.0) (2026-09-20)
 
 ### Features

@@ -8,6 +8,14 @@
 
 * attribute static diagnostics after verified restoration ([#92](https://github.com/getmilpa/devtools/issues/92)) ([27059f0](https://github.com/getmilpa/devtools/commit/27059f0034aeba9f929150f129c7c624cd4c1e66))
 
+Complete PHPStan rule rejections now carry an attributed static-analysis receipt only when
+judged bytes stayed stable and the original file was restored. Findings retain messages,
+identifiers and lines; their fingerprint ignores line shifts and duplicate occurrences, while
+body hashes bind the judgment to the proposal. Malformed, foreign, infrastructure and timeout
+reports earn no receipt, and failed restoration is explicit. Behavioral receipts are unchanged.
+Measured with native recovery, authority controls and the complete ToDo control in Greenhouse
+decision 0434 and evidence 0786: https://github.com/getmilpa/greenhouse/pull/152.
+
 ## [0.31.0](https://github.com/getmilpa/devtools/compare/v0.30.1...v0.31.0) (2026-09-17)
 
 

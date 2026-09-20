@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.33.0](https://github.com/getmilpa/devtools/compare/v0.32.0...v0.33.0) (2026-09-20)
+
+
+### Features
+
+* attribute syntax rejections with preserved targets ([#94](https://github.com/getmilpa/devtools/issues/94)) ([00fdbf3](https://github.com/getmilpa/devtools/commit/00fdbf3c3a37a3cb1909afc48cf23cbd02b6f00f))
+
 ## [0.32.0](https://github.com/getmilpa/devtools/compare/v0.31.0...v0.32.0) (2026-09-20)
 
 

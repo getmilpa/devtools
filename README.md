@@ -182,6 +182,20 @@ and `mode=finish` without content. Sections stay in a staging sibling until `fin
 passes the same syntax, linkage and behavioral checks as a complete-file call.
 The byte ceiling also applies to the assembled file submitted by `edit`.
 
+To repair an assembled staging file, call `implement` with `mode=amend`, the same
+`plugin` and `class`, its current `expected_sha256`, and an `edits` list of exact
+`{find, replace}` pairs. Each find must occur exactly once, in order. All find and
+replace strings together are limited to 8192 bytes; `content` is forbidden in this
+mode. Start, append and amend return the staging path and SHA-256. A stale hash,
+missing or ambiguous match, or linked staging path refuses without changing it.
+Amend replaces only the unverified staging sibling, never the live PHP class.
+Through a governed trial, promote that staging change before calling `finish`;
+only the usual finish judges and final promotion can deliver working code. A green
+amendment therefore says nothing about PHP validity or behavior. Edits and expected
+hash are refused in other implement modes. Serialize staging writers: the amendment
+lock and inode recheck coordinate amendments, not arbitrary external writes or other
+modes. Recorded `edit.source` retains its separate complete-inline-proposal contract.
+
 `implement` takes the complete file; `edit` takes find→replace pairs that must match **exactly
 once** — measured on real sessions: re-generating a whole file is where a model's priors sneak back
 in, and a pair that matches nothing returns the CURRENT file verbatim, so the next pair is built

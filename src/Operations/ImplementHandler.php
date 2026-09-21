@@ -103,7 +103,7 @@ final class ImplementHandler
     public const STAGING_SUFFIX = '.milpa-part';
 
     /** The modes of the parts door; absent means single-shot, today's behavior byte for byte. */
-    private const MODES = ['start', 'append', 'finish'];
+    private const MODES = ['start', 'append', 'amend', 'finish'];
 
     /**
      * @param string|null $analyzer       the static-analysis command, or `null` to derive it from
@@ -146,8 +146,17 @@ final class ImplementHandler
             return [
                 'ok' => false,
                 'error' => 'unknown mode — omit it to land the complete file in one call, or land in parts: '
-                    . 'mode=start, then mode=append per section, then mode=finish',
+                    . 'mode=start, then mode=append per section, optionally mode=amend to repair staging, then mode=finish',
             ];
+        }
+
+        if ($mode === 'amend') {
+            $error = StagingAmendment::validate($input);
+            if ($error !== null) {
+                return ['ok' => false, 'error' => $error];
+            }
+        } elseif (array_key_exists('edits', $input) || array_key_exists('expected_sha256', $input)) {
+            return ['ok' => false, 'error' => '`edits` and `expected_sha256` require mode=amend; no arguments were applied'];
         }
 
         // `content` is a per-mode obligation, not a schema-wide one: finish assembles what start and
@@ -159,7 +168,7 @@ final class ImplementHandler
                     . 'finish verifies and judges what the parts assembled',
             ];
         }
-        if ($mode !== 'finish' && $content === '') {
+        if ($mode !== 'finish' && $mode !== 'amend' && $content === '') {
             return [
                 'ok' => false,
                 'error' => $mode === null
@@ -199,7 +208,7 @@ final class ImplementHandler
         $file = $this->fileFor($tree, $class)
             ?? (is_dir($root . '/tests/Plugins/' . $plugin) ? $this->fileFor($root . '/tests/Plugins/' . $plugin, $class) : null);
         if ($file === null) {
-            if ($mode === 'append' || $mode === 'finish') {
+            if ($mode === 'append' || $mode === 'amend' || $mode === 'finish') {
                 return [
                     'ok' => false,
                     'error' => "nothing to {$mode}: no scaffold declares class «{$class}» in plugin «{$plugin}» — "
@@ -215,6 +224,10 @@ final class ImplementHandler
 
         // The staging sibling: a partial writes HERE, never to the live scaffold the app boots.
         $staging = $file . self::STAGING_SUFFIX;
+
+        if ($mode === 'amend') {
+            return StagingAmendment::apply($root, $file, $input);
+        }
 
         // append and finish assemble what an EARLIER start opened — the scaffold existing is no
         // longer enough, the staging file must exist. Its absence teaches mode=start first.
@@ -240,6 +253,8 @@ final class ImplementHandler
             return [
                 'ok' => true,
                 'file' => substr($file, \strlen($root) + 1),
+                'staging' => substr($staging, \strlen($root) + 1),
+                'sha256' => hash_file('sha256', $staging),
                 'partial' => 'started (staged, nothing live) — nothing verified, nothing judged: a partial file '
                     . 'is not valid PHP, and the live scaffold stays untouched. Send each next section with '
                     . 'mode=append (each at or below ' . self::MAX_INLINE_BYTES
@@ -254,6 +269,8 @@ final class ImplementHandler
             return [
                 'ok' => true,
                 'file' => substr($file, \strlen($root) + 1),
+                'staging' => substr($staging, \strlen($root) + 1),
+                'sha256' => hash_file('sha256', $staging),
                 'partial' => 'appended verbatim to staging — nothing verified, nothing judged, live scaffold '
                     . 'untouched. More sections go through mode=append; mode=finish verifies, judges, and '
                     . 'publishes the assembled file.',

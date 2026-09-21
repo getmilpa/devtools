@@ -761,6 +761,31 @@ final class ImplementHandlerTest extends TestCase
         self::assertFileDoesNotExist($this->staging());
     }
 
+    /** An amendment preserves the behavioral gate: a partial success never certifies the repair. */
+    public function testAmendmentStillRequiresTheSameBehavioralJudgeAtFinish(): void
+    {
+        $this->conJuezConductual();
+        $handler = $this->handlerConJuez();
+        $bad = str_replace("'hola '", "'bye '", $this->contenidoValido());
+        $start = $handler->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'start', 'content' => $bad]);
+        $amend = $handler->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'amend',
+            'expected_sha256' => $start['sha256'], 'edits' => [['find' => "'bye '", 'replace' => "'still wrong '"]]]);
+        self::assertTrue($amend['ok']);
+        self::assertArrayNotHasKey('verified', $amend);
+        self::assertSame($this->cascaron(), file_get_contents($this->archivo()));
+        $finish = $handler->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'finish']);
+        self::assertFalse($finish['ok']);
+        self::assertStringContainsString('behavior', $finish['error']);
+        self::assertSame($this->cascaron(), file_get_contents($this->archivo()));
+        $repair = $handler->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'amend',
+            'expected_sha256' => $amend['sha256'], 'edits' => [['find' => "'still wrong '", 'replace' => "'hola '"]]]);
+        self::assertTrue($repair['ok']);
+        $finish = $handler->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'finish']);
+        self::assertTrue($finish['ok'], $finish['error'] ?? '');
+        self::assertFileDoesNotExist($this->staging());
+        self::assertSame($this->contenidoValido(), file_get_contents($this->archivo()));
+    }
+
     /**
      * append and finish need STAGING, not merely a scaffold: even with the scaffold present, without a
      * prior mode=start there is nothing staged, and the refusal teaches mode=start. (On 0.22 the

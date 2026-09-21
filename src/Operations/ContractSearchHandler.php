@@ -19,7 +19,7 @@ use Milpa\DevTools\Support\DeclarationScanner;
 use Milpa\DevTools\Support\RootResolver;
 
 /**
- * `contract:search` — finds class, interface, and enum NAMES across the app's plugins and its
+ * `contract:search` — finds class, interface, and enum NAMES across the app's runtime roots and its
  * installed vendor code, so an installed capability exists for the agent BEFORE it guesses an API.
  *
  * The debt this pays (measured on a live cattle run): installed packages existed for execution but
@@ -27,7 +27,8 @@ use Milpa\DevTools\Support\RootResolver;
  * deduced vendor APIs, planned probes, and weighed static-analysis errors as an introspection API.
  * Search answers the question that comes before the contract: what is the right name to ask for.
  *
- * Candidates come from the app's plugin trees, from `vendor/composer/autoload_psr4.php` (prefixes
+ * Candidates come from the app's declared PSR-4 roots and legacy plugin trees, from
+ * `vendor/composer/autoload_psr4.php` (prefixes
  * mapped to directories, PHP files enumerated), and from `autoload_classmap.php` when present — an
  * optimized classmap is never required. Matching is on file and declaration names, and kinds come
  * from the token scanner: no candidate file is ever required or executed by searching it.
@@ -109,7 +110,9 @@ final class ContractSearchHandler
     }
 
     /**
-     * Candidate files under the app's own plugin trees whose basename matches the query.
+     * Candidate files under declared runtime roots and conventional plugin trees.
+     * Canonical containment prevents app roots or individual links from exporting outside code;
+     * vendor keeps its own provenance, even when the app maps its project root.
      *
      * @return array<string, array{source: string, package: string|null}>
      */
@@ -117,13 +120,32 @@ final class ContractSearchHandler
     {
         [, $appDir] = ComposerAutoload::primaryNamespace($root) ?? ['App', 'src'];
         $candidates = [];
-        foreach ([$root . '/' . trim($appDir, '/') . '/Plugins', $root . '/plugins'] as $pluginRoot) {
-            foreach ($this->matchingFiles($pluginRoot, $shortNeedle) as $file) {
-                $candidates[$file] = ['source' => 'app', 'package' => null];
+        $directories = [...ComposerAutoload::runtimeDirectories($root), trim($appDir, '/') . '/Plugins', 'plugins'];
+        $vendor = realpath($root . '/vendor');
+        foreach ($directories as $directory) {
+            $absolute = preg_match('{^(?:/|[A-Za-z]:/)}', str_replace('\\', '/', $directory)) === 1;
+            $path = realpath($absolute ? $directory : $root . '/' . $directory);
+            if ($path === false || !is_dir($path) || !$this->inside($path, $root)
+                || ($vendor !== false && $this->inside($path, $vendor))) {
+                continue;
+            }
+            foreach ($this->matchingFiles($path, $shortNeedle) as $file) {
+                $canonical = realpath($file);
+                if ($canonical === false || !$this->inside($canonical, $root)
+                    || ($vendor !== false && $this->inside($canonical, $vendor))) {
+                    continue;
+                }
+                $candidates[$canonical] = ['source' => 'app', 'package' => null];
             }
         }
 
         return $candidates;
+    }
+
+    /** Both paths are canonical; a sibling sharing a textual prefix is not a child. */
+    private function inside(string $path, string $directory): bool
+    {
+        return $path === $directory || str_starts_with($path, rtrim($directory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR);
     }
 
     /**

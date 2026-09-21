@@ -25,6 +25,35 @@ namespace Milpa\DevTools\Support;
 final class ComposerAutoload
 {
     /**
+     * Runtime PSR-4 directories as declared, including several directories for one prefix.
+     * No filesystem traversal or PHP loading occurs here; callers own their path boundary.
+     * Development-only autoloading does not enlarge the app's runtime search surface.
+     *
+     * @return list<string>
+     */
+    public static function runtimeDirectories(string $root): array
+    {
+        $map = self::read($root)['autoload']['psr-4'] ?? null;
+        if (!\is_array($map)) {
+            return [];
+        }
+
+        $directories = [];
+        foreach ($map as $prefix => $paths) {
+            if (!\is_string($prefix)) {
+                continue;
+            }
+            foreach (\is_array($paths) ? $paths : [$paths] as $path) {
+                if (\is_string($path)) {
+                    $directories[] = $path;
+                }
+            }
+        }
+
+        return array_values(array_unique($directories));
+    }
+
+    /**
      * The `autoload.psr-4` map declared in `$root/composer.json`, normalized to `[prefix => dir]`
      * with the directory's trailing slash trimmed; `[]` when the file is missing, unparsable, or
      * declares no PSR-4 autoloading.

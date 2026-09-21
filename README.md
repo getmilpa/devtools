@@ -387,6 +387,16 @@ issues via [SECURITY.md](SECURITY.md), and note that this project follows a
 
 Milpa is designed, built, and maintained by **[Rodrigo Vicente - TeamX Agency](https://teamx.agency/?utm_source=github&utm_medium=readme&utm_campaign=milpa&utm_content=devtools)**.
 
+## Contract discovery
+
+`contract:search --q=ResearchDesk` finds type names in the app's runtime `autoload.psr-4`
+directories, including multiple directories per prefix. Components can live outside `src/Plugins`.
+Conventional plugin folders remain searchable for compatibility. App candidates must resolve
+inside the project and outside `vendor`; development-only autoload roots do not enlarge the
+search. Installed vendor code retains its package provenance and optional `--package=vendor/name`
+filter. Search tokenizes declarations without executing candidate PHP files. Discovery of a name
+does not establish that its class can be loaded or that the caller may execute it.
+
 ## Complete source pages
 
 `source:page` is additive: `source:read` keeps its line-based response and defaults. A page preserves UTF-8 source bytes, including line endings, and returns `ok`, `path`, `sha256`, `offset`, `next_offset`, `total_bytes`, `content`, and `next_cursor`. Offsets count **bytes**; a result budget counts **characters of the whole JSON result**, including metadata and escapes.

@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [0.34.1](https://github.com/getmilpa/devtools/compare/v0.34.0...v0.34.1) (2026-09-21)
+
+
+### Bug Fixes
+
+* discover contracts across app runtime autoload roots ([6bfeca9](https://github.com/getmilpa/devtools/commit/6bfeca9ba7b3d99414e57f8fd5c7394e48684d54))
+* discover contracts across app runtime autoload roots ([dc80b56](https://github.com/getmilpa/devtools/commit/dc80b56152e45772f504298e4752b55133d99b27))
+
 ## [0.34.0](https://github.com/getmilpa/devtools/compare/v0.33.0...v0.34.0) (2026-09-20)
 
 

@@ -6,7 +6,6 @@
 
 ### Features
 
-* amend staged implementations by expected content hash ([5f49370](https://github.com/getmilpa/devtools/commit/5f49370c6f5ee22bf321c25916a8a8241951de07))
 * amend staged implementations by expected content hash ([58aa230](https://github.com/getmilpa/devtools/commit/58aa230baf607c7ca6e9fee3151bf199bd2daeef))
 
 ## [0.34.1](https://github.com/getmilpa/devtools/compare/v0.34.0...v0.34.1) (2026-09-21)

@@ -241,7 +241,8 @@ final class DevToolsOperations implements CommandProvider
                 description: 'Write the body of a class that make scaffolded, verified before it lands. '
                     . 'Inline content is capped (MAX_INLINE_BYTES = ' . ImplementHandler::MAX_INLINE_BYTES
                     . ' bytes); over it, write in parts: '
-                    . 'mode=start with the first section, mode=append per section, mode=finish to verify and judge',
+                    . 'mode=start with the first section, mode=append per section, mode=finish to verify and judge. '
+                    . 'Repair staging with mode=amend, exact edits and its current expected_sha256; nothing live or verified yet',
                 handler: [ImplementHandler::class, 'handle'],
                 inputSchema: [
                     'type' => 'object',
@@ -256,14 +257,36 @@ final class DevToolsOperations implements CommandProvider
                             'type' => 'string',
                             'description' => 'The COMPLETE PHP file (strict_types, the namespace its location dictates, '
                                 . 'a class by that name) — or, with mode=start/append, ONE section of it, each at most '
-                                . ImplementHandler::MAX_INLINE_BYTES . ' bytes; mode=finish takes none',
+                                . ImplementHandler::MAX_INLINE_BYTES . ' bytes; mode=amend/finish take none',
                         ],
                         'mode' => [
                             'type' => 'string',
-                            'enum' => ['start', 'append', 'finish'],
+                            'enum' => ['start', 'append', 'amend', 'finish'],
                             'description' => 'Omit to land the complete file in one call. To land in parts: start '
                                 . '(write the header and first section), append (each next section, verbatim), '
+                                . 'amend (exact edits to current staging by hash; promote before finish), '
                                 . 'finish (verify and judge the assembled file — only finish claims any green)',
+                        ],
+                        'expected_sha256' => [
+                            'type' => 'string',
+                            'pattern' => '^[a-f0-9]{64}$',
+                            'description' => 'Required only for mode=amend: current staging SHA-256, returned by start/append/amend. '
+                                . 'A stale hash refuses without writing; read the current staging before rebuilding edits',
+                        ],
+                        'edits' => [
+                            'type' => 'array',
+                            'minItems' => 1,
+                            'description' => 'Required only for mode=amend: exact ordered replacements in staging. '
+                                . 'Each find must occur exactly once; total find + replace bytes at most '
+                                . ImplementHandler::MAX_INLINE_BYTES . '. Never changes live PHP or claims verification',
+                            'items' => [
+                                'type' => 'object',
+                                'properties' => [
+                                    'find' => ['type' => 'string', 'minLength' => 1],
+                                    'replace' => ['type' => 'string'],
+                                ],
+                                'required' => ['find', 'replace'],
+                            ],
                         ],
                     ],
                     // `content` is a per-mode obligation the handler enforces with teaching refusals —

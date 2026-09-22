@@ -417,8 +417,9 @@ filter. Search tokenizes declarations without executing candidate PHP files. Dis
 does not establish that its class can be loaded or that the caller may execute it.
 
 Each match includes `path`, the project-relative canonical file that was scanned.
-Pass that value unchanged to `source:page` (MCP: `source_page`) to read its installed
-documentation. `discover` preserves this path on contract rows. Paths obey the
+Pass that value unchanged to `source_page` in the model loop (`source:page` on
+the CLI) to read its installed documentation. `discover` preserves this path on
+contract rows. Paths obey the
 reader's project boundary, including symlinks; an external declaration is excluded.
 Duplicate FQCNs retain the first scanned declaration in sorted file order, so the
 path is evidence of that declaration, not a claim about Composer's runtime choice.

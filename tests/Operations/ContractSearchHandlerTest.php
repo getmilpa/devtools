@@ -15,6 +15,7 @@ declare(strict_types=1);
 namespace Milpa\DevTools\Tests\Operations;
 
 use Milpa\DevTools\Operations\ContractSearchHandler;
+use Milpa\DevTools\Operations\SourcePageHandler;
 use Milpa\DevTools\Support\RootResolver;
 use PHPUnit\Framework\TestCase;
 
@@ -83,13 +84,22 @@ final class ContractSearchHandlerTest extends TestCase
         self::assertFalse($result['truncated']);
         self::assertSame(
             [
-                ['fqcn' => 'Acme\\Lib\\InvoiceGateway', 'kind' => 'class', 'source' => 'vendor', 'package' => 'acme/lib'],
-                ['fqcn' => 'Acme\\Mapped\\StaticInvoice', 'kind' => 'enum', 'source' => 'vendor', 'package' => 'acme/mapped'],
-                ['fqcn' => 'App\\Plugins\\Billing\\Entities\\Invoice', 'kind' => 'class', 'source' => 'app'],
+                ['fqcn' => 'Acme\\Lib\\InvoiceGateway', 'kind' => 'class', 'source' => 'vendor', 'path' => 'vendor/acme/lib/src/InvoiceGateway.php', 'package' => 'acme/lib'],
+                ['fqcn' => 'Acme\\Mapped\\StaticInvoice', 'kind' => 'enum', 'source' => 'vendor', 'path' => 'vendor/acme/mapped/StaticInvoice.php', 'package' => 'acme/mapped'],
+                ['fqcn' => 'App\\Plugins\\Billing\\Entities\\Invoice', 'kind' => 'class', 'source' => 'app', 'path' => 'src/Plugins/Billing/Entities/Invoice.php'],
             ],
             $result['matches'],
         );
         self::assertFileDoesNotExist($this->root . '/executed-marker', 'searching a name must never execute a candidate file');
+        $reader = new SourcePageHandler(new RootResolver($this->root));
+        foreach ($result['matches'] as $match) {
+            $page = $reader->handle(['path' => $match['path'], 'max_chars' => 6144]);
+            self::assertTrue($page['ok']);
+            self::assertSame(file_get_contents($this->root . '/' . $match['path']), $page['content']);
+            self::assertSame(hash_file('sha256', $this->root . '/' . $match['path']), $page['sha256']);
+            self::assertNull($page['next_cursor']);
+        }
+        self::assertFileDoesNotExist($this->root . '/executed-marker', 'following a declaration path does not execute it');
     }
 
     /** `package` narrows the answer to one vendor package — the app tree included stays out. */
@@ -160,7 +170,7 @@ final class ContractSearchHandlerTest extends TestCase
 
             self::assertTrue($result['ok']);
             self::assertSame(
-                [['fqcn' => 'App\\Plugins\\Solo\\Services\\Thing', 'kind' => 'class', 'source' => 'app']],
+                [['fqcn' => 'App\\Plugins\\Solo\\Services\\Thing', 'kind' => 'class', 'source' => 'app', 'path' => 'src/Plugins/Solo/Services/Thing.php']],
                 $result['matches'],
             );
         } finally {
@@ -184,6 +194,54 @@ final class ContractSearchHandlerTest extends TestCase
         self::assertTrue($result['ok']);
         self::assertCount(25, $result['matches']);
         self::assertTrue($result['truncated']);
+    }
+
+    /** A repeated name identifies the first scanned declaration, never a guessed autoload target. */
+    public function testRepeatedDeclarationsKeepTheActualScannedPath(): void
+    {
+        $this->writeFile('src/Plugins/Billing/A/Duplicate.php', '<?php namespace App\\Repeated; class Duplicate {}');
+        $this->writeFile('src/Plugins/Billing/B/Duplicate.php', '<?php namespace App\\Repeated; class Duplicate {}');
+
+        $result = $this->handler()->handle(['q' => 'App\\Repeated\\Duplicate']);
+
+        self::assertTrue($result['ok']);
+        self::assertCount(1, $result['matches']);
+        self::assertSame('src/Plugins/Billing/A/Duplicate.php', $result['matches'][0]['path']);
+    }
+
+    /** A map entry under vendor cannot export a symlink into a different package or outside the app. */
+    public function testVendorFileLinksStayWithinTheirCanonicalPackage(): void
+    {
+        $this->writeFile('vendor/acme/other/src/AliasTarget.php', '<?php namespace Acme\\Other; class AliasTarget {}');
+        self::assertTrue(symlink(
+            $this->root . '/vendor/acme/other/src/AliasTarget.php',
+            $this->root . '/vendor/acme/lib/src/AliasTarget.php',
+        ));
+
+        $result = $this->handler()->handle(['q' => 'AliasTarget', 'package' => 'acme/lib']);
+        self::assertFalse($result['ok']);
+
+        $result = $this->handler()->handle(['q' => 'AliasTarget']);
+        self::assertTrue($result['ok']);
+        self::assertSame('vendor/acme/other/src/AliasTarget.php', $result['matches'][0]['path']);
+        self::assertSame('acme/other', $result['matches'][0]['package']);
+    }
+
+    /** A vendor link to a sibling file is not a readable declaration reference. */
+    public function testVendorFileLinkOutsideTheHostIsExcluded(): void
+    {
+        $outside = $this->root . '-external.php';
+        file_put_contents($outside, '<?php namespace Outside; class LinkedExternal {}');
+        self::assertTrue(symlink($outside, $this->root . '/vendor/acme/lib/src/LinkedExternal.php'));
+
+        try {
+            $result = $this->handler()->handle(['q' => 'LinkedExternal']);
+            self::assertFalse($result['ok']);
+            self::assertSame([], $result['matches']);
+            self::assertFileExists($outside);
+        } finally {
+            unlink($outside);
+        }
     }
 
     private function handler(): ContractSearchHandler

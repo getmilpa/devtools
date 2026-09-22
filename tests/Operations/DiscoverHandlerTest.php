@@ -151,6 +151,7 @@ final class DiscoverHandlerTest extends TestCase
         self::assertTrue($matches['ok']);
         $discovered = $handler->handle(['query' => 'Invoice', 'kinds' => ['contract']]);
         self::assertSame(array_column($matches['matches'], 'fqcn'), array_column($discovered['found'], 'identity'));
+        self::assertSame(array_column($matches['matches'], 'path'), array_column($discovered['found'], 'path'));
         self::assertContains('Acme\\Lib\\InvoiceGateway', array_column($discovered['found'], 'identity'));
 
         // test ← test:list, verbatim.

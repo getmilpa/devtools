@@ -17,6 +17,7 @@ namespace Milpa\DevTools\Operations;
 use Milpa\DevTools\Support\ComposerAutoload;
 use Milpa\DevTools\Support\DeclarationScanner;
 use Milpa\DevTools\Support\RootResolver;
+use Milpa\DevTools\Support\SourcePath;
 
 /**
  * `contract:search` — finds class, interface, and enum NAMES across the app's runtime roots and its
@@ -44,12 +45,14 @@ final class ContractSearchHandler
 
     /**
      * Searches declared type names and returns up to 25 matches, each with its FQCN, kind, and
-     * provenance (`app`, or `vendor` plus the owning package). No match is `ok:false` with a reason,
-     * never an exception.
+     * provenance (`app`, or `vendor` plus the owning package). Each relative path identifies the
+     * scanned declaration and can be read with source:page for documentation. When names repeat,
+     * the first scanned declaration wins; this does not resolve the runtime autoloader's choice.
+     * No match is `ok:false` with a reason, never an exception.
      *
      * @param array<string, mixed> $input
      *
-     * @return array{ok: bool, matches: list<array{fqcn: string, kind: string, source: string, package?: string}>, truncated?: bool, error?: string}
+     * @return array{ok: bool, matches: list<array{fqcn: string, kind: string, source: string, path: string, package?: string}>, truncated?: bool, error?: string}
      */
     public function handle(array $input): array
     {
@@ -79,7 +82,11 @@ final class ContractSearchHandler
         $matches = [];
         $truncated = false;
         foreach ($candidates as $file => $meta) {
-            foreach (DeclarationScanner::scan((string) $file) as $declaration) {
+            $canonical = SourcePath::inside($root, (string) $file);
+            if ($canonical === null) {
+                continue;
+            }
+            foreach (DeclarationScanner::scan($canonical) as $declaration) {
                 if (! str_contains(strtolower($declaration['name']), $shortNeedle)) {
                     continue;
                 }
@@ -93,7 +100,12 @@ final class ContractSearchHandler
                     $truncated = true;
                     break 2;
                 }
-                $row = ['fqcn' => $declaration['fqcn'], 'kind' => $declaration['kind'], 'source' => $meta['source']];
+                $row = [
+                    'fqcn' => $declaration['fqcn'],
+                    'kind' => $declaration['kind'],
+                    'source' => $meta['source'],
+                    'path' => SourcePath::relative($canonical, $root),
+                ];
                 if ($meta['package'] !== null) {
                     $row['package'] = $meta['package'];
                 }
@@ -172,7 +184,15 @@ final class ContractSearchHandler
                     continue;
                 }
                 foreach ($this->matchingFiles($real, $shortNeedle) as $file) {
-                    $candidates[$file] ??= ['source' => 'vendor', 'package' => $owner];
+                    $canonical = realpath($file);
+                    if ($canonical === false || !str_starts_with($canonical, $vendor . '/')) {
+                        continue;
+                    }
+                    $fileOwner = $this->packageOf($vendor, $canonical);
+                    if ($package !== '' && $fileOwner !== $package) {
+                        continue;
+                    }
+                    $candidates[$canonical] ??= ['source' => 'vendor', 'package' => $fileOwner];
                 }
             }
         }

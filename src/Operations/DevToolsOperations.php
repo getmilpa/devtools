@@ -560,7 +560,7 @@ final class DevToolsOperations implements CommandProvider
             new Operation(
                 name: 'contract:search',
                 effects: EffectProfile::readOnly(),
-                description: 'Search class, interface, and enum names across the app runtime PSR-4 roots, legacy plugin folders AND installed vendor code — find the right name to ask for before guessing an API',
+                description: 'Search class, interface, and enum names across app runtime roots and installed vendor code. Each match includes the scanned declaration’s relative path: read it with source:page for documentation. The path identifies a declaration, not the runtime autoloader’s choice.',
                 handler: [ContractSearchHandler::class, 'handle'],
                 inputSchema: [
                     'type' => 'object',

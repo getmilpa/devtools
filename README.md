@@ -180,7 +180,12 @@ never grants permission, publishes a rejected body, or claims positive verificat
 Larger files use `mode=start`, then `mode=append` with sections of at most 8192 bytes,
 and `mode=finish` without content. Sections stay in a staging sibling until `finish`
 passes the same syntax, linkage and behavioral checks as a complete-file call.
-The byte ceiling also applies to the assembled file submitted by `edit`.
+For current-file `edit`, the same 8192-byte ceiling counts all `find` and `replace`
+strings together. The existing file may be larger: its patched result passes the
+same syntax, linkage and behavioral gate without re-entering the inline-input path.
+This does not consume or alter an existing multipart staging file. Malformed pairs,
+missing or ambiguous matches and oversized patch input refuse without changing the
+current file. The inline, start and append limits remain unchanged.
 
 To repair an assembled staging file, call `implement` with `mode=amend`, the same
 `plugin` and `class`, its current `expected_sha256`, and an `edits` list of exact

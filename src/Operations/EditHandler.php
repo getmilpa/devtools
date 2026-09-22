@@ -33,7 +33,7 @@ use Milpa\DevTools\Support\RootResolver;
  *
  * ── ONE LANDING AUTHORITY ────────────────────────────────────────────────────────────────────────
  *
- * This class produces the candidate content and DELEGATES the entire landing gate — syntax, strict
+ * This adapter delegates bounded current-file pairs and the entire landing gate — syntax, strict
  * types, class, namespace, static conformance, restore-on-failure — to {@see ImplementHandler}. A
  * second gate here would be a second translation of «what may land», and two of those diverge on
  * the case nobody tested.
@@ -43,12 +43,12 @@ final class EditHandler
     private readonly ImplementHandler $lander;
 
     public function __construct(
-        private readonly RootResolver $roots = new RootResolver(),
+        RootResolver $roots = new RootResolver(),
         ?ImplementHandler $lander = null,
     ) {
         // The lander shares THIS handler's root by default — two resolvers pointing at different
         // trees would apply the pairs in one app and land the result in another.
-        $this->lander = $lander ?? new ImplementHandler($this->roots);
+        $this->lander = $lander ?? new ImplementHandler($roots);
     }
 
     /**
@@ -60,62 +60,6 @@ final class EditHandler
      */
     public function handle(array $input): array
     {
-        if (array_key_exists('source', $input)) {
-            return ['ok' => false, 'error' => 'Recorded sources require a compatible host runtime; this handler only edits the current file.'];
-        }
-        $plugin = \is_string($input['plugin'] ?? null) ? trim($input['plugin']) : '';
-        $class = \is_string($input['class'] ?? null) ? trim($input['class']) : '';
-        $edits = \is_array($input['edits'] ?? null) ? $input['edits'] : [];
-
-        if ($edits === []) {
-            return ['ok' => false, 'error' => 'nothing to edit: `edits` is a list of {find, replace} pairs'];
-        }
-        if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $class) !== 1 || preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $plugin) !== 1) {
-            return ['ok' => false, 'error' => 'plugin and class are bare identifiers, no paths'];
-        }
-
-        $root = rtrim($this->roots->resolve(), '/');
-        $file = $this->currentFile($root, $plugin, $class);
-        if ($file === null) {
-            return [
-                'ok' => false,
-                'error' => "no scaffold declares class «{$class}» in plugin «{$plugin}» — editing is not creating; scaffold it first with `make`",
-            ];
-        }
-
-        // Exact byte editing is shared with recorded-proposal repair; only the lander writes.
-        $edited = EditPairs::apply((string) file_get_contents($file), $edits);
-        if (!$edited['ok']) {
-            return $edited;
-        }
-        $content = $edited['content'];
-
-        // ── One landing authority: the whole gate is implement's, delegated ──────────────────────
-        $landed = $this->lander->handle(['plugin' => $plugin, 'class' => $class, 'content' => $content]);
-        if (($landed['ok'] ?? false) !== true) {
-            return $landed;
-        }
-
-        return [...$landed, 'edits_applied' => \count($edits)];
-    }
-
-    /** The one file inside the plugin's tree whose basename is the class — or null. */
-    private function currentFile(string $root, string $plugin, string $class): ?string
-    {
-        $tree = $root . '/src/Plugins/' . $plugin;
-        if (!is_dir($tree)) {
-            return null;
-        }
-
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($tree, \FilesystemIterator::SKIP_DOTS),
-        );
-        foreach ($iterator as $entry) {
-            if ($entry instanceof \SplFileInfo && $entry->getFilename() === $class . '.php') {
-                return $entry->getPathname();
-            }
-        }
-
-        return null;
+        return $this->lander->edit($input);
     }
 }

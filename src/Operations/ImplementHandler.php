@@ -296,8 +296,60 @@ final class ImplementHandler
     }
 
     /**
-     * The one landing gate both doors pass — single-shot's assembled content and finish's staged
-     * assembly alike. Everything verifies (syntax, strict_types, class, namespace, static
+     * Apply bounded exact pairs to a current source file and use the same landing judge.
+     *
+     * The input limit counts the transmitted pairs, not the already-installed bytes. No public
+     * input flag disables handle()'s inline ceiling, and existing multipart staging is untouched.
+     * Recorded proposals retain their host-specific protocol; this entry reads the current file.
+     *
+     * @param array<string, mixed> $input
+     *
+     * @return array<string, mixed>
+     */
+    public function edit(array $input): array
+    {
+        if (array_key_exists('source', $input)) {
+            return ['ok' => false, 'error' => 'Recorded sources require a compatible host runtime; this handler only edits the current file.'];
+        }
+        $plugin = \is_string($input['plugin'] ?? null) ? trim($input['plugin']) : '';
+        $class = \is_string($input['class'] ?? null) ? trim($input['class']) : '';
+        $edits = $input['edits'] ?? null;
+        if (!\is_array($edits) || !array_is_list($edits) || $edits === []) {
+            return ['ok' => false, 'error' => 'nothing to edit: `edits` is a nonempty list of {find, replace} pairs'];
+        }
+        $bytes = 0;
+        foreach ($edits as $edit) {
+            if (!\is_array($edit) || !\is_string($edit['find'] ?? null) || $edit['find'] === ''
+                || !\is_string($edit['replace'] ?? null)) {
+                return ['ok' => false, 'error' => 'each edit requires a nonempty string `find` and a string `replace` (empty means deletion)'];
+            }
+            $bytes += \strlen($edit['find']) + \strlen($edit['replace']);
+            if ($bytes > self::MAX_INLINE_BYTES) {
+                return ['ok' => false, 'error' => 'refused: total find + replace bytes exceed MAX_INLINE_BYTES ('
+                    . self::MAX_INLINE_BYTES . '); split the edits into smaller calls'];
+            }
+        }
+        if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $class) !== 1 || preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $plugin) !== 1) {
+            return ['ok' => false, 'error' => 'plugin and class are bare identifiers, no paths'];
+        }
+        $root = rtrim($this->roots->resolve(), '/');
+        $tree = $root . '/src/Plugins/' . $plugin;
+        // Current-file edit has always targeted plugin sources, not test classes.
+        $file = is_dir($tree) ? $this->fileFor($tree, $class) : null;
+        if ($file === null) {
+            return ['ok' => false, 'error' => "no scaffold declares class «{$class}» in plugin «{$plugin}» — editing is not creating; scaffold it first with `make`"];
+        }
+        $edited = EditPairs::apply((string) file_get_contents($file), $edits);
+        if (!$edited['ok']) {
+            return $edited;
+        }
+        $landed = $this->land($root, $file, $plugin, $class, $edited['content']);
+        return ($landed['ok'] ?? false) === true ? [...$landed, 'edits_applied' => $edited['edits_applied']] : $landed;
+    }
+
+    /**
+     * The one landing gate for inline content, a finished assembly or a current-file edit.
+     * Everything verifies (syntax, strict_types, class, namespace, static
      * conformance, the class's own test), or nothing lands; a green assembly is PUBLISHED ATOMICALLY
      * (temp file + rename — a crash never leaves the live file half-written) and a red one leaves the
      * live file byte for byte the scaffold it was.

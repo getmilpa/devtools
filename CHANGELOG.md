@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.35.1](https://github.com/getmilpa/devtools/compare/v0.35.0...v0.35.1) (2026-09-22)
+
+
+### Bug Fixes
+
+* bound current-file edit input instead of assembled content ([#106](https://github.com/getmilpa/devtools/issues/106)) ([2b54153](https://github.com/getmilpa/devtools/commit/2b541534f11d31a3f6fa0a4b85c6cd83f6a06c2e))
+
 ## [0.35.0](https://github.com/getmilpa/devtools/compare/v0.34.1...v0.35.0) (2026-09-21)
 
 

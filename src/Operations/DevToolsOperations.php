@@ -314,7 +314,9 @@ final class DevToolsOperations implements CommandProvider
                     escalatesOn: ['class'],
                     subject: Subject::Executable,
                 ),
-                description: 'Edit a scaffolded class by exact find-replace pairs, verified before it lands',
+                description: 'Edit a current scaffolded class by exact find-replace pairs, verified before it lands. '
+                    . 'Total find + replace input is capped at ' . ImplementHandler::MAX_INLINE_BYTES
+                    . ' bytes; the current file may be larger. Existing multipart staging is untouched',
                 handler: [EditHandler::class, 'handle'],
                 inputSchema: [
                     'type' => 'object',
@@ -327,7 +329,8 @@ final class DevToolsOperations implements CommandProvider
                         'class' => ['type' => 'string', 'description' => 'The class to edit — one bare identifier, no paths'],
                         'edits' => [
                             'type' => 'array',
-                            'description' => 'Find-replace pairs; each `find` must appear VERBATIM and exactly once in the current file',
+                            'description' => 'Find-replace pairs; each `find` must appear VERBATIM and exactly once in the current file. '
+                                . 'Sum of all find and replace bytes must not exceed ' . ImplementHandler::MAX_INLINE_BYTES,
                             'items' => [
                                 'type' => 'object',
                                 'properties' => [

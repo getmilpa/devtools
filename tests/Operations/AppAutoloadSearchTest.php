@@ -46,7 +46,7 @@ final class AppAutoloadSearchTest extends TestCase
         foreach (['ResearchDesk', 'App\\Research\\ResearchDesk'] as $query) {
             $result = $this->search($query);
             self::assertTrue($result['ok']);
-            self::assertSame([['fqcn' => 'App\\Research\\ResearchDesk', 'kind' => 'class', 'source' => 'app']], $result['matches']);
+            self::assertSame([['fqcn' => 'App\\Research\\ResearchDesk', 'kind' => 'class', 'source' => 'app', 'path' => 'src/Research/ResearchDesk.php']], $result['matches']);
             self::assertFalse($result['truncated']);
         }
         self::assertFileDoesNotExist($sentinel);
@@ -89,8 +89,8 @@ final class AppAutoloadSearchTest extends TestCase
         $this->write('vendor/acme/library/src/SearchVendor.php', '<?php namespace Acme; class SearchVendor {}');
         $this->write('vendor/composer/autoload_psr4.php', '<?php return '
             . var_export(['Acme\\' => [$this->root . '/vendor/acme/library/src']], true) . ';');
-        $vendor = ['fqcn' => 'Acme\\SearchVendor', 'kind' => 'class', 'source' => 'vendor', 'package' => 'acme/library'];
-        self::assertSame([$vendor, ['fqcn' => 'App\\SearchLocal', 'kind' => 'class', 'source' => 'app']], $this->search('Search')['matches']);
+        $vendor = ['fqcn' => 'Acme\\SearchVendor', 'kind' => 'class', 'source' => 'vendor', 'path' => 'vendor/acme/library/src/SearchVendor.php', 'package' => 'acme/library'];
+        self::assertSame([$vendor, ['fqcn' => 'App\\SearchLocal', 'kind' => 'class', 'source' => 'app', 'path' => 'SearchLocal.php']], $this->search('Search')['matches']);
         self::assertSame([$vendor], $this->search('Search', 'acme/library')['matches']);
         self::assertFalse($this->search('Search', 'other/package')['ok']);
     }
@@ -110,7 +110,7 @@ final class AppAutoloadSearchTest extends TestCase
             'External\\' => $outside, 'RelativeEscape\\' => '../app-sibling',
             'Linked\\' => 'linked', 'Missing\\' => 'absent',
         ]);
-        self::assertSame([['fqcn' => 'Domain\\SearchInside', 'kind' => 'class', 'source' => 'app']], $this->search('Search')['matches']);
+        self::assertSame([['fqcn' => 'Domain\\SearchInside', 'kind' => 'class', 'source' => 'app', 'path' => 'domain/SearchInside.php']], $this->search('Search')['matches']);
         self::assertFileExists($outside . '/SearchExternal.php');
     }
 

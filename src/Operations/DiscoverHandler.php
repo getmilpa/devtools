@@ -194,6 +194,7 @@ final class DiscoverHandler
             $rows[] = [
                 'kind' => 'contract',
                 'identity' => $match['fqcn'],
+                'path' => $match['path'],
                 // The full answer is the finder's own entry, re-asked by its exact FQCN.
                 'detail' => [
                     'operation' => 'contract:search',

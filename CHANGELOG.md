@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.35.2](https://github.com/getmilpa/devtools/compare/v0.35.1...v0.35.2) (2026-09-22)
+
+
+### Bug Fixes
+
+* name source_page in contract search guidance ([#109](https://github.com/getmilpa/devtools/issues/109)) ([ab2871f](https://github.com/getmilpa/devtools/commit/ab2871f8bf6ce2630b189bb419426c1c079e9443))
+
 ## [0.35.1](https://github.com/getmilpa/devtools/compare/v0.35.0...v0.35.1) (2026-09-22)
 
 

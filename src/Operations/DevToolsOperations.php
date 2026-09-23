@@ -265,7 +265,7 @@ final class DevToolsOperations implements CommandProvider
                             'enum' => ['start', 'append', 'amend', 'reset', 'finish'],
                             'description' => 'Omit to land the complete file in one call. To land in parts: start '
                                 . '(write the header and first section), append (each next section, verbatim), '
-                                . 'amend (exact edits to current staging by hash; promote before finish), '
+                                . 'amend (exact or anchored edits to current staging by hash; promote before finish), '
                                 . 'reset (replace staging with an exact copy of live PHP; promote before editing), '
                                 . 'finish (verify and judge the assembled file — only finish claims any green)',
                         ],
@@ -278,16 +278,31 @@ final class DevToolsOperations implements CommandProvider
                         'edits' => [
                             'type' => 'array',
                             'minItems' => 1,
-                            'description' => 'Required only for mode=amend: exact ordered replacements in staging. '
-                                . 'Each find must occur exactly once; total find + replace bytes at most '
+                            'description' => 'Required only for mode=amend: ordered staging replacements. Use exact '
+                                . '{find, replace}, or {before, after, replace} to preserve two unique anchors and '
+                                . 'replace only the bytes between them. Total transmitted edit bytes at most '
                                 . ImplementHandler::MAX_INLINE_BYTES . '. Never changes live PHP or claims verification',
                             'items' => [
                                 'type' => 'object',
                                 'properties' => [
                                     'find' => ['type' => 'string', 'minLength' => 1],
+                                    'before' => ['type' => 'string', 'minLength' => 1],
+                                    'after' => ['type' => 'string', 'minLength' => 1],
                                     'replace' => ['type' => 'string'],
                                 ],
-                                'required' => ['find', 'replace'],
+                                'oneOf' => [
+                                    [
+                                        'required' => ['find', 'replace'],
+                                        'not' => ['anyOf' => [
+                                            ['required' => ['before']],
+                                            ['required' => ['after']],
+                                        ]],
+                                    ],
+                                    [
+                                        'required' => ['before', 'after', 'replace'],
+                                        'not' => ['required' => ['find']],
+                                    ],
+                                ],
                             ],
                         ],
                     ],

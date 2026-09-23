@@ -189,9 +189,10 @@ current file. The inline, start and append limits remain unchanged.
 
 To repair an assembled staging file, call `implement` with `mode=amend`, the same
 `plugin` and `class`, its current `expected_sha256`, and an `edits` list of exact
-`{find, replace}` pairs. Each find must occur exactly once, in order. All find and
-replace strings together are limited to 8192 bytes; `content` is forbidden in this
-mode. Start, append and amend return the staging path and SHA-256. A stale hash,
+`{find, replace}` pairs or anchored `{before, after, replace}` replacements. Each
+find or anchor must occur exactly once, in order. All transmitted edit strings
+together are limited to 8192 bytes; `content` is forbidden in this mode. Start,
+append and amend return the staging path and SHA-256. A stale hash,
 missing or ambiguous match, or linked staging path refuses without changing it.
 Amend replaces only the unverified staging sibling, never the live PHP class.
 Through a governed trial, promote that staging change before calling `finish`;
@@ -200,6 +201,12 @@ amendment therefore says nothing about PHP validity or behavior. Edits and expec
 hash are refused in other implement modes. Serialize staging writers: the amendment
 lock and inode recheck coordinate amendments, not arbitrary external writes or other
 modes. Recorded `edit.source` retains its separate complete-inline-proposal contract.
+
+An anchored amendment uses `{before, after, replace}`. Both anchors must each occur
+exactly once and in that order; they remain in staging while only the bytes between
+them are replaced. This keeps a large current block out of the tool call while still
+binding the mutation to its staging hash, two unambiguous boundaries and the same
+8192-byte transmitted-input ceiling. Exact and anchored edits may be ordered together.
 
 To discard a damaged assembly without retransmitting a large working class, call
 `implement` with `mode=reset`, the same `plugin` and `class`, and no content. It

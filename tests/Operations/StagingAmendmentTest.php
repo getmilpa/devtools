@@ -69,6 +69,27 @@ final class StagingAmendmentTest extends TestCase
         self::assertSame($expected, file_get_contents($this->staging));
     }
 
+    /** Large current blocks can be replaced without retransmitting them or consuming the anchors. */
+    public function testAnchoredAndExactEditsComposeInOrder(): void
+    {
+        $body = 'prefix /* START */' . str_repeat('large old block ', 1000) . '/* END */ suffix';
+        file_put_contents($this->staging, $body);
+        $args = $this->arguments();
+        $args['expected_sha256'] = hash('sha256', $body);
+        $args['edits'] = [
+            ['before' => '/* START */', 'after' => '/* END */', 'replace' => ' bounded replacement '],
+            ['find' => 'suffix', 'replace' => 'finished'],
+        ];
+
+        $result = $this->handler->handle($args);
+
+        self::assertTrue($result['ok'], $result['error'] ?? '');
+        self::assertSame('prefix /* START */ bounded replacement /* END */ finished', file_get_contents($this->staging));
+        self::assertSame(2, $result['edits_applied']);
+        self::assertArrayNotHasKey('verified', $result);
+        self::assertSame('<?php // active scaffold', file_get_contents($this->file));
+    }
+
     /** @return iterable<string, array{array<string, mixed>, string}> */
     public static function refusals(): iterable
     {
@@ -81,6 +102,11 @@ final class StagingAmendmentTest extends TestCase
         yield 'empty find' => [['edits' => [['find' => '', 'replace' => 'x']]], 'nonempty string'];
         yield 'missing replacement' => [['edits' => [['find' => 'first']]], 'string'];
         yield 'invalid replacement' => [['edits' => [['find' => 'first', 'replace' => 1]]], 'string'];
+        yield 'mixed exact and anchors' => [['edits' => [['find' => 'first', 'before' => 'first', 'after' => 'second', 'replace' => 'x']]], 'exactly one shape'];
+        yield 'missing after anchor' => [['edits' => [['before' => 'first', 'replace' => 'x']]], 'exactly one shape'];
+        yield 'missing before match' => [['edits' => [['before' => 'absent', 'after' => 'second', 'replace' => 'x']]], 'before anchor matches nothing'];
+        yield 'ambiguous after anchor' => [['edits' => [['before' => 'first', 'after' => 'second', 'replace' => 'x']]], 'after anchor is ambiguous'];
+        yield 'reversed anchors' => [['edits' => [['before' => 'second second', 'after' => 'first', 'replace' => 'x']]], 'anchors are reversed'];
         yield 'missing match' => [['edits' => [['find' => 'absent', 'replace' => 'x']]], 'matches nothing'];
         yield 'ambiguous match' => [['edits' => [['find' => 'second', 'replace' => 'x']]], 'ambiguous'];
         yield 'second pair fails' => [['edits' => [['find' => 'first', 'replace' => 'fixed'],

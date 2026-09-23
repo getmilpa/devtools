@@ -24,17 +24,27 @@ final class StagingAmendment
         }
         $edits = $input['edits'] ?? null;
         if (!is_array($edits) || !array_is_list($edits) || $edits === []) {
-            return 'mode=amend requires a nonempty list of exact {find, replace} pairs in `edits`';
+            return 'mode=amend requires a nonempty list of exact or anchored replacements in `edits`';
         }
         $bytes = 0;
         foreach ($edits as $edit) {
-            if (!is_array($edit) || !is_string($edit['find'] ?? null) || $edit['find'] === ''
-                || !is_string($edit['replace'] ?? null)) {
-                return 'each amendment requires a nonempty string `find` and a string `replace` (empty means deletion)';
+            if (!is_array($edit) || !is_string($edit['replace'] ?? null)) {
+                return 'each amendment requires a string `replace` and either `find` or the two anchors `before` and `after`';
             }
-            $bytes += strlen($edit['find']) + strlen($edit['replace']);
+            $exact = is_string($edit['find'] ?? null) && $edit['find'] !== ''
+                && !array_key_exists('before', $edit) && !array_key_exists('after', $edit);
+            $anchored = is_string($edit['before'] ?? null) && $edit['before'] !== ''
+                && is_string($edit['after'] ?? null) && $edit['after'] !== ''
+                && !array_key_exists('find', $edit);
+            if ($exact === $anchored) {
+                return 'each amendment uses exactly one shape: nonempty string `find` plus string `replace`, '
+                    . 'or nonempty string `before` and `after` anchors plus string `replace`';
+            }
+            $bytes += strlen($edit['replace']) + ($exact
+                ? strlen($edit['find'])
+                : strlen($edit['before']) + strlen($edit['after']));
             if ($bytes > ImplementHandler::MAX_INLINE_BYTES) {
-                return 'refused: total find + replace bytes exceed MAX_INLINE_BYTES (' . ImplementHandler::MAX_INLINE_BYTES
+                return 'refused: total edit bytes exceed MAX_INLINE_BYTES (' . ImplementHandler::MAX_INLINE_BYTES
                     . '); split the amendment and use each resulting staging hash';
             }
         }
@@ -92,15 +102,28 @@ final class StagingAmendment
                 return ['ok' => false, 'error' => 'staging hash mismatch; read the current staging before rebuilding your edits',
                     'sha256' => $digest];
             }
-            $patch = EditPairs::apply($before, $input['edits'], 'CURRENT staging');
-            if (!$patch['ok']) {
-                return $patch;
+            $content = $before;
+            foreach ($input['edits'] as $index => $edit) {
+                if (array_key_exists('find', $edit)) {
+                    $patch = EditPairs::apply($content, [$edit], 'CURRENT staging');
+                    if (!$patch['ok']) {
+                        $patch['error'] = str_replace('edit #1', 'edit #' . ($index + 1), $patch['error']);
+                        return $patch;
+                    }
+                    $content = $patch['content'];
+                    continue;
+                }
+                $patch = self::between($content, $edit, $index + 1);
+                if (!$patch['ok']) {
+                    return $patch;
+                }
+                $content = $patch['content'];
             }
             $temporary = tempnam(dirname($staging), '.milpa-amend-');
             if ($temporary === false) {
                 return ['ok' => false, 'error' => 'could not prepare staging amendment'];
             }
-            if (file_put_contents($temporary, $patch['content']) !== strlen($patch['content'])
+            if (file_put_contents($temporary, $content) !== strlen($content)
                 || !chmod($temporary, $stat['mode'] & 0o777)) {
                 return ['ok' => false, 'error' => 'could not write staging amendment; original staging preserved'];
             }
@@ -116,8 +139,8 @@ final class StagingAmendment
                 'file' => $relative,
                 'staging' => $relative . ImplementHandler::STAGING_SUFFIX,
                 'before_sha256' => $digest,
-                'sha256' => hash('sha256', $patch['content']),
-                'edits_applied' => $patch['edits_applied'],
+                'sha256' => hash('sha256', $content),
+                'edits_applied' => count($input['edits']),
                 'partial' => 'amended staging only — nothing verified, nothing judged; live PHP is untouched. '
                     . 'Apply this staged change through the host promotion flow, then mode=finish verifies and judges it.',
             ];
@@ -127,6 +150,43 @@ final class StagingAmendment
             }
             fclose($handle);
         }
+    }
+
+    /**
+     * Replace only the bytes between two unique preserved anchors.
+     *
+     * @param array<string, mixed> $edit
+     *
+     * @return array<string, mixed>
+     */
+    private static function between(string $content, array $edit, int $number): array
+    {
+        $before = $edit['before'] ?? null;
+        $after = $edit['after'] ?? null;
+        $replacement = $edit['replace'] ?? null;
+        if (!is_string($before) || !is_string($after) || !is_string($replacement)) {
+            return ['ok' => false, 'error' => "edit #{$number} has an invalid anchored replacement"];
+        }
+        foreach (['before' => $before, 'after' => $after] as $name => $anchor) {
+            $count = substr_count($content, $anchor);
+            if ($count === 0) {
+                return ['ok' => false, 'error' => "edit #{$number} {$name} anchor matches nothing in CURRENT staging"];
+            }
+            if ($count !== 1) {
+                return ['ok' => false, 'error' => "edit #{$number} {$name} anchor is ambiguous: it appears {$count} times"];
+            }
+        }
+        $beforeAt = strpos($content, $before);
+        $end = strpos($content, $after);
+        if ($beforeAt === false || $end === false) {
+            return ['ok' => false, 'error' => "edit #{$number} anchors disappeared while applying the amendment"];
+        }
+        $start = $beforeAt + strlen($before);
+        if ($end < $start) {
+            return ['ok' => false, 'error' => "edit #{$number} anchors are reversed; `before` must precede `after`"];
+        }
+
+        return ['ok' => true, 'content' => substr($content, 0, $start) . $replacement . substr($content, $end)];
     }
 
     /**

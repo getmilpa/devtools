@@ -144,6 +144,21 @@ final class CrudGenerator implements GeneratorInterface
         ]);
         $files[] = new PlannedFile($controllerPath, $controllerContents);
 
+        // THE WRITE GATE travels WITH the plugin instead of being imported from the framework, so
+        // its owner can widen it, narrow it or replace it. Generated for both paths — a new plugin
+        // and an existing one — because the routes it guards are generated for both.
+        $files[] = new PlannedFile(
+            $context->root . '/' . $appDir . '/Plugins/' . $context->plugin . '/Http/'
+                . self::gateClass($context->name) . '.php',
+            $this->renderer->render($this->stubs->path('crud-writes-gate.runtime.php.stub'), [
+                'namespace' => self::gateNamespace($appNamespace . '\\Plugins\\' . $context->plugin),
+                'class' => self::gateClass($context->name),
+                'entityClass' => $context->name,
+                'pluginClass' => $context->plugin,
+                'table' => $table,
+            ]),
+        );
+
         [
             'file' => $pluginFile,
             'guidance' => $routeGuidance,
@@ -250,6 +265,7 @@ final class CrudGenerator implements GeneratorInterface
                 $controllerNamespace,
                 $controllerClass,
                 $table,
+                self::gateNamespace($pluginNamespace) . '\\' . self::gateClass($context->name),
             );
         }
 
@@ -260,6 +276,8 @@ final class CrudGenerator implements GeneratorInterface
             'entityClass' => $context->name,
             'controllerNamespace' => $controllerNamespace,
             'controllerClass' => $controllerClass,
+            'gateNamespace' => self::gateNamespace($pluginNamespace),
+            'gateClass' => self::gateClass($context->name),
             'table' => $table,
         ]);
 
@@ -268,7 +286,13 @@ final class CrudGenerator implements GeneratorInterface
             . "from the app's 'storage' config via RepositoryFactory — set storage.driver in "
             . 'config/app.php to file, sqlite, mysql or memory (with its path/dsn); with no storage '
             . "block it defaults to a JSON file at var/{$table}.json — and registers {$controllerClass}. "
-            . "Resolve the repository later via \$container->get({$repositoryId}).";
+            . "Resolve the repository later via \$container->get({$repositoryId}). "
+            // SAID, not left to be found as a 401 in a browser. The reads are open and the three
+            // writes are not, which is the opposite of what this scaffold used to hand over.
+            . 'The two read routes are anonymous; POST, PUT and DELETE are declared behind '
+            . self::gateClass($context->name)
+            . ', which refuses a caller nobody recognised — enable milpa/auth to open them, or drop '
+            . 'it from those routes deliberately.';
 
         return ['file' => new PlannedFile($pluginPath, $pluginContents), 'guidance' => $guidance, 'suppressEntityGuidance' => false];
     }
@@ -299,6 +323,7 @@ final class CrudGenerator implements GeneratorInterface
         string $controllerNamespace,
         string $controllerClass,
         string $table,
+        string $gateFqcn,
     ): array {
         $repositoryId = "{$context->name}::class . 'Repository'";
         $entityFqcn = $entityNamespace . '\\' . $context->name;
@@ -311,7 +336,7 @@ final class CrudGenerator implements GeneratorInterface
         $fallbacks = [];
         $bootHandled = false;
 
-        $bootSnippet = $this->fullyQualifiedBootSnippet($entityFqcn, $controllerFqcn, $table);
+        $bootSnippet = $this->fullyQualifiedBootSnippet($entityFqcn, $controllerFqcn, $table, $gateFqcn);
         if (str_contains($merged, $repositoryId)) {
             $bootHandled = true;
         } elseif ($this->markers->hasMarker($merged, Markers::SERVICES)) {
@@ -338,9 +363,31 @@ final class CrudGenerator implements GeneratorInterface
                 . "— add this to its boot() (fully qualified, no imports needed):\n\n{$bootSnippet}";
         }
 
-        $routesSnippet = $this->fullyQualifiedRoutesSnippet($controllerFqcn, $table);
+        $routesSnippet = $this->fullyQualifiedRoutesSnippet($controllerFqcn, $table, $gateFqcn);
         if (str_contains($merged, "'{$table}_index'")) {
             // all 5 names travel together in every shape this engine emits; index stands for the set.
+            //
+            // BUT THE GATE DOES NOT TRAVEL WITH THEM on a plugin an older scaffold wrote: its five
+            // routes are there and its three writes carry no middleware, so «already wired» was
+            // answering «nothing to add» while the postcondition refused the run for exactly that
+            // (greenhouse decisions/0459). A guidance that contradicts its own verdict sends the
+            // reader to look for the wrong thing, so the missing half is NAMED here. Not spliced:
+            // editing five existing route declarations is surgery this generator does not do, and a
+            // half-applied gate is worse than one a human applied on purpose.
+            $ungated = [];
+            foreach (['create', 'update', 'delete'] as $verb) {
+                $at = strpos($merged, "'{$table}_{$verb}'");
+                if ($at === false || ! str_contains(substr($merged, $at, 400), 'middleware')) {
+                    $ungated[] = "{$table}_{$verb}";
+                }
+            }
+            if ($ungated !== []) {
+                $fallbacks[] = 'Its write routes (' . implode(', ', $ungated) . ') declare no middleware, '
+                    . 'so anyone who can reach this app can call them. Add '
+                    . "middleware: [\\{$gateFqcn}::class] to each of those Route declarations — the gate "
+                    . 'itself was just written for you. This is the one step make will not take on an '
+                    . 'existing plugin: rewriting route declarations you already own.';
+            }
         } elseif ($this->markers->hasMarker($merged, Markers::ROUTES)) {
             $merged = $this->markers->insertBefore($merged, Markers::ROUTES, $routesSnippet, $force);
             $wired[] = 'routes() at // {' . Markers::ROUTES . '}';
@@ -379,7 +426,13 @@ final class CrudGenerator implements GeneratorInterface
         }
 
         $guidance = "Auto-wired into the existing plugin at {$pluginPath} (" . implode('; ', $wired) . '). '
-            . "Resolve the repository later via \$container->get({$repositoryId}).";
+            . "Resolve the repository later via \$container->get({$repositoryId}). "
+            // SAID, not left to be found as a 401 in a browser. The reads are open and the three
+            // writes are not, which is the opposite of what this scaffold used to hand over.
+            . 'The two read routes are anonymous; POST, PUT and DELETE are declared behind '
+            . self::gateClass($context->name)
+            . ', which refuses a caller nobody recognised — enable milpa/auth to open them, or drop '
+            . 'it from those routes deliberately.';
         if ($fallbacks !== []) {
             $guidance .= "\n\n" . implode("\n\n", $fallbacks);
         }
@@ -398,7 +451,7 @@ final class CrudGenerator implements GeneratorInterface
      * config; pinning the generated wiring to JSON files made the choice for the app and made
      * `make entity` and `make crud` answer the same question two different ways.
      */
-    private function fullyQualifiedBootSnippet(string $entityFqcn, string $controllerFqcn, string $table): string
+    private function fullyQualifiedBootSnippet(string $entityFqcn, string $controllerFqcn, string $table, string $gateFqcn): string
     {
         return "\$storage = \$this->container->get(\\Milpa\\Runtime\\Config::class)->get('storage', [\n"
             . "    'driver' => 'file',\n"
@@ -414,22 +467,50 @@ final class CrudGenerator implements GeneratorInterface
             . "\$this->container->registerService(\n"
             . "    \\{$controllerFqcn}::class,\n"
             . "    new \\{$controllerFqcn}(\$repository),\n"
+            . ");\n"
+            // THE GATE, registered in the SAME snippet as the controller it guards. Separately, a
+            // splice that landed the routes and not this would declare a middleware the container
+            // cannot produce — and that fails the dispatch closed, so the routes would 500 instead
+            // of refusing. One snippet, or the halves can arrive apart.
+            . "\$this->container->registerService(\n"
+            . "    \\{$gateFqcn}::class,\n"
+            . "    new \\{$gateFqcn}(),\n"
             . ');';
     }
 
-    /** The 5 REST route entries (one per line, trailing commas), fully qualified inline. */
-    private function fullyQualifiedRoutesSnippet(string $controllerFqcn, string $table): string
+    /**
+     * Where the generated write gate lives: `<Plugin>\\Http`, beside the plugin that declares it.
+     *
+     * A method and not an inline string because FOUR call sites need the same answer — the plugin
+     * stub's import, its boot() registration, the routes that declare it, and the postcondition
+     * that checks it — and four copies of a name is how one of them ends up spelling it differently.
+     */
+    private static function gateNamespace(string $pluginNamespace): string
     {
+        return $pluginNamespace . '\\Http';
+    }
+
+    /** The gate's class name for an entity: `Post` → `PostWritesGate`. */
+    private static function gateClass(string $entity): string
+    {
+        return $entity . 'WritesGate';
+    }
+
+    /** The 5 REST route entries (one per line, trailing commas), fully qualified inline. */
+    private function fullyQualifiedRoutesSnippet(string $controllerFqcn, string $table, string $gateFqcn): string
+    {
+        $behind = "middleware: [\\{$gateFqcn}::class], ";
+
         return "new \\Milpa\\Http\\Routing\\Route(path: '/{$table}', methods: \\Milpa\\Http\\HttpMethod::GET, "
             . "name: '{$table}_index', handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'index')),\n"
             . "new \\Milpa\\Http\\Routing\\Route(path: '/{$table}/{id}', methods: \\Milpa\\Http\\HttpMethod::GET, "
             . "name: '{$table}_show', handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'show')),\n"
             . "new \\Milpa\\Http\\Routing\\Route(path: '/{$table}', methods: \\Milpa\\Http\\HttpMethod::POST, "
-            . "name: '{$table}_create', handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'create')),\n"
+            . "name: '{$table}_create', " . $behind . "handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'create')),\n"
             . "new \\Milpa\\Http\\Routing\\Route(path: '/{$table}/{id}', methods: \\Milpa\\Http\\HttpMethod::PUT, "
-            . "name: '{$table}_update', handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'update')),\n"
+            . "name: '{$table}_update', " . $behind . "handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'update')),\n"
             . "new \\Milpa\\Http\\Routing\\Route(path: '/{$table}/{id}', methods: \\Milpa\\Http\\HttpMethod::DELETE, "
-            . "name: '{$table}_delete', handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'delete')),";
+            . "name: '{$table}_delete', " . $behind . "handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'delete')),";
     }
 
     /**

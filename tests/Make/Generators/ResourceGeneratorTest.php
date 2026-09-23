@@ -59,7 +59,7 @@ final class ResourceGeneratorTest extends TestCase
         $names = array_map(static fn (PlannedFile $f): string => basename($f->path), $result->files);
         sort($names);
         $this->assertSame(
-            ['Priority.php', 'Task.php', 'TaskController.php', 'TaskService.php', 'TaskTest.php', 'Todos.php'],
+            ['Priority.php', 'Task.php', 'TaskController.php', 'TaskService.php', 'TaskTest.php', 'TaskWritesGate.php', 'Todos.php'],
             $names,
             'the whole closed shape, planned by one call',
         );

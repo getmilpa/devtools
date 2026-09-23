@@ -59,7 +59,7 @@ final class CrudGeneratorTest extends TestCase
 
         $result = (new CrudGenerator())->generate($ctx);
 
-        $this->assertCount(3, $result->files, 'expected entity + controller + plugin');
+        $this->assertCount(4, $result->files, 'expected entity + controller + write gate + plugin');
 
         $entity = $this->fileNamed($result->files, 'Task.php');
         $this->assertStringEndsWith('/src/Plugins/BoardPlugin/Entities/Task.php', $entity->path);
@@ -69,6 +69,34 @@ final class CrudGeneratorTest extends TestCase
 
         $plugin = $this->fileNamed($result->files, 'BoardPlugin.php');
         $this->assertStringEndsWith('/src/Plugins/BoardPlugin/BoardPlugin.php', $plugin->path);
+
+        // THE WRITE GATE, and that the three mutating routes actually name it. The count alone
+        // would pass against a gate nobody declared — which is the state greenhouse
+        // decisions/0459 measured as an anonymous POST answering 201.
+        $gate = $this->fileNamed($result->files, 'TaskWritesGate.php');
+        $this->assertStringEndsWith('/src/Plugins/BoardPlugin/Http/TaskWritesGate.php', $gate->path);
+        $this->assertStringContainsString('implements MiddlewareInterface', $gate->contents);
+
+        foreach (['tasks_create', 'tasks_update', 'tasks_delete'] as $write) {
+            $at = strpos($plugin->contents, "'{$write}'");
+            $this->assertNotFalse($at, "the plugin declares {$write}");
+            $this->assertStringContainsString(
+                'middleware: [TaskWritesGate::class]',
+                substr($plugin->contents, (int) $at - 200, 400),
+                "{$write} is declared behind the gate",
+            );
+        }
+        // AND THE CONTROL that says this did not close too much: the reads carry none.
+        foreach (['tasks_index', 'tasks_show'] as $read) {
+            $at = strpos($plugin->contents, "'{$read}'");
+            $this->assertNotFalse($at, "the plugin declares {$read}");
+            $this->assertStringNotContainsString(
+                'middleware',
+                substr($plugin->contents, (int) $at, 200),
+                "{$read} stays anonymous — a blog nobody can read is not a blog",
+            );
+        }
+        $this->assertStringContainsString('registerService(TaskWritesGate::class', $plugin->contents);
 
         $this->assertSame(Flavor::Runtime, $result->flavor);
         $this->assertSame('controller', $result->verifyKind);
@@ -259,7 +287,7 @@ final class CrudGeneratorTest extends TestCase
 
         $result = (new CrudGenerator())->generate($ctx);
 
-        $this->assertCount(3, $result->files, 'entity + controller + the MERGED plugin');
+        $this->assertCount(4, $result->files, 'entity + controller + write gate + the MERGED plugin');
         $mergedPlugin = $this->fileNamed($result->files, 'BoardPlugin.php');
         $this->assertTrue($mergedPlugin->merge);
 
@@ -290,7 +318,7 @@ final class CrudGeneratorTest extends TestCase
         // (both semantic needles short-circuit to "already wired" before any splice).
         file_put_contents($pluginDir . '/BoardPlugin.php', $code);
         $result2 = (new CrudGenerator())->generate($ctx);
-        $this->assertCount(2, $result2->files, 'entity + controller only — the wired plugin is not re-planned');
+        $this->assertCount(3, $result2->files, 'entity + controller + write gate — the wired plugin is not re-planned');
         $this->assertStringContainsString('Already wired', (string) $result2->guidance);
         $this->assertSame($code, file_get_contents($pluginDir . '/BoardPlugin.php'), 'the file on disk is untouched');
     }
@@ -374,7 +402,7 @@ final class CrudGeneratorTest extends TestCase
         // Land the merge, run the same make:crud again: nothing to add, nothing duplicated.
         file_put_contents($pluginDir . '/BoardPlugin.php', $code);
         $again = (new CrudGenerator())->generate($ctx);
-        $this->assertCount(2, $again->files, 'entity + controller only — the wired plugin is not re-planned');
+        $this->assertCount(3, $again->files, 'entity + controller + write gate — the wired plugin is not re-planned');
         $this->assertStringContainsString('Already wired', (string) $again->guidance);
         $this->assertSame(1, substr_count((string) file_get_contents($pluginDir . '/BoardPlugin.php'), "Task::class . 'Repository'"));
     }
@@ -400,9 +428,12 @@ final class CrudGeneratorTest extends TestCase
 
         $result = (new CrudGenerator())->generate($ctx);
 
-        $this->assertCount(2, $result->files, 'entity + controller only — the unwirable plugin file must not be (re)written');
+        $this->assertCount(3, $result->files, 'entity + controller + write gate — the unwirable plugin file must not be (re)written');
         $this->assertSame('Task.php', basename($result->files[0]->path));
         $this->assertSame('TaskController.php', basename($result->files[1]->path));
+        // The gate is still written: the routes fell back to guidance, and that guidance NAMES it,
+        // so the file the pasted snippet refers to has to exist.
+        $this->assertSame('TaskWritesGate.php', basename($result->files[2]->path));
         $this->assertSame($existing, file_get_contents($pluginDir . '/BoardPlugin.php'), 'unwirable plugin file must be untouched on disk');
 
         $guidance = (string) $result->guidance;

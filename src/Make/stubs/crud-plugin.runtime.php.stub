@@ -6,6 +6,7 @@ namespace {{namespace}};
 
 use {{entityNamespace}}\{{entityClass}};
 use {{controllerNamespace}}\{{controllerClass}};
+use {{gateNamespace}}\{{gateClass}};
 use Milpa\Attributes\PluginMetadata;
 use Milpa\Data\RepositoryFactory;
 use Milpa\Http\HttpMethod;
@@ -49,6 +50,10 @@ final class {{class}} implements PluginInterface, RouteProviderInterface
 
         $this->container->registerService({{entityClass}}::class . 'Repository', $repository);
         $this->container->registerService({{controllerClass}}::class, new {{controllerClass}}($repository));
+        // THE WRITE GATE, in the container because that is where the kernel's resolver looks for a
+        // route's declared middleware — and a declared middleware it cannot produce fails the
+        // dispatch closed rather than leaving the route open.
+        $this->container->registerService({{gateClass}}::class, new {{gateClass}}());
         // {coa:services}
     }
 
@@ -68,7 +73,13 @@ final class {{class}} implements PluginInterface, RouteProviderInterface
     {
     }
 
-    /** @return list<Route> */
+    /**
+     * The 5 REST routes. The two reads are anonymous; the three writes are declared behind
+     * {@see {{gateClass}}} — measured, because this scaffold used to publish all five with no
+     * middleware and an anonymous `POST` answered 201 (greenhouse `decisions/0459`).
+     *
+     * @return list<Route>
+     */
     public function routes(): array
     {
         return [
@@ -88,18 +99,21 @@ final class {{class}} implements PluginInterface, RouteProviderInterface
                 path: '/{{table}}',
                 methods: HttpMethod::POST,
                 name: '{{table}}_create',
+                middleware: [{{gateClass}}::class],
                 handler: new HandlerReference({{controllerClass}}::class, 'create'),
             ),
             new Route(
                 path: '/{{table}}/{id}',
                 methods: HttpMethod::PUT,
                 name: '{{table}}_update',
+                middleware: [{{gateClass}}::class],
                 handler: new HandlerReference({{controllerClass}}::class, 'update'),
             ),
             new Route(
                 path: '/{{table}}/{id}',
                 methods: HttpMethod::DELETE,
                 name: '{{table}}_delete',
+                middleware: [{{gateClass}}::class],
                 handler: new HandlerReference({{controllerClass}}::class, 'delete'),
             ),
             // {coa:routes}

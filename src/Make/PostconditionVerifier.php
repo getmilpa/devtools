@@ -64,6 +64,9 @@ final class PostconditionVerifier
     /** The behavioral judge the resource run promised was scaffolded under tests/ (resource). */
     public const TEST_FILE = 'test_file';
 
+    /** The 3 mutating routes are declared behind a middleware that exists (crud). */
+    public const WRITES_GATED = 'writes_gated';
+
     /** ADVISORY: the plugin is listed in config/plugins.php — reported, never failing the run. */
     public const PLUGIN_REGISTERED = 'plugin_registered';
 
@@ -88,6 +91,7 @@ final class PostconditionVerifier
         self::CONTROLLER_REGISTERED,
         self::REPOSITORY_REGISTERED,
         self::ROUTES_DECLARED,
+        self::WRITES_GATED,
         self::SERVICE_FILE,
         self::SERVICE_REGISTERED,
         self::TEST_FILE,
@@ -159,6 +163,7 @@ final class PostconditionVerifier
         $checks[] = $this->repositoryRegistered($context, $appDir);
         $checks[] = $this->controllerRegistered($context, $appDir);
         $checks[] = $this->routesDeclared($context, $appDir);
+        $checks[] = $this->writesAreGated($context, $appDir);
         $checks[] = $this->pluginRegistered($context, $appNamespace, $appDir);
 
         return new PostconditionReport($checks);
@@ -190,6 +195,7 @@ final class PostconditionVerifier
         $checks[] = $this->controllerRegistered($context, $appDir);
         $checks[] = $this->serviceRegistered($context, $appDir);
         $checks[] = $this->routesDeclared($context, $appDir);
+        $checks[] = $this->writesAreGated($context, $appDir);
         $checks[] = $this->pluginRegistered($context, $appNamespace, $appDir);
 
         return new PostconditionReport($checks);
@@ -420,6 +426,59 @@ final class PostconditionVerifier
                     . "declare them in the plugin's routes() (or add a // {coa:routes} marker so make can wire them)"
                     . $this->autoWireObstacle($context, $appDir),
         );
+    }
+
+    /**
+     * The three mutating routes are declared behind a middleware, and the gate they name exists.
+     *
+     * REQUIRED, and it is the guard on the defect of greenhouse `decisions/0459`: this scaffold used
+     * to publish `POST`, `PUT` and `DELETE` with `middleware: []`, and on a served app an anonymous
+     * `POST` answered **201** with the row persisted. Checked on the DECLARATION rather than by
+     * calling the route, because that is what this verifier can see — and a declared middleware the
+     * container cannot produce already fails the dispatch closed, so a named-but-absent gate is the
+     * one remaining way to end up open. Both halves, therefore: named, and on disk.
+     */
+    private function writesAreGated(GenerationContext $context, string $appDir): PostconditionCheck
+    {
+        $source = $this->pluginSource($context, $appDir);
+        $table = $context->option('table') ?? strtolower($context->name) . 's';
+        $gate = $context->name . 'WritesGate';
+
+        $ungated = [];
+        foreach (['create', 'update', 'delete'] as $verb) {
+            $name = "{$table}_{$verb}";
+            if ($source === null) {
+                $ungated[] = $name;
+
+                continue;
+            }
+            // The route's own entry, from its name to the end of that declaration: the middleware
+            // has to be on THAT route and not merely somewhere in the file.
+            $at = strpos($source, "'{$name}'");
+            if ($at === false) {
+                $ungated[] = $name;
+
+                continue;
+            }
+            $entry = substr($source, $at, 400);
+            if (! str_contains($entry, 'middleware')) {
+                $ungated[] = $name;
+            }
+        }
+
+        $gateFile = $context->root . '/' . $appDir . '/Plugins/' . $context->plugin . '/Http/' . $gate . '.php';
+        $gateOnDisk = is_file($gateFile);
+
+        $ok = $ungated === [] && $gateOnDisk;
+        $detail = $ok
+            ? "the 3 write routes are declared behind {$gate}, which exists at {$gateFile}"
+            : ($ungated !== []
+                ? 'write route(s) ' . implode(', ', $ungated) . ' declare no middleware, so anyone can '
+                    . "call them — declare {$gate}::class on each (greenhouse decisions/0459)"
+                : "the write routes name {$gate} and it is not at {$gateFile}: a middleware the "
+                    . 'container cannot produce fails the dispatch closed, so those routes would 500');
+
+        return new PostconditionCheck(self::WRITES_GATED, $ok, $detail);
     }
 
     /**

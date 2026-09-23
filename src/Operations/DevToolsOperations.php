@@ -177,6 +177,7 @@ final class DevToolsOperations implements CommandProvider
                     new DeclaredCondition(PostconditionVerifier::CONTROLLER_REGISTERED, 'crud, resource: the controller is registered in the wiring plugin'),
                     new DeclaredCondition(PostconditionVerifier::REPOSITORY_REGISTERED, 'entity, crud, resource: the entity repository is registered in the wiring plugin'),
                     new DeclaredCondition(PostconditionVerifier::ROUTES_DECLARED, 'crud, resource: all five REST routes are declared in the wiring plugin'),
+                    new DeclaredCondition(PostconditionVerifier::WRITES_GATED, 'crud, resource: the three mutating routes are declared behind a middleware that exists on disk'),
                     new DeclaredCondition(PostconditionVerifier::SERVICE_FILE, 'resource: the service class file exists on disk'),
                     new DeclaredCondition(PostconditionVerifier::SERVICE_REGISTERED, 'resource: the service is registered in the wiring plugin'),
                     new DeclaredCondition(PostconditionVerifier::TEST_FILE, 'resource: the behavioral judge is scaffolded under tests/'),

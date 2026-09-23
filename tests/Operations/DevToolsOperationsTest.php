@@ -134,7 +134,13 @@ final class DevToolsOperationsTest extends TestCase
         self::assertSame(['plugin', 'class'], $schema['required'], 'content is per-mode — the handler teaches; finish needs none');
         self::assertSame(['start', 'append', 'amend', 'reset', 'finish'], $schema['properties']['mode']['enum']);
         self::assertSame('^[a-f0-9]{64}$', $schema['properties']['expected_sha256']['pattern']);
-        self::assertSame(['find', 'replace'], $schema['properties']['edits']['items']['required']);
+        self::assertSame([
+            [
+                'required' => ['find', 'replace'],
+                'not' => ['anyOf' => [['required' => ['before']], ['required' => ['after']]]],
+            ],
+            ['required' => ['before', 'after', 'replace'], 'not' => ['required' => ['find']]],
+        ], $schema['properties']['edits']['items']['oneOf']);
         self::assertStringContainsString('parts', $porNombre['implement']->description);
         self::assertStringContainsString('8192 bytes', $porNombre['implement']->description);
         self::assertStringContainsString('8192 bytes', $schema['properties']['content']['description']);

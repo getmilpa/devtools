@@ -60,7 +60,7 @@
                 "id": "devtools",
                 "title": "Scaffolding and diagnosis: generate artifacts and explain the app without booting it",
                 "unlocks": [
-                    "coa doctor"
+                    "php bin/coa doctor"
                 ],
                 "provides": [
                     "dev.generator",

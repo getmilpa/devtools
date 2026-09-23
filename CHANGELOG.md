@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.38.1](https://github.com/getmilpa/devtools/compare/v0.38.0...v0.38.1) (2026-09-23)
+
+
+### Bug Fixes
+
+* **manifest:** the capability names a command that runs ([#117](https://github.com/getmilpa/devtools/issues/117)) ([2cdb78e](https://github.com/getmilpa/devtools/commit/2cdb78efb6d4a09a38a087edd1ef8d9ce06ba7cb))
+
 ## [0.38.0](https://github.com/getmilpa/devtools/compare/v0.37.0...v0.38.0) (2026-09-23)
 
 

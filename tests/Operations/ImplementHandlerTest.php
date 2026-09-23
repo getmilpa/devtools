@@ -699,6 +699,60 @@ final class ImplementHandlerTest extends TestCase
         self::assertNotSame(0, $code, 'the deliberately-unclosed partial parsed — the fixture is wrong');
     }
 
+    /** A damaged assembly can return to the known live implementation without retransmitting it. */
+    public function testResetReplacesStagingWithAnExactLiveCopyWithoutPublishingOrClaimingGreen(): void
+    {
+        $live = $this->contenidoValido();
+        file_put_contents($this->archivo(), $live);
+        chmod($this->archivo(), 0o640);
+        file_put_contents($this->staging(), '<?php broken staging');
+
+        $reset = $this->handler()->handle([
+            'plugin' => 'Demo',
+            'class' => 'GreeterService',
+            'mode' => 'reset',
+        ]);
+
+        self::assertTrue($reset['ok'], $reset['error'] ?? '');
+        self::assertSame($live, file_get_contents($this->archivo()), 'reset changed live PHP');
+        self::assertSame($live, file_get_contents($this->staging()));
+        self::assertSame(hash('sha256', $live), $reset['sha256']);
+        self::assertSame(0o640, fileperms($this->staging()) & 0o777);
+        self::assertArrayNotHasKey('verified', $reset);
+        self::assertStringContainsString('nothing verified', $reset['partial']);
+        self::assertFileExists($this->staging(), 'reset must remain staged until finish');
+
+        $finish = $this->handler()->handle([
+            'plugin' => 'Demo',
+            'class' => 'GreeterService',
+            'mode' => 'finish',
+        ]);
+        self::assertTrue($finish['ok'], $finish['error'] ?? '');
+        self::assertArrayHasKey('verified', $finish);
+        self::assertFileDoesNotExist($this->staging());
+        self::assertSame($live, file_get_contents($this->archivo()));
+    }
+
+    /** Reset has no caller-supplied body or patch: its only source is the current live file. */
+    public function testResetRefusesContentAndAmendmentArgumentsWithoutChangingStaging(): void
+    {
+        file_put_contents($this->staging(), 'keep me');
+        foreach ([
+            ['content' => ''],
+            ['content' => '<?php replacement'],
+            ['expected_sha256' => str_repeat('a', 64), 'edits' => [['find' => 'keep', 'replace' => 'drop']]],
+        ] as $extra) {
+            $reset = $this->handler()->handle([
+                'plugin' => 'Demo',
+                'class' => 'GreeterService',
+                'mode' => 'reset',
+                ...$extra,
+            ]);
+            self::assertFalse($reset['ok']);
+            self::assertSame('keep me', file_get_contents($this->staging()));
+        }
+    }
+
     /**
      * FINISH PUBLISHES ATOMICALLY ON GREEN: a valid assembly becomes the live file byte-identical to
      * single-shot with the same content, the staging sibling is deleted, and the result says
@@ -861,14 +915,15 @@ final class ImplementHandlerTest extends TestCase
         }
     }
 
-    /** A mode outside the enum is refused naming the three that exist. */
-    public function testAnUnknownModeIsRefusedNamingTheThree(): void
+    /** A mode outside the enum is refused and teaches the available multipart transitions. */
+    public function testAnUnknownModeIsRefusedNamingTheAvailableTransitions(): void
     {
         $r = $this->handler()->handle(['plugin' => 'Demo', 'class' => 'GreeterService', 'mode' => 'assemble', 'content' => '// x']);
 
         self::assertFalse($r['ok']);
         self::assertStringContainsString('start', $r['error']);
         self::assertStringContainsString('append', $r['error']);
+        self::assertStringContainsString('reset', $r['error']);
         self::assertStringContainsString('finish', $r['error']);
     }
 

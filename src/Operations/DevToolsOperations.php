@@ -242,7 +242,8 @@ final class DevToolsOperations implements CommandProvider
                     . 'Inline content is capped (MAX_INLINE_BYTES = ' . ImplementHandler::MAX_INLINE_BYTES
                     . ' bytes); over it, write in parts: '
                     . 'mode=start with the first section, mode=append per section, mode=finish to verify and judge. '
-                    . 'Repair staging with mode=amend, exact edits and its current expected_sha256; nothing live or verified yet',
+                    . 'Repair staging with mode=amend, or restore it from live PHP with mode=reset; '
+                    . 'nothing live or verified yet',
                 handler: [ImplementHandler::class, 'handle'],
                 inputSchema: [
                     'type' => 'object',
@@ -257,14 +258,15 @@ final class DevToolsOperations implements CommandProvider
                             'type' => 'string',
                             'description' => 'The COMPLETE PHP file (strict_types, the namespace its location dictates, '
                                 . 'a class by that name) — or, with mode=start/append, ONE section of it, each at most '
-                                . ImplementHandler::MAX_INLINE_BYTES . ' bytes; mode=amend/finish take none',
+                                . ImplementHandler::MAX_INLINE_BYTES . ' bytes; mode=amend/reset/finish take none',
                         ],
                         'mode' => [
                             'type' => 'string',
-                            'enum' => ['start', 'append', 'amend', 'finish'],
+                            'enum' => ['start', 'append', 'amend', 'reset', 'finish'],
                             'description' => 'Omit to land the complete file in one call. To land in parts: start '
                                 . '(write the header and first section), append (each next section, verbatim), '
                                 . 'amend (exact edits to current staging by hash; promote before finish), '
+                                . 'reset (replace staging with an exact copy of live PHP; promote before editing), '
                                 . 'finish (verify and judge the assembled file — only finish claims any green)',
                         ],
                         'expected_sha256' => [

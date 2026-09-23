@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.38.2](https://github.com/getmilpa/devtools/compare/v0.38.1...v0.38.2) (2026-09-23)
+
+
+### Bug Fixes
+
+* **make:** the generated write routes refuse a caller nobody recognised ([#119](https://github.com/getmilpa/devtools/issues/119)) ([85f50cd](https://github.com/getmilpa/devtools/commit/85f50cd7a79917c8d57c1f50b6e49848957eb49e))
+
 ## [0.38.1](https://github.com/getmilpa/devtools/compare/v0.38.0...v0.38.1) (2026-09-23)
 
 

@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.36.0](https://github.com/getmilpa/devtools/compare/v0.35.2...v0.36.0) (2026-09-23)
+
+
+### Features
+
+* reset staged implementation from live PHP ([#111](https://github.com/getmilpa/devtools/issues/111)) ([bc5b43b](https://github.com/getmilpa/devtools/commit/bc5b43b658b9915ceebda0fd9ace3a60c83f3c44))
+
 ## [0.35.2](https://github.com/getmilpa/devtools/compare/v0.35.1...v0.35.2) (2026-09-22)
 
 

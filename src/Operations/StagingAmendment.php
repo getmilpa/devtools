@@ -29,20 +29,31 @@ final class StagingAmendment
         $bytes = 0;
         foreach ($edits as $edit) {
             if (!is_array($edit) || !is_string($edit['replace'] ?? null)) {
-                return 'each amendment requires a string `replace` and either `find` or the two anchors `before` and `after`';
+                return 'each amendment requires a string `replace` and an exact, anchored or line-range selector';
             }
-            $exact = is_string($edit['find'] ?? null) && $edit['find'] !== ''
-                && !array_key_exists('before', $edit) && !array_key_exists('after', $edit);
-            $anchored = is_string($edit['before'] ?? null) && $edit['before'] !== ''
-                && is_string($edit['after'] ?? null) && $edit['after'] !== ''
-                && !array_key_exists('find', $edit);
-            if ($exact === $anchored) {
+            $keys = array_keys($edit);
+            sort($keys);
+            $exact = $keys === ['find', 'replace']
+                && is_string($edit['find']) && $edit['find'] !== '';
+            $anchored = $keys === ['after', 'before', 'replace']
+                && is_string($edit['before']) && $edit['before'] !== ''
+                && is_string($edit['after']) && $edit['after'] !== '';
+            $lineRange = $keys === ['end_line', 'replace', 'start_line']
+                && is_int($edit['start_line']) && $edit['start_line'] >= 1
+                && is_int($edit['end_line']) && $edit['end_line'] >= $edit['start_line'];
+            if ((int) $exact + (int) $anchored + (int) $lineRange !== 1) {
                 return 'each amendment uses exactly one shape: nonempty string `find` plus string `replace`, '
-                    . 'or nonempty string `before` and `after` anchors plus string `replace`';
+                    . 'nonempty string `before` and `after` anchors plus string `replace`, or integer '
+                    . '`start_line` and `end_line` (1-based, inclusive) plus string `replace`';
             }
-            $bytes += strlen($edit['replace']) + ($exact
-                ? strlen($edit['find'])
-                : strlen($edit['before']) + strlen($edit['after']));
+            $bytes += strlen($edit['replace']);
+            if ($exact) {
+                $bytes += strlen($edit['find']);
+            } elseif ($anchored) {
+                $bytes += strlen($edit['before']) + strlen($edit['after']);
+            } else {
+                $bytes += strlen((string) $edit['start_line']) + strlen((string) $edit['end_line']);
+            }
             if ($bytes > ImplementHandler::MAX_INLINE_BYTES) {
                 return 'refused: total edit bytes exceed MAX_INLINE_BYTES (' . ImplementHandler::MAX_INLINE_BYTES
                     . '); split the amendment and use each resulting staging hash';
@@ -113,7 +124,9 @@ final class StagingAmendment
                     $content = $patch['content'];
                     continue;
                 }
-                $patch = self::between($content, $edit, $index + 1);
+                $patch = array_key_exists('before', $edit)
+                    ? self::between($content, $edit, $index + 1)
+                    : self::lines($content, $edit, $index + 1);
                 if (!$patch['ok']) {
                     return $patch;
                 }
@@ -187,6 +200,38 @@ final class StagingAmendment
         }
 
         return ['ok' => true, 'content' => substr($content, 0, $start) . $replacement . substr($content, $end)];
+    }
+
+    /**
+     * Replace complete 1-based inclusive lines without quoting their current contents.
+     *
+     * Line numbers address the content produced by preceding edits. Replacement bytes are
+     * verbatim, including any line ending needed before the preserved suffix.
+     *
+     * @param array<string, mixed> $edit
+     *
+     * @return array<string, mixed>
+     */
+    private static function lines(string $content, array $edit, int $number): array
+    {
+        $start = $edit['start_line'] ?? null;
+        $end = $edit['end_line'] ?? null;
+        $replacement = $edit['replace'] ?? null;
+        if (!is_int($start) || !is_int($end) || !is_string($replacement)) {
+            return ['ok' => false, 'error' => "edit #{$number} has an invalid line-range replacement"];
+        }
+        $lines = preg_split('/(?<=\n)/', $content, -1, PREG_SPLIT_NO_EMPTY);
+        if ($lines === false || $end > count($lines)) {
+            return ['ok' => false, 'error' => "edit #{$number} line range {$start}-{$end} exceeds CURRENT staging's "
+                . count($lines) . ' lines'];
+        }
+
+        return [
+            'ok' => true,
+            'content' => implode('', array_slice($lines, 0, $start - 1))
+                . $replacement
+                . implode('', array_slice($lines, $end)),
+        ];
     }
 
     /**

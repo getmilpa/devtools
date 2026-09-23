@@ -137,9 +137,23 @@ final class DevToolsOperationsTest extends TestCase
         self::assertSame([
             [
                 'required' => ['find', 'replace'],
-                'not' => ['anyOf' => [['required' => ['before']], ['required' => ['after']]]],
+                'not' => ['anyOf' => [
+                    ['required' => ['before']], ['required' => ['after']],
+                    ['required' => ['start_line']], ['required' => ['end_line']],
+                ]],
             ],
-            ['required' => ['before', 'after', 'replace'], 'not' => ['required' => ['find']]],
+            [
+                'required' => ['before', 'after', 'replace'],
+                'not' => ['anyOf' => [
+                    ['required' => ['find']], ['required' => ['start_line']], ['required' => ['end_line']],
+                ]],
+            ],
+            [
+                'required' => ['start_line', 'end_line', 'replace'],
+                'not' => ['anyOf' => [
+                    ['required' => ['find']], ['required' => ['before']], ['required' => ['after']],
+                ]],
+            ],
         ], $schema['properties']['edits']['items']['oneOf']);
         self::assertStringContainsString('parts', $porNombre['implement']->description);
         self::assertStringContainsString('8192 bytes', $porNombre['implement']->description);

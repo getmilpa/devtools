@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.37.0](https://github.com/getmilpa/devtools/compare/v0.36.0...v0.37.0) (2026-09-23)
+
+
+### Features
+
+* amend staging between unique anchors ([#113](https://github.com/getmilpa/devtools/issues/113)) ([ee6c845](https://github.com/getmilpa/devtools/commit/ee6c8456d98330abd32abea026c9da8f087c6c30))
+
 ## [0.36.0](https://github.com/getmilpa/devtools/compare/v0.35.2...v0.36.0) (2026-09-23)
 
 

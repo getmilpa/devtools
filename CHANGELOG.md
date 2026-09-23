@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.38.0](https://github.com/getmilpa/devtools/compare/v0.37.0...v0.38.0) (2026-09-23)
+
+
+### Features
+
+* amend staging by line range ([#115](https://github.com/getmilpa/devtools/issues/115)) ([a3a2167](https://github.com/getmilpa/devtools/commit/a3a21678b54672458b4d7df65b670bf64d352354))
+
 ## [0.37.0](https://github.com/getmilpa/devtools/compare/v0.36.0...v0.37.0) (2026-09-23)
 
 

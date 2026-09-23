@@ -103,7 +103,7 @@ final class ImplementHandler
     public const STAGING_SUFFIX = '.milpa-part';
 
     /** The modes of the parts door; absent means single-shot, today's behavior byte for byte. */
-    private const MODES = ['start', 'append', 'amend', 'finish'];
+    private const MODES = ['start', 'append', 'amend', 'reset', 'finish'];
 
     /**
      * @param string|null $analyzer       the static-analysis command, or `null` to derive it from
@@ -146,7 +146,8 @@ final class ImplementHandler
             return [
                 'ok' => false,
                 'error' => 'unknown mode — omit it to land the complete file in one call, or land in parts: '
-                    . 'mode=start, then mode=append per section, optionally mode=amend to repair staging, then mode=finish',
+                    . 'mode=start, then mode=append per section, optionally mode=amend to repair staging, '
+                    . 'mode=reset to restore staging from live PHP, then mode=finish',
             ];
         }
 
@@ -160,15 +161,16 @@ final class ImplementHandler
         }
 
         // `content` is a per-mode obligation, not a schema-wide one: finish assembles what start and
-        // append already landed, so a section riding on it would be silently half-landed — refused.
-        if ($mode === 'finish' && $content !== '') {
+        // append already landed, while reset copies the live file. Content on either would be ignored.
+        if (($mode === 'finish' && $content !== '') || ($mode === 'reset' && array_key_exists('content', $input))) {
             return [
                 'ok' => false,
-                'error' => 'mode=finish takes no `content` — sections travel with mode=append; '
-                    . 'finish verifies and judges what the parts assembled',
+                'error' => "mode={$mode} takes no `content` — " . ($mode === 'finish'
+                    ? 'sections travel with mode=append; finish verifies and judges what the parts assembled'
+                    : 'reset copies the current live PHP into staging'),
             ];
         }
-        if ($mode !== 'finish' && $mode !== 'amend' && $content === '') {
+        if (!\in_array($mode, ['finish', 'amend', 'reset'], true) && $content === '') {
             return [
                 'ok' => false,
                 'error' => $mode === null
@@ -208,7 +210,7 @@ final class ImplementHandler
         $file = $this->fileFor($tree, $class)
             ?? (is_dir($root . '/tests/Plugins/' . $plugin) ? $this->fileFor($root . '/tests/Plugins/' . $plugin, $class) : null);
         if ($file === null) {
-            if ($mode === 'append' || $mode === 'amend' || $mode === 'finish') {
+            if (\in_array($mode, ['append', 'amend', 'reset', 'finish'], true)) {
                 return [
                     'ok' => false,
                     'error' => "nothing to {$mode}: no scaffold declares class «{$class}» in plugin «{$plugin}» — "
@@ -227,6 +229,29 @@ final class ImplementHandler
 
         if ($mode === 'amend') {
             return StagingAmendment::apply($root, $file, $input);
+        }
+
+        if ($mode === 'reset') {
+            if (is_link($file) || !is_file($file)) {
+                return ['ok' => false, 'error' => 'reset requires a regular live PHP file inside its plugin tree'];
+            }
+            if (is_link($staging)) {
+                return ['ok' => false, 'error' => 'reset refuses a symlink staging file'];
+            }
+            $live = file_get_contents($file);
+            if ($live === false || !$this->stageAtomically($staging, $live, $file)) {
+                return ['ok' => false, 'error' => "could not reset staging from live PHP at {$file}"];
+            }
+
+            return [
+                'ok' => true,
+                'file' => substr($file, \strlen($root) + 1),
+                'staging' => substr($staging, \strlen($root) + 1),
+                'sha256' => hash('sha256', $live),
+                'partial' => 'reset staging to an exact copy of live PHP — nothing verified, nothing judged; '
+                    . 'live PHP is untouched. Apply this staged change through the host promotion flow, '
+                    . 'then mode=amend can make bounded edits and mode=finish verifies and judges them.',
+            ];
         }
 
         // append and finish assemble what an EARLIER start opened — the scaffold existing is no
@@ -568,6 +593,25 @@ final class ImplementHandler
         }
 
         return true;
+    }
+
+    /** Replace staging atomically with exact live bytes and the live file's permissions. */
+    private function stageAtomically(string $staging, string $content, string $live): bool
+    {
+        $temp = @tempnam(\dirname($staging), '.milpa-reset-');
+        if ($temp === false) {
+            return false;
+        }
+        $mode = @fileperms($live);
+        if (@file_put_contents($temp, $content) !== \strlen($content)
+            || ($mode !== false && !@chmod($temp, $mode & 0o777))
+            || !@rename($temp, $staging)) {
+            @unlink($temp);
+
+            return false;
+        }
+
+        return hash_file('sha256', $staging) === hash('sha256', $content);
     }
 
     /** The class's behavioral test under `tests/Plugins/<plugin>/`, or `null` when none declares it. */

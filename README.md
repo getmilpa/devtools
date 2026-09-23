@@ -201,6 +201,13 @@ hash are refused in other implement modes. Serialize staging writers: the amendm
 lock and inode recheck coordinate amendments, not arbitrary external writes or other
 modes. Recorded `edit.source` retains its separate complete-inline-proposal contract.
 
+To discard a damaged assembly without retransmitting a large working class, call
+`implement` with `mode=reset`, the same `plugin` and `class`, and no content. It
+atomically replaces the staging sibling with an exact byte copy of the current live
+PHP while leaving that live file untouched. Reset returns the new staging SHA-256 and
+makes no verification claim. Through a governed trial, promote the reset before using
+bounded `mode=amend` edits, then use `mode=finish` for the normal judges and publication.
+
 `implement` takes the complete file; `edit` takes find→replace pairs that must match **exactly
 once** — measured on real sessions: re-generating a whole file is where a model's priors sneak back
 in, and a pair that matches nothing returns the CURRENT file verbatim, so the next pair is built

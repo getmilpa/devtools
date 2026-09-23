@@ -90,6 +90,26 @@ final class StagingAmendmentTest extends TestCase
         self::assertSame('<?php // active scaffold', file_get_contents($this->file));
     }
 
+    /** Complete lines can be replaced without quoting either their contents or boundary text. */
+    public function testLineRangeAndExactEditsComposeInOrder(): void
+    {
+        $body = "header\nstart\nlarge old line one\nlarge old line two\nend\nsuffix\n";
+        file_put_contents($this->staging, $body);
+        $args = $this->arguments();
+        $args['expected_sha256'] = hash('sha256', $body);
+        $args['edits'] = [
+            ['start_line' => 3, 'end_line' => 4, 'replace' => "bounded line one\nbounded line two\n"],
+            ['find' => 'suffix', 'replace' => 'finished'],
+        ];
+
+        $result = $this->handler->handle($args);
+
+        self::assertTrue($result['ok'], $result['error'] ?? '');
+        self::assertSame("header\nstart\nbounded line one\nbounded line two\nend\nfinished\n", file_get_contents($this->staging));
+        self::assertSame(2, $result['edits_applied']);
+        self::assertSame('<?php // active scaffold', file_get_contents($this->file));
+    }
+
     /** @return iterable<string, array{array<string, mixed>, string}> */
     public static function refusals(): iterable
     {
@@ -104,6 +124,10 @@ final class StagingAmendmentTest extends TestCase
         yield 'invalid replacement' => [['edits' => [['find' => 'first', 'replace' => 1]]], 'string'];
         yield 'mixed exact and anchors' => [['edits' => [['find' => 'first', 'before' => 'first', 'after' => 'second', 'replace' => 'x']]], 'exactly one shape'];
         yield 'missing after anchor' => [['edits' => [['before' => 'first', 'replace' => 'x']]], 'exactly one shape'];
+        yield 'missing range end' => [['edits' => [['start_line' => 1, 'replace' => 'x']]], 'exactly one shape'];
+        yield 'zero range start' => [['edits' => [['start_line' => 0, 'end_line' => 1, 'replace' => 'x']]], 'exactly one shape'];
+        yield 'reversed line range' => [['edits' => [['start_line' => 2, 'end_line' => 1, 'replace' => 'x']]], 'exactly one shape'];
+        yield 'range outside staging' => [['edits' => [['start_line' => 2, 'end_line' => 3, 'replace' => 'x']]], 'exceeds CURRENT staging'];
         yield 'missing before match' => [['edits' => [['before' => 'absent', 'after' => 'second', 'replace' => 'x']]], 'before anchor matches nothing'];
         yield 'ambiguous after anchor' => [['edits' => [['before' => 'first', 'after' => 'second', 'replace' => 'x']]], 'after anchor is ambiguous'];
         yield 'reversed anchors' => [['edits' => [['before' => 'second second', 'after' => 'first', 'replace' => 'x']]], 'anchors are reversed'];

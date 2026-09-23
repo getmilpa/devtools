@@ -265,7 +265,7 @@ final class DevToolsOperations implements CommandProvider
                             'enum' => ['start', 'append', 'amend', 'reset', 'finish'],
                             'description' => 'Omit to land the complete file in one call. To land in parts: start '
                                 . '(write the header and first section), append (each next section, verbatim), '
-                                . 'amend (exact or anchored edits to current staging by hash; promote before finish), '
+                                . 'amend (exact, anchored or line-range edits to current staging by hash; promote before finish), '
                                 . 'reset (replace staging with an exact copy of live PHP; promote before editing), '
                                 . 'finish (verify and judge the assembled file — only finish claims any green)',
                         ],
@@ -279,8 +279,9 @@ final class DevToolsOperations implements CommandProvider
                             'type' => 'array',
                             'minItems' => 1,
                             'description' => 'Required only for mode=amend: ordered staging replacements. Use exact '
-                                . '{find, replace}, or {before, after, replace} to preserve two unique anchors and '
-                                . 'replace only the bytes between them. Total transmitted edit bytes at most '
+                                . '{find, replace}; {before, after, replace} to preserve two unique anchors; or '
+                                . '{start_line, end_line, replace} to replace complete 1-based inclusive current lines. '
+                                . 'Line-range replacement bytes are verbatim. Total transmitted edit bytes at most '
                                 . ImplementHandler::MAX_INLINE_BYTES . '. Never changes live PHP or claims verification',
                             'items' => [
                                 'type' => 'object',
@@ -288,6 +289,8 @@ final class DevToolsOperations implements CommandProvider
                                     'find' => ['type' => 'string', 'minLength' => 1],
                                     'before' => ['type' => 'string', 'minLength' => 1],
                                     'after' => ['type' => 'string', 'minLength' => 1],
+                                    'start_line' => ['type' => 'integer', 'minimum' => 1],
+                                    'end_line' => ['type' => 'integer', 'minimum' => 1],
                                     'replace' => ['type' => 'string'],
                                 ],
                                 'oneOf' => [
@@ -296,11 +299,25 @@ final class DevToolsOperations implements CommandProvider
                                         'not' => ['anyOf' => [
                                             ['required' => ['before']],
                                             ['required' => ['after']],
+                                            ['required' => ['start_line']],
+                                            ['required' => ['end_line']],
                                         ]],
                                     ],
                                     [
                                         'required' => ['before', 'after', 'replace'],
-                                        'not' => ['required' => ['find']],
+                                        'not' => ['anyOf' => [
+                                            ['required' => ['find']],
+                                            ['required' => ['start_line']],
+                                            ['required' => ['end_line']],
+                                        ]],
+                                    ],
+                                    [
+                                        'required' => ['start_line', 'end_line', 'replace'],
+                                        'not' => ['anyOf' => [
+                                            ['required' => ['find']],
+                                            ['required' => ['before']],
+                                            ['required' => ['after']],
+                                        ]],
                                     ],
                                 ],
                             ],

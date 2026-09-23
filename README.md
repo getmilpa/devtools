@@ -189,8 +189,10 @@ current file. The inline, start and append limits remain unchanged.
 
 To repair an assembled staging file, call `implement` with `mode=amend`, the same
 `plugin` and `class`, its current `expected_sha256`, and an `edits` list of exact
-`{find, replace}` pairs or anchored `{before, after, replace}` replacements. Each
-find or anchor must occur exactly once, in order. All transmitted edit strings
+`{find, replace}` pairs, anchored `{before, after, replace}` replacements, or
+`{start_line, end_line, replace}` ranges. Each find or anchor must occur exactly
+once, in order. Line ranges are 1-based and inclusive in the content produced by
+preceding edits; replacement bytes are verbatim. All transmitted edit values
 together are limited to 8192 bytes; `content` is forbidden in this mode. Start,
 append and amend return the staging path and SHA-256. A stale hash,
 missing or ambiguous match, or linked staging path refuses without changing it.
@@ -206,7 +208,9 @@ An anchored amendment uses `{before, after, replace}`. Both anchors must each oc
 exactly once and in that order; they remain in staging while only the bytes between
 them are replaced. This keeps a large current block out of the tool call while still
 binding the mutation to its staging hash, two unambiguous boundaries and the same
-8192-byte transmitted-input ceiling. Exact and anchored edits may be ordered together.
+8192-byte transmitted-input ceiling. A line-range amendment avoids quoting either
+the old block or its boundaries while the staging hash still binds the complete
+input. Exact, anchored and line-range edits may be ordered together.
 
 To discard a damaged assembly without retransmitting a large working class, call
 `implement` with `mode=reset`, the same `plugin` and `class`, and no content. It

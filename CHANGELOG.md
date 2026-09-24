@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.40.0](https://github.com/getmilpa/devtools/compare/v0.39.0...v0.40.0) (2026-09-24)
+
+
+### Features
+
+* **make:** the entity declares its visibility; the controller reads it from there ([#123](https://github.com/getmilpa/devtools/issues/123)) ([0481635](https://github.com/getmilpa/devtools/commit/0481635e6ff8cca39049a7222474c856e3aae6fb))
+
 ## [0.39.0](https://github.com/getmilpa/devtools/compare/v0.38.2...v0.39.0) (2026-09-24)
 
 

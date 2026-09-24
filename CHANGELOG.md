@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.39.0](https://github.com/getmilpa/devtools/compare/v0.38.2...v0.39.0) (2026-09-24)
+
+
+### Features
+
+* **make:** a declared visibility bounds what a stranger reads ([#121](https://github.com/getmilpa/devtools/issues/121)) ([20c41ad](https://github.com/getmilpa/devtools/commit/20c41ad260f2500f69efac69c2301cf4efe13ef5))
+
 ## [0.38.2](https://github.com/getmilpa/devtools/compare/v0.38.1...v0.38.2) (2026-09-23)
 
 

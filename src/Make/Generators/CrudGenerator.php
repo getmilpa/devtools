@@ -15,6 +15,8 @@ declare(strict_types=1);
 namespace Milpa\DevTools\Make\Generators;
 
 use Milpa\DevTools\Make\ConventionDetector;
+use Milpa\DevTools\Make\FieldParser;
+use Milpa\DevTools\Make\FieldSpec;
 use Milpa\DevTools\Make\Flavor;
 use Milpa\DevTools\Make\GenerationContext;
 use Milpa\DevTools\Make\GenerationResult;
@@ -115,6 +117,12 @@ final class CrudGenerator implements GeneratorInterface
         [$appNamespace, $appDir] = ComposerAutoload::primaryNamespace($context->root) ?? ['App', 'src'];
         $appDir = trim($appDir, '/');
 
+        // THE DECLARED VISIBILITY, resolved BEFORE a byte is planned (greenhouse decisions/0460).
+        // A visibility that names a field the entity does not have, or one that is not a boolean,
+        // is refused rather than generated: it would read as a boundary while withholding nothing,
+        // and a boundary that is only a word is worse than an admitted absence.
+        $publicWhen = $this->declaredVisibility($context);
+
         $entityResult = $this->generateEntity($context);
 
         $entityNamespace = $appNamespace . '\\Plugins\\' . $context->plugin . '\\Entities';
@@ -141,6 +149,11 @@ final class CrudGenerator implements GeneratorInterface
             'entityNamespace' => $entityNamespace,
             'entityClass' => $context->name,
             'table' => $table,
+            'visibleToMethod' => self::visibleToMethod(
+                $context->name,
+                $publicWhen,
+                self::gateNamespace($appNamespace . '\\Plugins\\' . $context->plugin) . '\\' . self::callerClass($context->name),
+            ),
         ]);
         $files[] = new PlannedFile($controllerPath, $controllerContents);
 
@@ -153,9 +166,21 @@ final class CrudGenerator implements GeneratorInterface
             $this->renderer->render($this->stubs->path('crud-writes-gate.runtime.php.stub'), [
                 'namespace' => self::gateNamespace($appNamespace . '\\Plugins\\' . $context->plugin),
                 'class' => self::gateClass($context->name),
+                'callerClass' => self::callerClass($context->name),
                 'entityClass' => $context->name,
                 'pluginClass' => $context->plugin,
                 'table' => $table,
+            ]),
+        );
+
+        // THE ONE AUTHORITY on who is recognised, asked by the gate AND by the controller's
+        // visibility. Generated always, because the gate always asks it.
+        $files[] = new PlannedFile(
+            $context->root . '/' . $appDir . '/Plugins/' . $context->plugin . '/Http/'
+                . self::callerClass($context->name) . '.php',
+            $this->renderer->render($this->stubs->path('crud-caller.runtime.php.stub'), [
+                'namespace' => self::gateNamespace($appNamespace . '\\Plugins\\' . $context->plugin),
+                'class' => self::callerClass($context->name),
             ]),
         );
 
@@ -494,6 +519,111 @@ final class CrudGenerator implements GeneratorInterface
     private static function gateClass(string $entity): string
     {
         return $entity . 'WritesGate';
+    }
+
+    /**
+     * The field a caller must match to read a row, as DECLARED — or null when none was.
+     *
+     * Refuses rather than warns, and refuses before anything is written: a `--public-when` naming a
+     * field that is not there, or one that is not a boolean, produces a controller whose comment
+     * promises a boundary its criteria cannot enforce. The refusal names what the entity does have,
+     * because a refusal the reader cannot act on costs more than none.
+     */
+    private function declaredVisibility(GenerationContext $context): ?string
+    {
+        $declared = $context->option('public-when');
+        if ($declared === null || trim($declared) === '') {
+            return null;
+        }
+        $declared = trim($declared);
+
+        $fields = (new FieldParser())->parse($context->option('fields') ?? '', supportsRelations: false);
+        foreach ($fields as $field) {
+            if ($field->name !== $declared) {
+                continue;
+            }
+            if ($field->phpType !== 'bool') {
+                throw new \InvalidArgumentException(sprintf(
+                    '--public-when=%s names a %s field, and visibility is a yes or no: a row is public '
+                    . 'or it is not. Declare a bool field (e.g. «%s:bool») and name that one.',
+                    $declared,
+                    $field->phpType,
+                    $declared,
+                ));
+            }
+
+            return $declared;
+        }
+
+        throw new \InvalidArgumentException(sprintf(
+            '--public-when=%s names a field this artifact does not declare. Its fields are: %s. '
+            . 'A declared visibility that does not exist reads as a boundary and withholds nothing.',
+            $declared,
+            $fields === [] ? '(none)' : implode(', ', array_map(static fn (FieldSpec $f): string => $f->name . ':' . $f->phpType, $fields)),
+        ));
+    }
+
+    /** The one authority on who is recognised: `Post` → `PostCaller`. */
+    private static function callerClass(string $entity): string
+    {
+        return $entity . 'Caller';
+    }
+
+    /**
+     * The `visibleTo()` the controller carries — the ONE place that decides what a caller may read.
+     *
+     * Generated in both shapes rather than spliced conditionally, so there is exactly one shape of
+     * generated controller and the two read actions always ask the same question. Without a
+     * declared visibility it answers «everything», and SAYS so along with how to declare one: a
+     * seam that looks like a boundary while withholding nothing is worse than no seam.
+     */
+    private static function visibleToMethod(string $entity, ?string $publicWhen, string $callerFqcn): string
+    {
+        if ($publicWhen === null) {
+            return <<<'PHP'
+                /**
+                 * The criteria this caller's reads are bounded by — NOTHING, because this artifact
+                 * declared no visibility field.
+                 *
+                 * Every row is public, including any a human would call a draft. To bound it, run
+                 * `make` again with `--public-when=<field>` naming the boolean that decides, and
+                 * this method will answer `[]` for a recognised caller and `['<field>' => true]`
+                 * for a stranger. It is not inferred from a field's NAME: a generator guessing
+                 * intent from vocabulary is patched per instance and never closes.
+                 *
+                 * @return array<string, mixed>
+                 */
+                private function visibleTo(ServerRequestInterface $request): array
+                {
+                    return [];
+                }
+
+            PHP;
+        }
+
+        // FULLY QUALIFIED, and measured: written as the bare class name it resolved inside the
+        // controller's OWN namespace (`…\\Controllers\\PostCaller`) and every read answered 500.
+        // The unit test had passed because the harness injected the import the generator did not
+        // emit — a harness that patches the artifact certifies its own patch.
+        $caller = '\\' . ltrim($callerFqcn, '\\');
+
+        return <<<PHP
+                /**
+                 * The criteria this caller's reads are bounded by: nothing for a caller this app
+                 * recognised, and `{$publicWhen} = true` for a stranger.
+                 *
+                 * Declared with `--public-when={$publicWhen}`, never inferred. Both read actions ask
+                 * THIS method — a visibility honoured by the index and forgotten by the detail route
+                 * is the same leak with less noise.
+                 *
+                 * @return array<string, mixed>
+                 */
+                private function visibleTo(ServerRequestInterface \$request): array
+                {
+                    return {$caller}::in(\$request) !== null ? [] : ['{$publicWhen}' => true];
+                }
+
+            PHP;
     }
 
     /** The 5 REST route entries (one per line, trailing commas), fully qualified inline. */

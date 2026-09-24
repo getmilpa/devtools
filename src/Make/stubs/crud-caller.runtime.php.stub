@@ -1,0 +1,46 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use Psr\Http\Message\ServerRequestInterface;
+
+/**
+ * Who this app recognised, read from the request — the ONE answer both the write gate and the
+ * read surface ask for.
+ *
+ * It exists as a class rather than a copy in each because two generated files answering «who is
+ * calling» separately is how they come to disagree: one gets widened, the other does not, and the
+ * half nobody re-read keeps deciding. The same reason the framework builds its own gates from one
+ * place instead of two.
+ *
+ * It reads the request ATTRIBUTE and never a class. Whoever puts `milpa.auth` there declares its
+ * shape — an object with an `actor` carrying an `id` — which is what keeps this plugin from
+ * depending on `milpa/auth`: with identity wired these surfaces open, without it they stay closed,
+ * and that is the safe direction for both a write and a draft.
+ */
+final class {{class}}
+{
+    /**
+     * The recognised caller's id, or null when nobody was recognised.
+     *
+     * Read defensively on purpose: this travels in YOUR app and has to survive an attribute put
+     * there by a version of the identity chain it was not generated against. An attribute of an
+     * unexpected shape means «nobody was recognised» — never «everybody is».
+     */
+    public static function in(ServerRequestInterface $request): ?string
+    {
+        $auth = $request->getAttribute('milpa.auth');
+        if (! \is_object($auth) || ! property_exists($auth, 'actor')) {
+            return null;
+        }
+
+        $actor = $auth->actor;
+        if (! \is_object($actor) || ! property_exists($actor, 'id') || ! \is_string($actor->id)) {
+            return null;
+        }
+
+        return trim($actor->id) === '' ? null : $actor->id;
+    }
+}

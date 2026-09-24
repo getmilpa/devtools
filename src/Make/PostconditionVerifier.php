@@ -67,6 +67,9 @@ final class PostconditionVerifier
     /** The 3 mutating routes are declared behind a middleware that exists (crud). */
     public const WRITES_GATED = 'writes_gated';
 
+    /** Both read actions ask the one visibility seam, and it honours what was declared (crud). */
+    public const READS_BOUNDED = 'reads_bounded';
+
     /** ADVISORY: the plugin is listed in config/plugins.php — reported, never failing the run. */
     public const PLUGIN_REGISTERED = 'plugin_registered';
 
@@ -92,6 +95,7 @@ final class PostconditionVerifier
         self::REPOSITORY_REGISTERED,
         self::ROUTES_DECLARED,
         self::WRITES_GATED,
+        self::READS_BOUNDED,
         self::SERVICE_FILE,
         self::SERVICE_REGISTERED,
         self::TEST_FILE,
@@ -164,6 +168,7 @@ final class PostconditionVerifier
         $checks[] = $this->controllerRegistered($context, $appDir);
         $checks[] = $this->routesDeclared($context, $appDir);
         $checks[] = $this->writesAreGated($context, $appDir);
+        $checks[] = $this->readsAreBounded($context, $appDir);
         $checks[] = $this->pluginRegistered($context, $appNamespace, $appDir);
 
         return new PostconditionReport($checks);
@@ -196,6 +201,7 @@ final class PostconditionVerifier
         $checks[] = $this->serviceRegistered($context, $appDir);
         $checks[] = $this->routesDeclared($context, $appDir);
         $checks[] = $this->writesAreGated($context, $appDir);
+        $checks[] = $this->readsAreBounded($context, $appDir);
         $checks[] = $this->pluginRegistered($context, $appNamespace, $appDir);
 
         return new PostconditionReport($checks);
@@ -482,6 +488,46 @@ final class PostconditionVerifier
     }
 
     /**
+     * Both read actions ask the ONE visibility seam, and when a visibility was declared the seam
+     * honours it.
+     *
+     * The acta promises this guard, so it exists: a visibility honoured by the index and forgotten
+     * by the detail route is the same leak with less noise, and a declared field the seam does not
+     * name is a boundary that is only a word (greenhouse decisions/0460). Checked on the generated
+     * controller, which is where both halves are written.
+     */
+    private function readsAreBounded(GenerationContext $context, string $appDir): PostconditionCheck
+    {
+        $source = $this->controllerSource($context, $appDir);
+        $declared = $context->option('public-when');
+        $declared = $declared === null || trim($declared) === '' ? null : trim($declared);
+
+        if ($source === null) {
+            return new PostconditionCheck(self::READS_BOUNDED, false, 'the controller could not be read');
+        }
+
+        $missing = [];
+        // Both actions, by the seam they must ask — not by their own bodies, which is what let the
+        // two drift in the first place.
+        if (substr_count($source, '$this->visibleTo($request)') < 2) {
+            $missing[] = 'one of the two read actions does not ask visibleTo()';
+        }
+        if ($declared !== null && ! str_contains($source, "'{$declared}' => true")) {
+            $missing[] = "the seam does not name the declared field «{$declared}»";
+        }
+
+        return new PostconditionCheck(
+            self::READS_BOUNDED,
+            $missing === [],
+            $missing === []
+                ? ($declared === null
+                    ? 'both reads ask one visibility seam; nothing was declared, so nothing is withheld'
+                    : "both reads ask one visibility seam, bounded by «{$declared}» for a stranger")
+                : implode('; ', $missing) . ' (greenhouse decisions/0460)',
+        );
+    }
+
+    /**
      * ADVISORY: whether the plugin is listed in `config/plugins.php` so the kernel boots it. Never
      * fails the run — activating a plugin is the authority decision `make` hands to a human — but it
      * is reported so the caller sees the one step that is genuinely theirs, not left to guess at.
@@ -506,6 +552,18 @@ final class PostconditionVerifier
     }
 
     /** The source of the wiring plugin, or `null` when no plugin file exists yet. */
+    /** The generated controller's source, or null when it is not on disk. */
+    private function controllerSource(GenerationContext $context, string $appDir): ?string
+    {
+        $path = $this->pluginDir($context, $appDir) . '/Controllers/' . $context->name . 'Controller.php';
+        if (!is_file($path)) {
+            return null;
+        }
+        $source = file_get_contents($path);
+
+        return $source === false ? null : $source;
+    }
+
     private function pluginSource(GenerationContext $context, string $appDir): ?string
     {
         $path = $this->pluginPath($context, $appDir);

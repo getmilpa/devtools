@@ -130,6 +130,15 @@ final class DevToolsOperations implements CommandProvider
                         'route' => ['type' => 'string', 'description' => 'Ruta base, para controller y crud'],
                         'methods' => ['type' => 'string', 'description' => 'Métodos separados por coma, para controller'],
                         'table' => ['type' => 'string', 'description' => 'Nombre de tabla, para entity, crud y resource'],
+                        // LA VISIBILIDAD SE DECLARA O NO EXISTE (greenhouse decisions/0460). No se
+                        // infiere del NOMBRE de un campo: un generador que adivina intención por
+                        // vocabulario se parchea por instancia y nunca cierra.
+                        // `public_when` AND NOT `public-when`: the CLI normalizes a flag's dashes to
+                        // underscores before the schema sees it (Application::tokens()), which is why
+                        // `tool_name` is spelled that way too. Declared with a dash, the flag arrived
+                        // as an undeclared key and the coercer dropped it — the option existed in the
+                        // contract, in the handler and in the generator, and did nothing.
+                        'public_when' => ['type' => 'string', 'description' => 'For crud and resource: the BOOL field that decides a row is public. Declaring it bounds the anonymous reads — a stranger sees only rows where it is true, and a draft answers 404 rather than 403, because a 403 confirms the row exists. A caller this app recognised (the `milpa.auth` request attribute) still sees everything. Omit it and every row is public, drafts included.'],
                         'provides' => ['type' => 'string', 'description' => 'Capacidades que ofrece, separadas por coma, para plugin'],
                         'requires' => ['type' => 'string', 'description' => 'Capacidades que necesita, separadas por coma, para plugin'],
                         'interface' => ['type' => 'boolean', 'description' => 'Generate a local <Name>Interface companion for a service. Omit for a plain class; this flag does not select an existing interface.'],
@@ -178,6 +187,7 @@ final class DevToolsOperations implements CommandProvider
                     new DeclaredCondition(PostconditionVerifier::REPOSITORY_REGISTERED, 'entity, crud, resource: the entity repository is registered in the wiring plugin'),
                     new DeclaredCondition(PostconditionVerifier::ROUTES_DECLARED, 'crud, resource: all five REST routes are declared in the wiring plugin'),
                     new DeclaredCondition(PostconditionVerifier::WRITES_GATED, 'crud, resource: the three mutating routes are declared behind a middleware that exists on disk'),
+                    new DeclaredCondition(PostconditionVerifier::READS_BOUNDED, 'crud, resource: both read actions ask one visibility seam, and it honours the declared --public-when field'),
                     new DeclaredCondition(PostconditionVerifier::SERVICE_FILE, 'resource: the service class file exists on disk'),
                     new DeclaredCondition(PostconditionVerifier::SERVICE_REGISTERED, 'resource: the service is registered in the wiring plugin'),
                     new DeclaredCondition(PostconditionVerifier::TEST_FILE, 'resource: the behavioral judge is scaffolded under tests/'),

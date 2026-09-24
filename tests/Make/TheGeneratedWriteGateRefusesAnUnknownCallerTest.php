@@ -127,13 +127,20 @@ final class TheGeneratedWriteGateRefusesAnUnknownCallerTest extends TestCase
         ));
 
         $planned = null;
+        $caller = null;
         foreach ($result->files as $file) {
             \assert($file instanceof PlannedFile);
             if (basename($file->path) === 'TaskWritesGate.php') {
                 $planned = $file;
             }
+            if (basename($file->path) === 'TaskCaller.php') {
+                $caller = $file;
+            }
         }
         self::assertNotNull($planned, 'the generator plans a write gate');
+        // The gate does not decide who is recognised — it asks this, and so does the read surface.
+        // Loading only the gate would exercise a class whose one collaborator is missing.
+        self::assertNotNull($caller, 'and the one authority the gate asks');
 
         // A UNIQUE namespace per run: PHP cannot unload a class, and a second test loading the same
         // FQCN would silently exercise the FIRST run's bytes.
@@ -144,6 +151,14 @@ final class TheGeneratedWriteGateRefusesAnUnknownCallerTest extends TestCase
             $planned->contents,
         );
         self::assertStringContainsString('namespace ' . $namespace . ';', $source, 'the namespace was rewritten');
+
+        $callerSource = str_replace(
+            'namespace GateApp\\Plugins\\BoardPlugin\\Http;',
+            'namespace ' . $namespace . ';',
+            $caller->contents,
+        );
+        file_put_contents($this->root . '/caller.php', $callerSource);
+        require $this->root . '/caller.php';
 
         $file = $this->root . '/gate.php';
         file_put_contents($file, $source);

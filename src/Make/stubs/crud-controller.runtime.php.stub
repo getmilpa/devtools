@@ -49,9 +49,22 @@ final class {{class}}
         $limit = min(self::MAX_PAGE, max(0, (int) ($query['limit'] ?? self::PAGE)));
         $offset = max(0, (int) ($query['offset'] ?? 0));
 
+        // ONE place decides what this caller may see; both read actions ask it.
+        $criteria = $this->visibleTo($request);
+
         $entities = $this->repository instanceof PagesResults
-            ? $this->repository->page([], $limit, $offset)
-            : \array_slice($this->repository->all(), $offset, $limit);
+            ? $this->repository->page($criteria, $limit, $offset)
+            // A backend that cannot page is bounded HERE, after the same criteria — the fallback
+            // used to slice `all()` unfiltered, which would have handed a stranger every row the
+            // criteria exist to withhold.
+            : \array_slice(
+                array_values(array_filter(
+                    $this->repository->all(),
+                    fn ({{entityClass}} $entity): bool => $this->admits($entity, $criteria),
+                )),
+                $offset,
+                $limit,
+            );
 
         return $this->json(200, [
             'items' => array_map(
@@ -66,7 +79,11 @@ final class {{class}}
     public function show(ServerRequestInterface $request): ResponseInterface
     {
         $entity = $this->repository->find($this->routeId($request));
-        if ($entity === null) {
+        // 404 AND NOT 403 for a row this caller may not see, deliberately: a 403 confirms the row
+        // exists, which tells a stranger there is something to look for. For whoever cannot see it,
+        // it does not exist — the same reason the welcome page answers a count instead of the route
+        // map it derives from.
+        if ($entity === null || ! $this->admits($entity, $this->visibleTo($request))) {
             return $this->json(404, ['error' => 'not found']);
         }
 
@@ -127,6 +144,33 @@ final class {{class}}
         $decoded = json_decode((string) $request->getBody(), true);
 
         return is_array($decoded) ? $decoded : [];
+    }
+
+{{visibleToMethod}}
+    /**
+     * Whether an entity matches the criteria, with `query()`'s own semantics: strict equality on
+     * `toArray()` values.
+     *
+     * The repository already applies these on the paged path; this is the same judgement for the
+     * two places a repository cannot apply them — the unpaged fallback and a single `find()`. It is
+     * ONE method rather than two comparisons so the paged and unpaged answers cannot drift.
+     *
+     * @param array<string, mixed> $criteria
+     */
+    private function admits({{entityClass}} $entity, array $criteria): bool
+    {
+        if ($criteria === []) {
+            return true;
+        }
+
+        $row = $entity->toArray();
+        foreach ($criteria as $field => $value) {
+            if (($row[$field] ?? null) !== $value) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /** @param array<string, mixed>|list<array<string, mixed>> $payload */

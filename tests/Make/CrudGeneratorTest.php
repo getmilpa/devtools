@@ -59,7 +59,7 @@ final class CrudGeneratorTest extends TestCase
 
         $result = (new CrudGenerator())->generate($ctx);
 
-        $this->assertCount(4, $result->files, 'expected entity + controller + write gate + plugin');
+        $this->assertCount(5, $result->files, 'expected entity + controller + write gate + recognised-caller + plugin');
 
         $entity = $this->fileNamed($result->files, 'Task.php');
         $this->assertStringEndsWith('/src/Plugins/BoardPlugin/Entities/Task.php', $entity->path);
@@ -287,7 +287,7 @@ final class CrudGeneratorTest extends TestCase
 
         $result = (new CrudGenerator())->generate($ctx);
 
-        $this->assertCount(4, $result->files, 'entity + controller + write gate + the MERGED plugin');
+        $this->assertCount(5, $result->files, 'entity + controller + write gate + caller + the MERGED plugin');
         $mergedPlugin = $this->fileNamed($result->files, 'BoardPlugin.php');
         $this->assertTrue($mergedPlugin->merge);
 
@@ -318,7 +318,7 @@ final class CrudGeneratorTest extends TestCase
         // (both semantic needles short-circuit to "already wired" before any splice).
         file_put_contents($pluginDir . '/BoardPlugin.php', $code);
         $result2 = (new CrudGenerator())->generate($ctx);
-        $this->assertCount(3, $result2->files, 'entity + controller + write gate — the wired plugin is not re-planned');
+        $this->assertCount(4, $result2->files, 'entity + controller + write gate + caller — the wired plugin is not re-planned');
         $this->assertStringContainsString('Already wired', (string) $result2->guidance);
         $this->assertSame($code, file_get_contents($pluginDir . '/BoardPlugin.php'), 'the file on disk is untouched');
     }
@@ -402,7 +402,7 @@ final class CrudGeneratorTest extends TestCase
         // Land the merge, run the same make:crud again: nothing to add, nothing duplicated.
         file_put_contents($pluginDir . '/BoardPlugin.php', $code);
         $again = (new CrudGenerator())->generate($ctx);
-        $this->assertCount(3, $again->files, 'entity + controller + write gate — the wired plugin is not re-planned');
+        $this->assertCount(4, $again->files, 'entity + controller + write gate + caller — the wired plugin is not re-planned');
         $this->assertStringContainsString('Already wired', (string) $again->guidance);
         $this->assertSame(1, substr_count((string) file_get_contents($pluginDir . '/BoardPlugin.php'), "Task::class . 'Repository'"));
     }
@@ -428,7 +428,7 @@ final class CrudGeneratorTest extends TestCase
 
         $result = (new CrudGenerator())->generate($ctx);
 
-        $this->assertCount(3, $result->files, 'entity + controller + write gate — the unwirable plugin file must not be (re)written');
+        $this->assertCount(4, $result->files, 'entity + controller + write gate + caller — the unwirable plugin file must not be (re)written');
         $this->assertSame('Task.php', basename($result->files[0]->path));
         $this->assertSame('TaskController.php', basename($result->files[1]->path));
         // The gate is still written: the routes fell back to guidance, and that guidance NAMES it,
@@ -598,9 +598,14 @@ final class CrudGeneratorTest extends TestCase
             $controller,
             'the listing must not map over the whole table',
         );
-        self::assertStringContainsString('array_slice($this->repository->all(), $offset, $limit)', $controller, 'even the fallback is bounded');
+        // The fallback is bounded AND filtered now: it slices the rows this caller may see, not
+        // all() (greenhouse decisions/0460). Slicing all() unfiltered would hand a stranger every
+        // row the criteria exist to withhold, on any backend that cannot page.
+        self::assertStringContainsString('$offset,', $controller, 'even the fallback is bounded');
+        self::assertStringContainsString('$limit,', $controller);
+        self::assertStringContainsString('$this->admits($entity, $criteria)', $controller, 'and the fallback applies the same criteria');
         self::assertStringContainsString('PagesResults', $controller, 'it asks the repository whether it can page');
-        self::assertStringContainsString('->page([], $limit, $offset)', $controller);
+        self::assertStringContainsString('->page($criteria, $limit, $offset)', $controller);
         self::assertStringContainsString("'limit' => \$limit", $controller, 'and it answers WHICH page it gave');
         self::assertStringContainsString("'offset' => \$offset", $controller);
     }

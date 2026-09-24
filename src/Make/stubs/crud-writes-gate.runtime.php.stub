@@ -34,17 +34,15 @@ use Psr\Http\Server\RequestHandlerInterface;
  * It does not decide WHO may write, only that somebody was recognised. What that somebody is
  * allowed to do belongs to a policy, and a policy can only require what an operation declares.
  *
- * It reads the request ATTRIBUTE and never a class, which is what keeps this plugin from depending
- * on `milpa/auth`: whoever puts `milpa.auth` there declares its shape — an object with an `actor`
- * carrying an `id`. The same seam the framework's own HTTP projector reads. With `milpa/auth`
- * wired (`config/boot.php` does it in one line, opt-in) these routes open; without it they refuse,
- * which is the safe direction for a route that writes.
+ * WHO IS RECOGNISED IS NOT DECIDED HERE. It asks {@see {{callerClass}}}, which the read surface
+ * asks too: two files answering that separately is how one gets widened and the other does not.
+ * That class is where the `milpa.auth` seam and its defensive reading live.
  */
 final class {{class}} implements MiddlewareInterface
 {
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        if ($this->actor($request) !== null) {
+        if ({{callerClass}}::in($request) !== null) {
             return $handler->handle($request);
         }
 
@@ -61,27 +59,5 @@ final class {{class}} implements MiddlewareInterface
                     . '{{pluginClass}}::routes() — deliberately, not by forgetting.',
             ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         );
-    }
-
-    /**
-     * The recognised caller's id, or null when nobody was recognised.
-     *
-     * Read defensively on purpose: this middleware travels in YOUR app and has to survive an
-     * attribute put there by a version of the identity chain it was not generated against. An
-     * attribute of an unexpected shape means «nobody was recognised» — never «everybody is».
-     */
-    private function actor(ServerRequestInterface $request): ?string
-    {
-        $auth = $request->getAttribute('milpa.auth');
-        if (! \is_object($auth) || ! property_exists($auth, 'actor')) {
-            return null;
-        }
-
-        $actor = $auth->actor;
-        if (! \is_object($actor) || ! property_exists($actor, 'id') || ! \is_string($actor->id)) {
-            return null;
-        }
-
-        return trim($actor->id) === '' ? null : $actor->id;
     }
 }

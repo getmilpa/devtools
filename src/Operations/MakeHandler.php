@@ -177,6 +177,11 @@ final class MakeHandler
             'path' => $input['path'] ?? $input['route'] ?? null,
             'methods' => $input['methods'] ?? null,
             'table' => $input['table'] ?? null,
+            // THE DECLARED VISIBILITY, forwarded. It travelled no further than the schema at first:
+            // the generator read it, the unit tests built their context by hand and passed, and the
+            // CLI path produced a controller that withheld nothing. A generator option that this
+            // whitelist does not name is an option that does not exist (greenhouse decisions/0460).
+            'public-when' => $input['public_when'] ?? null,
             'flavor' => $input['flavor'] ?? null,
             'provides' => $input['provides'] ?? null,
             'requires' => $input['requires'] ?? null,

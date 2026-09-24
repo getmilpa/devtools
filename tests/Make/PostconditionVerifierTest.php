@@ -144,6 +144,41 @@ final class PostconditionVerifierTest extends TestCase
     }
 
     /**
+     * A declared visibility is ONE declaration with two readers (greenhouse decisions/0462): the
+     * entity names the field, the controller's seam reads it from there. Each half is mutated away
+     * on the written files, so the check is shown to see both — a guard that sees one form of the
+     * defect would certify the other.
+     */
+    public function testADeclaredVisibilityNeedsBothTheEntityDeclarationAndTheSeamThatReadsIt(): void
+    {
+        $ctx = new GenerationContext(
+            plugin: 'BoardPlugin',
+            name: 'Post',
+            options: ['flavor' => 'runtime', 'fields' => 'title:string, published:bool', 'public-when' => 'published'],
+            root: $this->root,
+        );
+        $this->writeFiles((new CrudGenerator())->generate($ctx));
+        $entity = $this->root . '/src/Plugins/BoardPlugin/Entities/Post.php';
+        $controller = $this->root . '/src/Plugins/BoardPlugin/Controllers/PostController.php';
+
+        self::assertTrue($this->check((new PostconditionVerifier())->verify('crud', $ctx, Flavor::Runtime), 'reads_bounded'));
+
+        $declared = (string) file_get_contents($entity);
+        file_put_contents($entity, str_replace("public const PUBLIC_WHEN = 'published';", '', $declared));
+        $report = (new PostconditionVerifier())->verify('crud', $ctx, Flavor::Runtime);
+        self::assertContains('reads_bounded', $report->missing(), 'an entity that does not declare it is caught');
+        self::assertStringContainsString('the entity does not declare PUBLIC_WHEN', $this->detail($report, 'reads_bounded'));
+        file_put_contents($entity, $declared);
+
+        $seam = (string) file_get_contents($controller);
+        self::assertSame(1, substr_count($seam, 'Post::PUBLIC_WHEN => true'), 'the seam reads the entity');
+        file_put_contents($controller, str_replace('Post::PUBLIC_WHEN => true', "'published' => true", $seam));
+        $report = (new PostconditionVerifier())->verify('crud', $ctx, Flavor::Runtime);
+        self::assertContains('reads_bounded', $report->missing(), 'a seam that repeats the field instead of reading it is caught');
+        self::assertStringContainsString("the seam does not read the entity's PUBLIC_WHEN", $this->detail($report, 'reads_bounded'));
+    }
+
+    /**
      * And the same crud on an unmarked-but-parseable plugin is COMPLETE — the structural splice
      * closes all three wiring consequences at once.
      */

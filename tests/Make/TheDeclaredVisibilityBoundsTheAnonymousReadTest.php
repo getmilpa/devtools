@@ -86,6 +86,10 @@ final class TheDeclaredVisibilityBoundsTheAnonymousReadTest extends TestCase
     {
         $controller = $this->loadController(publicWhen: 'published');
 
+        // The declaration lives on the ENTITY, where a screen bound to it reads it too
+        // (greenhouse decisions/0462) — the controller below obeys it from there.
+        self::assertSame('published', \constant($this->entityClass() . '::PUBLIC_WHEN'));
+
         // ── A stranger ──────────────────────────────────────────────────────────────────────────
         $listed = $this->decode($controller->index(new ServerRequest('GET', '/posts')));
         self::assertCount(1, $listed['items'], 'the draft is not in a stranger index');
@@ -107,6 +111,7 @@ final class TheDeclaredVisibilityBoundsTheAnonymousReadTest extends TestCase
         // scaffold. Nothing declared, nothing withheld — and the generated comment says how to
         // declare one instead of leaving a seam that looks like a boundary.
         $controller = $this->loadController(publicWhen: null);
+        self::assertFalse(\defined($this->entityClass() . '::PUBLIC_WHEN'), 'nothing declared, no declaration on the entity');
 
         $listed = $this->decode($controller->index(new ServerRequest('GET', '/posts')));
         self::assertCount(2, $listed['items'], 'no declaration withholds nothing');
@@ -173,7 +178,7 @@ final class TheDeclaredVisibilityBoundsTheAnonymousReadTest extends TestCase
             require $file->path;
         }
 
-        $entity = $this->appNamespace . '\\Plugins\\BoardPlugin\\Entities\\Post';
+        $entity = $this->entityClass();
         $fqcn = $this->appNamespace . '\\Plugins\\BoardPlugin\\Controllers\\PostController';
         self::assertTrue(class_exists($fqcn), 'the generated controller is loadable PHP');
 
@@ -181,6 +186,12 @@ final class TheDeclaredVisibilityBoundsTheAnonymousReadTest extends TestCase
             1 => ['id' => 1, 'title' => 'Published', 'body' => 'public', 'published' => true],
             2 => ['id' => 2, 'title' => 'Draft', 'body' => 'not yet', 'published' => false],
         ], $entity));
+    }
+
+    /** The generated entity's class in this test's namespace. */
+    private function entityClass(): string
+    {
+        return $this->appNamespace . '\\Plugins\\BoardPlugin\\Entities\\Post';
     }
 
     /**

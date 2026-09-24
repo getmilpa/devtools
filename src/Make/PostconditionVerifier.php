@@ -512,8 +512,16 @@ final class PostconditionVerifier
         if (substr_count($source, '$this->visibleTo($request)') < 2) {
             $missing[] = 'one of the two read actions does not ask visibleTo()';
         }
-        if ($declared !== null && ! str_contains($source, "'{$declared}' => true")) {
-            $missing[] = "the seam does not name the declared field «{$declared}»";
+        if ($declared !== null) {
+            // BOTH HALVES of one declaration (greenhouse decisions/0462): the entity says which field
+            // decides, and the seam reads it from there instead of repeating it.
+            if (! str_contains($source, '::PUBLIC_WHEN => true')) {
+                $missing[] = 'the seam does not read the entity\'s PUBLIC_WHEN';
+            }
+            $entity = $this->entitySource($context, $appDir);
+            if ($entity === null || ! str_contains($entity, "public const PUBLIC_WHEN = '{$declared}';")) {
+                $missing[] = "the entity does not declare PUBLIC_WHEN = «{$declared}»";
+            }
         }
 
         return new PostconditionCheck(
@@ -552,6 +560,18 @@ final class PostconditionVerifier
     }
 
     /** The source of the wiring plugin, or `null` when no plugin file exists yet. */
+    /** The generated entity's source, or null when it is not on disk. */
+    private function entitySource(GenerationContext $context, string $appDir): ?string
+    {
+        $path = $this->pluginDir($context, $appDir) . '/Entities/' . $context->name . '.php';
+        if (!is_file($path)) {
+            return null;
+        }
+        $source = file_get_contents($path);
+
+        return $source === false ? null : $source;
+    }
+
     /** The generated controller's source, or null when it is not on disk. */
     private function controllerSource(GenerationContext $context, string $appDir): ?string
     {

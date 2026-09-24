@@ -152,6 +152,27 @@ final class EntityGenerator implements GeneratorInterface
     }
 
     /**
+     * The entity's own declaration of which rows are public — or nothing, when none was declared.
+     *
+     * ONE DECLARATION, TWO READERS (greenhouse decisions/0462). `--public-when` used to shape only the
+     * generated controller. Written on the ENTITY, it is what the controller's read and a live screen
+     * bound to this entity both ask — so the visibility cannot be honoured by one and forgotten by the
+     * other, and an entity that never declared one cannot be bound to a public page at all.
+     *
+     * Validated by the crud generator before any file is planned; here it is only written.
+     */
+    private static function publicWhenDeclaration(?string $field): string
+    {
+        $field = $field === null ? '' : trim($field);
+        if ($field === '') {
+            return '';
+        }
+
+        return "    /** The bool field that decides a row is public — read by this entity's controller and by any screen bound to it. */\n"
+            . "    public const PUBLIC_WHEN = '" . $field . "';\n\n";
+    }
+
+    /**
      * Parses `--fields`, renders the plain `Milpa\Data\EntityInterface` entity class (+ repository
      * wiring), and returns it paired with its `entity` verify target.
      *
@@ -230,6 +251,7 @@ final class EntityGenerator implements GeneratorInterface
             'ctorParams' => implode("\n", $ctorLines),
             'toArrayEntries' => implode("\n", $toArrayLines),
             'fromArrayArgs' => implode("\n", $fromArrayLines),
+            'publicWhen' => self::publicWhenDeclaration($context->option('public-when')),
         ]);
 
         $files = [new PlannedFile($entityPath, $contents)];

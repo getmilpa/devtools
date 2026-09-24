@@ -612,15 +612,17 @@ final class CrudGenerator implements GeneratorInterface
                  * The criteria this caller's reads are bounded by: nothing for a caller this app
                  * recognised, and `{$publicWhen} = true` for a stranger.
                  *
-                 * Declared with `--public-when={$publicWhen}`, never inferred. Both read actions ask
-                 * THIS method — a visibility honoured by the index and forgotten by the detail route
-                 * is the same leak with less noise.
+                 * Declared with `--public-when={$publicWhen}`, never inferred, and read from the
+                 * ENTITY's own `PUBLIC_WHEN` — the declaration a screen bound to it reads too
+                 * (greenhouse decisions/0462). Both read actions ask THIS method: a visibility
+                 * honoured by the index and forgotten by the detail route is the same leak with less
+                 * noise.
                  *
                  * @return array<string, mixed>
                  */
                 private function visibleTo(ServerRequestInterface \$request): array
                 {
-                    return {$caller}::in(\$request) !== null ? [] : ['{$publicWhen}' => true];
+                    return {$caller}::in(\$request) !== null ? [] : [{$entity}::PUBLIC_WHEN => true];
                 }
 
             PHP;

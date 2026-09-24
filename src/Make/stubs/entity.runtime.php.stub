@@ -8,7 +8,7 @@ use Milpa\Data\EntityInterface;
 {{uses}}
 final readonly class {{class}} implements EntityInterface
 {
-    public function __construct(
+{{publicWhen}}    public function __construct(
 {{ctorParams}}
     ) {
     }

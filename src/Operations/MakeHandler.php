@@ -138,9 +138,14 @@ final class MakeHandler
         // posicionales sale de `required`, y aflojarlo haría que `make entity MiPlugin Cosa` perdiera un
         // argumento en silencio, que es peor que escribir el nombre dos veces—. Ignorar el que sobra
         // tampoco: una entrada declarada que no se usa es una mentira del esquema.
+        //
+        // The corrective line repeats `plugin`, never `name`: `plugin` is the argument the host's scope
+        // gate already judged, so the call it dictates stays inside the grant the caller holds. It
+        // repeated `name` once, and walked a resident granted `plugins.Blog:write` into a refusal for
+        // `BlogPlugin` (greenhouse evidence/1024, B5; decisions/0496).
         if ($que === 'plugin' && $plugin !== $nombre) {
             return $this->falla(
-                "para «plugin» los dos argumentos nombran el mismo artefacto — escribe: make plugin {$nombre} {$nombre}",
+                "for 'plugin' both arguments name the same artifact — call: make plugin {$plugin} {$plugin}",
             );
         }
 

@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.40.1](https://github.com/getmilpa/devtools/compare/v0.40.0...v0.40.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* **make:** the plugin guidance names the plugin the gate judged ([#125](https://github.com/getmilpa/devtools/issues/125)) ([9888115](https://github.com/getmilpa/devtools/commit/9888115097aa3e433264707d3fea97d326ae07eb))
+
 ## [0.40.0](https://github.com/getmilpa/devtools/compare/v0.39.0...v0.40.0) (2026-09-24)
 
 

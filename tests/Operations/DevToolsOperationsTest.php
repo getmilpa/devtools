@@ -191,6 +191,25 @@ final class DevToolsOperationsTest extends TestCase
      * orden de las propiedades, así que reordenarlas cambiaría cómo se teclea `make` en toda app que
      * adopte este paquete — sin tocar ni una línea de esa app.
      */
+    /**
+     * The schema tells the model where a new plugin's name comes from: the task, verbatim.
+     *
+     * It said «choose a new name when scaffolding a plugin», and the only convention the skeleton
+     * shows is `HelloPlugin`: the resident chose `BlogPlugin` for a goal that said «a plugin named
+     * Blog» (greenhouse evidence/1028, decisions/0496).
+     */
+    public function testTheSchemaSaysANewPluginTakesTheNameTheTaskGives(): void
+    {
+        $schema = (new DevToolsOperations())->operations()[1]->inputSchema ?? [];
+        $plugin = (string) ($schema['properties']['plugin']['description'] ?? '');
+        $name = (string) ($schema['properties']['name']['description'] ?? '');
+
+        self::assertStringNotContainsString('choose a new name', $plugin);
+        self::assertStringContainsString('exactly the name the task gives', $plugin);
+        self::assertStringContainsString('plugins.<plugin>:write', $plugin);
+        self::assertStringContainsString('same name as plugin', $name);
+    }
+
     public function testTheRequiredInputsAreDeclaredInTheOrderTheyAreTyped(): void
     {
         $make = (new DevToolsOperations())->operations()[1];
@@ -335,8 +354,28 @@ final class DevToolsOperationsTest extends TestCase
         ]);
 
         self::assertFalse($r['ok']);
-        self::assertStringContainsString('make plugin OtraCosa OtraCosa', (string) $r['error'], 'la negativa trae la línea que sí funciona');
         self::assertSame([], $r['files'], 'no escribió nada');
+    }
+
+    /**
+     * The corrective line names the `plugin` argument — the one the scope gate already judged.
+     *
+     * It used to repeat `name`. A resident granted `plugins.Blog:write` called
+     * `make plugin Blog BlogPlugin`, crossed the gate, and was told to write
+     * `make plugin BlogPlugin BlogPlugin` — which walked it off its own scope and into a refusal for a
+     * plugin nobody asked for (greenhouse evidence/1024, B5; decisions/0496).
+     */
+    public function testThePluginGuidanceNamesThePluginTheGateJudged(): void
+    {
+        $r = (new MakeHandler(new RootResolver($this->raiz)))->handle([
+            'what' => 'plugin',
+            'plugin' => 'Blog',
+            'name' => 'BlogPlugin',
+        ]);
+
+        self::assertFalse($r['ok']);
+        self::assertStringContainsString('make plugin Blog Blog', (string) $r['error']);
+        self::assertStringNotContainsString('BlogPlugin BlogPlugin', (string) $r['error']);
     }
 
     /**

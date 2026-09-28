@@ -122,10 +122,10 @@ final class DevToolsOperations implements CommandProvider
                         ],
                         'plugin' => [
                             'type' => 'string',
-                            'description' => 'Target plugin directory: one identifier ^[A-Za-z_][A-Za-z0-9_]*$, no paths. Use an existing directory when adding artifacts, or choose a new name when scaffolding a plugin.',
+                            'description' => 'Target plugin directory: one identifier ^[A-Za-z_][A-Za-z0-9_]*$, no paths. Use an existing directory when adding artifacts. When scaffolding a NEW plugin, use exactly the name the task gives it: no suffix is added. Write scopes are granted per this name (plugins.<plugin>:write).',
                             'x-milpa-source' => ['tool' => 'artifact:list', 'key' => 'plugin'],
                         ],
-                        'name' => ['type' => 'string', 'description' => 'Nombre de la clase a crear'],
+                        'name' => ['type' => 'string', 'description' => 'The class to create. For what=plugin, the same name as plugin'],
                         'fields' => ['type' => 'string', 'description' => 'Campos `nombre:tipo` separados por coma; prefija el nombre con `?` para nullable. Ej: «titulo:string, ?fecha_limite:date, hecha:bool». Tipos escalares: string, text, int, bigint, bool, float, decimal, date, datetime, json. «enum:<Clase>(caso1,caso2,…)» GENERA el enum con esas cases (ej. «prioridad:enum:PrioridadTarea(baja,media,alta)») — declara siempre las cases para no dejar un enum colgando. «belongsTo:<Entidad>» crea una relación solo para entity con --flavor=legacy; resource runtime la degrada a <entidad>_id:int y la nombra en las postcondiciones; entity y crud runtime deben recibir el id escalar directamente (ej. «lista:int»). Mods de escalar: longitud («titulo:string:120») o precisión en decimal («precio:decimal:10,2»). NO existe «default» ni «:nullable» — la nullabilidad es el `?`'],
                         'route' => ['type' => 'string', 'description' => 'Ruta base, para controller y crud'],
                         'methods' => ['type' => 'string', 'description' => 'Métodos separados por coma, para controller'],

@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.41.0](https://github.com/getmilpa/devtools/compare/v0.40.3...v0.41.0) (2026-09-29)
+
+
+### Features
+
+* **make:** what make writes boots first through the host's witness; coverage floor 95 ([#131](https://github.com/getmilpa/devtools/issues/131)) ([3ae2efa](https://github.com/getmilpa/devtools/commit/3ae2efac8e0c2c30e498f5b5e20c705e4cf24a39))
+
 ## [0.40.3](https://github.com/getmilpa/devtools/compare/v0.40.2...v0.40.3) (2026-09-29)
 
 

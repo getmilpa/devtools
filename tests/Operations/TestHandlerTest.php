@@ -165,6 +165,43 @@ final class TestHandlerTest extends TestCase
         self::assertStringContainsString('--filter', $r['command'], 'el comando corrido se reporta tal cual');
     }
 
+    /** decisions/0523: what the app's own tests wrote into the house is reported, by content, beside the verdict. */
+    public function testWhatTheTestsWroteIntoTheHouseIsReported(): void
+    {
+        $raiz = $this->raiz;
+        $escribe = new class ($raiz) extends ProcessRunner {
+            public function __construct(private readonly string $raiz)
+            {
+            }
+
+            public function run(array $command, string $cwd, int $timeoutSeconds): array
+            {
+                file_put_contents($this->raiz . '/tests/UnaPrueba.php', '<?php');
+                file_put_contents($this->raiz . '/fixture.db', 'rows');
+
+                return ['exit' => 0, 'output' => 'OK (1 test, 1 assertion)'];
+            }
+        };
+
+        $r = (new TestHandler($this->roots(), $escribe))->handle([]);
+
+        self::assertSame(['fixture.db'], $r['house_writes'], 'a same-bytes rewrite is not a write; a new file is');
+        self::assertSame([], $this->handler(['exit' => 0, 'output' => 'OK'])->handle([])['house_writes'] ?? null);
+    }
+
+    /** PHPUnit's cache directory is a temp directory outside the house, gone after the run. */
+    public function testTheCacheDirectoryLivesOutsideTheHouseAndIsRemoved(): void
+    {
+        $doble = $this->doble(['exit' => 0, 'output' => 'OK (1 test, 1 assertion)']);
+        (new TestHandler($this->roots(), $doble))->handle([]);
+
+        $i = array_search('--cache-directory', (array) $doble->comando, true);
+        self::assertIsInt($i);
+        $cache = (string) ((array) $doble->comando)[$i + 1];
+        self::assertStringStartsWith(sys_get_temp_dir() . '/milpa-phpunit-cache-', $cache);
+        self::assertDirectoryDoesNotExist($cache);
+    }
+
     /** decisions/0523: the run tells PHPUnit not to cache its results, so it leaves nothing in the house. */
     public function testTheSuiteRunsWithoutAResultCache(): void
     {

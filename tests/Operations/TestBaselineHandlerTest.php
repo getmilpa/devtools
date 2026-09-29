@@ -135,12 +135,40 @@ final class TestBaselineHandlerTest extends TestCase
         self::assertSame(['X::testBar'], $r['new_failures']);
     }
 
+    public function testWhatTheTestsWroteIntoTheHouseIsReportedByBaselineAndDelta(): void
+    {
+        $root = $this->root;
+        $runner = new class ($this->junit('passed'), $root) extends ProcessRunner {
+            public function __construct(private string $junit, private string $root)
+            {
+            }
+
+            public function run(array $command, string $cwd, int $timeoutSeconds): array
+            {
+                $i = array_search('--log-junit', $command, true);
+                file_put_contents((string) $command[(int) $i + 1], $this->junit);
+                file_put_contents($this->root . '/written-by-a-test.txt', (string) microtime(true));
+
+                return ['exit' => 0, 'output' => 'OK'];
+            }
+        };
+        $handler = new TestBaselineHandler(new RootResolver($this->root), $runner, baselines: $this->root . '-baselines');
+
+        self::assertSame(['written-by-a-test.txt'], $handler->handleBaseline([])['house_writes'] ?? null);
+        self::assertSame(['written-by-a-test.txt'], $handler->handleDelta([])['house_writes'] ?? null);
+        self::assertSame([], $this->handler($this->junit('passed'))->handleBaseline([])['house_writes'] ?? null);
+    }
+
     public function testTheSuiteRunsWithoutAResultCache(): void
     {
         $runner = $this->spyRunner($this->junit('passed'));
         (new TestBaselineHandler(new RootResolver($this->root), $runner, baselines: $this->root . '-baselines'))->handleBaseline([]);
 
         self::assertContains('--do-not-cache-result', (array) $runner->command);
+        $i = array_search('--cache-directory', (array) $runner->command, true);
+        self::assertIsInt($i);
+        self::assertStringStartsWith(sys_get_temp_dir() . '/milpa-phpunit-cache-', (string) ((array) $runner->command)[$i + 1]);
+        self::assertDirectoryDoesNotExist((string) ((array) $runner->command)[$i + 1], 'removed after the run');
     }
 
     public function testWithoutAnInjectedDirectoryBaselinesLiveInTheSystemTempArea(): void

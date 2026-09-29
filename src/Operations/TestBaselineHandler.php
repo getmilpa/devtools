@@ -16,7 +16,9 @@ namespace Milpa\DevTools\Operations;
 
 use Milpa\DevTools\Support\ProcessRunner;
 use Milpa\DevTools\Support\RootResolver;
+use Milpa\DevTools\Test\HouseWrites;
 use Milpa\DevTools\Test\JUnitParser;
+use Milpa\DevTools\Test\TemporaryCache;
 use Milpa\DevTools\Test\TestDelta;
 
 /**
@@ -59,6 +61,7 @@ final class TestBaselineHandler
         private readonly JUnitParser $parser = new JUnitParser(),
         private readonly TestDelta $delta = new TestDelta(),
         private readonly ?string $baselines = null,
+        private readonly HouseWrites $witness = new HouseWrites(),
     ) {
     }
 
@@ -67,7 +70,7 @@ final class TestBaselineHandler
      *
      * @param array<string, mixed> $input
      *
-     * @return array{ok: bool, ran: bool, snapshot?: string, tests?: int, failures?: int, output?: string, command?: string, error?: string}
+     * @return array{ok: bool, ran: bool, snapshot?: string, tests?: int, failures?: int, output?: string, command?: string, house_writes?: list<string>|null, error?: string}
      */
     public function handleBaseline(array $input): array
     {
@@ -101,6 +104,8 @@ final class TestBaselineHandler
             'failures' => $failures,
             'output' => $this->trim($run['output']),
             'command' => $run['command'],
+            // What the app's own tests wrote into the house — the declaration's witness (decisions/0523).
+            'house_writes' => $run['house_writes'] ?? null,
         ];
     }
 
@@ -109,7 +114,7 @@ final class TestBaselineHandler
      *
      * @param array<string, mixed> $input
      *
-     * @return array{ok: bool, ran: bool, regressed?: bool, new_failures?: list<string>, resolved_failures?: list<string>, unchanged_failures?: list<string>, baseline_failures?: int, current_failures?: int, output?: string, command?: string, error?: string}
+     * @return array{ok: bool, ran: bool, regressed?: bool, new_failures?: list<string>, resolved_failures?: list<string>, unchanged_failures?: list<string>, baseline_failures?: int, current_failures?: int, output?: string, command?: string, house_writes?: list<string>|null, error?: string}
      */
     public function handleDelta(array $input): array
     {
@@ -151,6 +156,7 @@ final class TestBaselineHandler
             'current_failures' => $comparison['current_failures'],
             'output' => $this->trim($run['output']),
             'command' => $run['command'],
+            'house_writes' => $run['house_writes'] ?? null,
         ];
     }
 
@@ -159,7 +165,7 @@ final class TestBaselineHandler
      *
      * @param array<string, mixed> $input
      *
-     * @return array{ran: bool, results: array<string, string>, output: string, command: string, error?: string}
+     * @return array{ran: bool, results: array<string, string>, output: string, command: string, house_writes?: list<string>|null, error?: string}
      */
     private function runSuite(string $root, array $input): array
     {
@@ -169,8 +175,10 @@ final class TestBaselineHandler
         }
 
         $junit = (string) tempnam(sys_get_temp_dir(), 'milpa-junit-');
-        // No result cache: the run leaves nothing behind in the house (decisions/0523).
-        $command = [\PHP_BINARY, $binary, '--colors=never', '--do-not-cache-result', '--log-junit', $junit];
+        // No result cache, and PHPUnit's cache directory outside the house: the run leaves nothing behind in it
+        // (decisions/0523).
+        $cache = TemporaryCache::create();
+        $command = [\PHP_BINARY, $binary, '--colors=never', '--do-not-cache-result', '--cache-directory', $cache, '--log-junit', $junit];
 
         $filter = \is_string($input['filter'] ?? null) ? trim($input['filter']) : '';
         if ($filter !== '') {
@@ -181,7 +189,13 @@ final class TestBaselineHandler
         $timeout = \is_int($input['timeout'] ?? null) ? $input['timeout'] : 300;
         $timeout = max(1, min(3600, $timeout));
 
-        $result = $this->runner->run($command, $root, $timeout);
+        $before = $this->witness->digest($root);
+        try {
+            $result = $this->runner->run($command, $root, $timeout);
+        } finally {
+            TemporaryCache::remove($cache);
+        }
+        $writes = $this->witness->between($before, $this->witness->digest($root));
         $report = is_file($junit) ? (string) file_get_contents($junit) : '';
         @unlink($junit);
 
@@ -195,7 +209,7 @@ final class TestBaselineHandler
             return ['ran' => false, 'results' => [], 'output' => $this->trim($result['output']), 'command' => implode(' ', $command), 'error' => 'could not read the JUnit report: ' . $e->getMessage()];
         }
 
-        return ['ran' => true, 'results' => $results, 'output' => $result['output'], 'command' => implode(' ', $command)];
+        return ['ran' => true, 'results' => $results, 'output' => $result['output'], 'command' => implode(' ', $command), 'house_writes' => $writes];
     }
 
     /**

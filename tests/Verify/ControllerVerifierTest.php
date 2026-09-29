@@ -11,6 +11,7 @@ use Milpa\DevTools\Tests\Fixtures\BadRuntimeController;
 use Milpa\DevTools\Tests\Fixtures\BadRuntimeControllerWithWrongTypes;
 use Milpa\DevTools\Tests\Fixtures\GoodController;
 use Milpa\DevTools\Tests\Fixtures\GoodRuntimeController;
+use Milpa\DevTools\Tests\Fixtures\RuntimeControllerStrictInWordsOnly;
 use Milpa\DevTools\Verify\ControllerVerifier;
 
 final class ControllerVerifierTest extends TestCase
@@ -86,5 +87,13 @@ final class ControllerVerifierTest extends TestCase
 
         $this->assertFalse($result->ok());
         $this->assertStringContainsString('Runtime controllers must be plain classes', implode("\n", $result->errors));
+    }
+
+    /** A comment that mentions strict types is not the statement: the verifier reads the declaration itself. */
+    public function testStrictTypesInACommentOnlyIsStillMissing(): void
+    {
+        $result = (new ControllerVerifier(Flavor::Runtime))->verify(RuntimeControllerStrictInWordsOnly::class);
+
+        $this->assertContains('Missing declare(strict_types=1) at top of file', $result->errors);
     }
 }

@@ -160,6 +160,30 @@ PHP,
         self::assertStringContainsString('MissingTest', (string) $missingTest['error']);
     }
 
+    /** Two plugins with a test of the same name: the answer names both and asks for `plugin`, never picks one. */
+    public function testASharedTestNameIsAmbiguousUntilThePluginIsNamed(): void
+    {
+        foreach (['Billing', 'Shipping'] as $plugin) {
+            $this->writeTest($plugin, 'AddressTest', "final class AddressTest extends \\PHPUnit\\Framework\\TestCase\n{\n    /** It keeps the street. */\n    public function testKeepsTheStreet(): void\n    {\n        self::assertTrue(true);\n    }\n}");
+        }
+
+        $both = $this->handler()->handleShow(['name' => 'AddressTest']);
+        $one = $this->handler()->handleShow(['name' => 'AddressTest', 'plugin' => 'shipping']);
+        $byFqcn = $this->handler()->handleShow(['name' => 'App\\Tests\\Plugins\\Billing\\AddressTest']);
+        $elsewhere = $this->handler()->handleShow(['name' => 'AddressTest', 'plugin' => 'Catalog']);
+
+        self::assertFalse($both['ok']);
+        self::assertStringContainsString('ambiguous', (string) $both['error']);
+        $matches = $both['matches'] ?? [];
+        sort($matches);
+        self::assertSame(['App\\Tests\\Plugins\\Billing\\AddressTest', 'App\\Tests\\Plugins\\Shipping\\AddressTest'], $matches);
+        self::assertTrue($one['ok']);
+        self::assertSame('Shipping', $one['test']['plugin'] ?? null, 'the plugin is matched without regard to case');
+        self::assertTrue($byFqcn['ok']);
+        self::assertSame('Billing', $byFqcn['test']['plugin'] ?? null);
+        self::assertSame('no test «AddressTest» in plugin «Catalog»', $elsewhere['error'] ?? null);
+    }
+
     private function handler(): TestDiscoveryHandler
     {
         return new TestDiscoveryHandler(new RootResolver($this->root));

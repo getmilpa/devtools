@@ -51,7 +51,7 @@ jobs:
           XDEBUG_MODE: coverage
         run: |
           vendor/bin/phpunit --testsuite DevTools --coverage-clover=build/clover.xml
-          php tools/coverage-floor.php build/clover.xml 90
+          php tools/coverage-floor.php build/clover.xml 95
 
       - name: DocBlock coverage gate
         run: php tools/validate-docblocks.php

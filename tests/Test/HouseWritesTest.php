@@ -27,7 +27,7 @@ final class HouseWritesTest extends TestCase
     protected function setUp(): void
     {
         $this->root = sys_get_temp_dir() . '/milpa-housewrites-' . bin2hex(random_bytes(4));
-        foreach (['config', 'vendor/pkg', 'var/agent-runs', 'node_modules/x', '.git'] as $dir) {
+        foreach (['config', 'vendor/pkg', 'var/agent-runs', 'var/trials/w1/copy', 'var/boot-candidates/b1', 'node_modules/x', '.git'] as $dir) {
             mkdir($this->root . '/' . $dir, 0777, true);
         }
         file_put_contents($this->root . '/config/app.php', '<?php return [];');
@@ -71,6 +71,8 @@ final class HouseWritesTest extends TestCase
         file_put_contents($this->root . '/var/agent-runs/lease', 'l');
         file_put_contents($this->root . '/var/agent-sessions.jsonl', '{}');
         file_put_contents($this->root . '/var/agent-sessions.jsonl.1', '{}');
+        file_put_contents($this->root . '/var/trials/w1/copy/Blog.php', '<?php');
+        file_put_contents($this->root . '/var/boot-candidates/b1/app.php', '<?php');
 
         self::assertSame([], $w->between($before, $w->digest($this->root)));
         self::assertArrayNotHasKey('vendor/pkg/a.php', (array) $before);

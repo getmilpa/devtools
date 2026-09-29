@@ -24,13 +24,15 @@ namespace Milpa\DevTools\Test;
  * skeleton (evidence/1057): its boot tests rewrite `config/app.php` with the bytes it already had.
  *
  * The house's closure reads the report: a test run that wrote the house counts as a change to it, whatever the
- * declaration says. Left out: `vendor/`, `node_modules/`, `.git/` (not the house's own tree) and the session's own
- * log and run leases under `var/` (the leg that called the test writes those itself).
+ * declaration says. Left out: `vendor/`, `node_modules/`, `.git/` (not the house's own tree), the rehearsal copies
+ * and boot candidates under `var/trials/` and `var/boot-candidates/` (copies the house never boots from; 754 of 845
+ * files of evidence/1050's house), and the session's own log and run leases under `var/` (the leg that called the
+ * test writes those itself).
  */
 final class HouseWrites
 {
     /** Directories that are not the house's own tree, relative to the root. */
-    private const SKIPPED = ['vendor', 'node_modules', '.git', 'var/agent-runs'];
+    private const SKIPPED = ['vendor', 'node_modules', '.git', 'var/agent-runs', 'var/trials', 'var/boot-candidates'];
 
     /** Files the calling leg writes itself: the session log and its rotations. */
     private const SKIPPED_FILE = '#^var/agent-sessions\.jsonl#';

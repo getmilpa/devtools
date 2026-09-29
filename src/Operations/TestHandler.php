@@ -15,6 +15,8 @@ declare(strict_types=1);
 namespace Milpa\DevTools\Operations;
 
 use Milpa\DevTools\Support\ProcessRunner;
+use Milpa\DevTools\Test\HouseWrites;
+use Milpa\DevTools\Test\TemporaryCache;
 use Milpa\DevTools\Support\RootResolver;
 
 /**
@@ -65,6 +67,7 @@ final class TestHandler
     public function __construct(
         private readonly RootResolver $roots = new RootResolver(),
         private readonly ProcessRunner $runner = new ProcessRunner(),
+        private readonly HouseWrites $witness = new HouseWrites(),
     ) {
     }
 
@@ -73,7 +76,10 @@ final class TestHandler
      *
      * @param array<string, mixed> $input
      *
-     * @return array{ok: bool, ran: bool, tests: int|null, assertions: int|null, failures: int|null, errors: int|null, output: string, command: string, error?: string}
+     * `house_writes` names what the run wrote into the house's tree, by content — `null` when it could not be
+     * witnessed ({@see HouseWrites}, greenhouse decisions/0523).
+     *
+     * @return array{ok: bool, ran: bool, tests: int|null, assertions: int|null, failures: int|null, errors: int|null, output: string, command: string, house_writes?: list<string>|null, error?: string}
      */
     public function handle(array $input): array
     {
@@ -86,7 +92,11 @@ final class TestHandler
             );
         }
 
-        $comando = [\PHP_BINARY, $binario, '--colors=never'];
+        // No result cache, and PHPUnit's cache directory outside the house (it creates it even when told not to
+        // cache): a test run leaves nothing behind in the house, which is what lets it declare an `ephemeral`
+        // mutation (greenhouse decisions/0523).
+        $cache = TemporaryCache::create();
+        $comando = [\PHP_BINARY, $binario, '--colors=never', '--do-not-cache-result', '--cache-directory', $cache];
 
         $filtro = \is_string($input['filter'] ?? null) ? trim($input['filter']) : '';
         if ($filtro !== '') {
@@ -106,7 +116,13 @@ final class TestHandler
         $plazo = \is_int($input['timeout'] ?? null) ? $input['timeout'] : 300;
         $plazo = max(1, min(3600, $plazo));
 
-        $resultado = $this->runner->run($comando, $root, $plazo);
+        $antes = $this->witness->digest($root);
+        try {
+            $resultado = $this->runner->run($comando, $root, $plazo);
+        } finally {
+            TemporaryCache::remove($cache);
+        }
+        $escrito = $this->witness->between($antes, $this->witness->digest($root));
 
         $salida = $this->recortar($resultado['output']);
         $conteos = PhpUnitSummary::counts($resultado['output']);
@@ -123,6 +139,8 @@ final class TestHandler
             'errors' => $conteos['errors'],
             'output' => $salida,
             'command' => implode(' ', $comando),
+            // What the app's own tests wrote into the house — the declaration's witness (decisions/0523).
+            'house_writes' => $escrito,
         ];
     }
 

@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.40.3](https://github.com/getmilpa/devtools/compare/v0.40.2...v0.40.3) (2026-09-29)
+
+
+### Bug Fixes
+
+* **test:** a test run leaves nothing that lasts, and declares so ([#129](https://github.com/getmilpa/devtools/issues/129)) ([9001666](https://github.com/getmilpa/devtools/commit/90016667410d799dd3663a1e35e2ae5d272ea4a7))
+
 ## [0.40.2](https://github.com/getmilpa/devtools/compare/v0.40.1...v0.40.2) (2026-09-29)
 
 

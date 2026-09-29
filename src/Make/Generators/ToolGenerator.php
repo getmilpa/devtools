@@ -24,6 +24,7 @@ use Milpa\DevTools\Make\Markers;
 use Milpa\DevTools\Make\PlannedFile;
 use Milpa\DevTools\Make\StubLocator;
 use Milpa\DevTools\Make\StubRenderer;
+use Milpa\DevTools\Make\PluginRegistration;
 use Milpa\DevTools\Support\ComposerAutoload;
 
 /**
@@ -255,8 +256,7 @@ final class ToolGenerator implements GeneratorInterface
             'toolCtorArgs' => $this->constructorCallArgs($needs),
         ]);
 
-        $guidance = "New plugin — register it so the kernel boots it: add {$pluginFqcn}::class to the "
-            . 'list returned by config/plugins.php. Its registerTools() scans '
+        $guidance = PluginRegistration::guidance($context->plugin) . ' Its registerTools() scans '
             . "{$context->name} for #[Tool] methods.";
 
         return ['file' => new PlannedFile($pluginPath, $pluginContents), 'guidance' => $guidance];

@@ -53,6 +53,22 @@ final class PostconditionVerifierTest extends TestCase
         self::assertTrue($this->check($report, 'repository_registered'));
     }
 
+    /**
+     * The one step make leaves to its caller is named by the plugin's SHORT name — the name
+     * `plugins.register` takes (greenhouse decisions/0514; evidence/1036 read the FQCN here).
+     */
+    public function testAnUnlistedPluginIsToldToRegisterByItsShortName(): void
+    {
+        $ctx = $this->context('BoardPlugin', 'Task', 'title:string');
+        $this->writeFiles((new EntityGenerator())->generate($ctx));
+
+        $report = (new PostconditionVerifier())->verify('entity', $ctx, Flavor::Runtime);
+        $detail = $this->detail($report, 'plugin_registered');
+
+        self::assertStringContainsString('`plugins.register` name=BoardPlugin', $detail);
+        self::assertStringNotContainsString('App\\Plugins\\', $detail);
+    }
+
     public function testADanglingReferencedEnumMakesTheRunIncomplete(): void
     {
         // `enum:Priority` (no cases) REFERENCES an enum made elsewhere — make does not create it, so

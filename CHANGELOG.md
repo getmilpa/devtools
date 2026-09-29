@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.40.2](https://github.com/getmilpa/devtools/compare/v0.40.1...v0.40.2) (2026-09-29)
+
+
+### Bug Fixes
+
+* **make:** name a new plugin by its short name when telling how to register it ([#127](https://github.com/getmilpa/devtools/issues/127)) ([216e85b](https://github.com/getmilpa/devtools/commit/216e85b86012ead7995ac0eed9dcc9a112b45ec4))
+
 ## [0.40.1](https://github.com/getmilpa/devtools/compare/v0.40.0...v0.40.1) (2026-09-28)
 
 

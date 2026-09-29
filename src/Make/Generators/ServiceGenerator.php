@@ -25,6 +25,7 @@ use Milpa\DevTools\Make\Markers;
 use Milpa\DevTools\Make\PlannedFile;
 use Milpa\DevTools\Make\StubLocator;
 use Milpa\DevTools\Make\StubRenderer;
+use Milpa\DevTools\Make\PluginRegistration;
 use Milpa\DevTools\Support\ComposerAutoload;
 
 /**
@@ -269,8 +270,7 @@ final class ServiceGenerator implements GeneratorInterface
             'registrationClass' => $registrationClass,
         ]);
 
-        $guidance = "New plugin — register it so the kernel boots it: add {$pluginFqcn}::class to the "
-            . 'list returned by config/plugins.php. Its boot() registers ' . $context->name
+        $guidance = PluginRegistration::guidance($context->plugin) . ' Its boot() registers ' . $context->name
             . "; resolve it later via \$container->get({$registrationClass}::class).";
 
         return ['file' => new PlannedFile($pluginPath, $pluginContents), 'guidance' => $guidance];

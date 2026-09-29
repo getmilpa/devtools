@@ -27,6 +27,7 @@ use Milpa\DevTools\Make\PlannedFile;
 use Milpa\DevTools\Make\PluginSurgeon;
 use Milpa\DevTools\Make\StubLocator;
 use Milpa\DevTools\Make\StubRenderer;
+use Milpa\DevTools\Make\PluginRegistration;
 use Milpa\DevTools\Support\ComposerAutoload;
 use Milpa\DevTools\Support\DoctrineAvailability;
 
@@ -390,8 +391,7 @@ final class EntityGenerator implements GeneratorInterface
             'table' => $table,
         ]);
 
-        $guidance = "New plugin — register it so the kernel boots it: add {$pluginFqcn}::class to the "
-            . "list returned by config/plugins.php. Its boot() builds the {$context->name} repository "
+        $guidance = PluginRegistration::guidance($context->plugin) . " Its boot() builds the {$context->name} repository "
             . "from the app's 'storage' config via RepositoryFactory — set storage.driver in "
             . 'config/app.php to file, sqlite, mysql or memory (with its path/dsn); with no storage '
             . "block it defaults to a JSON file at var/{$table}.json. Resolve it later via "

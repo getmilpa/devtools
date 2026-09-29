@@ -25,6 +25,7 @@ use Milpa\DevTools\Make\PlannedFile;
 use Milpa\DevTools\Make\PluginSurgeon;
 use Milpa\DevTools\Make\StubLocator;
 use Milpa\DevTools\Make\StubRenderer;
+use Milpa\DevTools\Make\PluginRegistration;
 use Milpa\DevTools\Support\ComposerAutoload;
 
 /**
@@ -272,8 +273,7 @@ final class ControllerGenerator implements GeneratorInterface
             'routeName' => $routeName,
         ]);
 
-        $guidance = "New plugin — register it so the kernel boots it: add {$pluginFqcn}::class to the "
-            . 'list returned by config/plugins.php.';
+        $guidance = PluginRegistration::guidance($context->plugin);
 
         return ['file' => new PlannedFile($pluginPath, $pluginContents), 'guidance' => $guidance];
     }

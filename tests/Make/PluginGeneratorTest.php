@@ -93,7 +93,9 @@ final class PluginGeneratorTest extends TestCase
         $this->assertSame('App\\Plugins\\BoardPlugin\\BoardPlugin', $result->verifyTarget);
         $this->assertNotNull($result->guidance);
         $this->assertStringContainsString('config/plugins.php', (string) $result->guidance);
-        $this->assertStringContainsString('App\\Plugins\\BoardPlugin\\BoardPlugin::class', (string) $result->guidance);
+        // The house registers by the SHORT name (greenhouse decisions/0514): the guidance never dictates the FQCN.
+        $this->assertStringContainsString('`plugins.register` with name=BoardPlugin', (string) $result->guidance);
+        $this->assertStringNotContainsString('App\\Plugins\\', (string) $result->guidance);
     }
 
     /** No `--flavor` override on a fresh PSR-4-only root (no milpa.json, no legacy BaseController) auto-detects Runtime. */

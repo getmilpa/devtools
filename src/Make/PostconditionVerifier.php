@@ -553,8 +553,7 @@ final class PostconditionVerifier
             $ok,
             $ok
                 ? "plugin listed in {$configPath}"
-                : "plugin not yet listed in config/plugins.php — add {$fqcn}::class to boot it (make leaves "
-                    . 'this activation to you)',
+                : PluginRegistration::notListed($context->plugin),
             required: false,
         );
     }

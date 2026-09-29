@@ -22,6 +22,7 @@ use Milpa\DevTools\Make\GeneratorInterface;
 use Milpa\DevTools\Make\PlannedFile;
 use Milpa\DevTools\Make\StubLocator;
 use Milpa\DevTools\Make\StubRenderer;
+use Milpa\DevTools\Make\PluginRegistration;
 use Milpa\DevTools\Support\ComposerAutoload;
 
 /**
@@ -130,8 +131,7 @@ final class PluginGenerator implements GeneratorInterface
             'metadataArgs' => $this->metadataArgs($context),
         ]);
 
-        $guidance = "New plugin — register it so the kernel boots it: add {$pluginFqcn}::class to the "
-            . 'list returned by config/plugins.php.';
+        $guidance = PluginRegistration::guidance($context->name);
 
         // Declared `requires:` are named in the guidance, because registering a plugin whose required
         // capability has no provider does not degrade — the resolver refuses to boot the whole host

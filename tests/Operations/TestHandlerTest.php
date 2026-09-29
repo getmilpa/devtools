@@ -165,6 +165,15 @@ final class TestHandlerTest extends TestCase
         self::assertStringContainsString('--filter', $r['command'], 'el comando corrido se reporta tal cual');
     }
 
+    /** decisions/0523: the run tells PHPUnit not to cache its results, so it leaves nothing in the house. */
+    public function testTheSuiteRunsWithoutAResultCache(): void
+    {
+        $doble = $this->doble(['exit' => 0, 'output' => 'OK (1 test, 1 assertion)']);
+        (new TestHandler($this->roots(), $doble))->handle([]);
+
+        self::assertContains('--do-not-cache-result', (array) $doble->comando);
+    }
+
     /**
      * Un `path` que se sale de la raíz se rechaza ANTES de armar el comando.
      *

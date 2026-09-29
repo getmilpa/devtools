@@ -113,6 +113,14 @@ final class DevToolsOperationsTest extends TestCase
             self::assertFalse($porNombre[$suiteOp]->requiresConfirmation);
             self::assertSame(['cli', 'tui', 'mcp'], $porNombre[$suiteOp]->surfaces);
         }
+
+        // greenhouse decisions/0523: a test run leaves nothing that lasts, so it declares an EPHEMERAL mutation — the
+        // one declaration the terminal's unsigned door (0522) and the house's closure both read. Still `mutating`: it
+        // runs the app's code, as `serve` does.
+        foreach (['test', 'test:baseline', 'test:delta'] as $suiteOp) {
+            self::assertSame(Mutation::Ephemeral, $porNombre[$suiteOp]->effects?->mutation, "{$suiteOp} keeps nothing in the house");
+            self::assertSame(Mutation::Ephemeral, $porNombre[$suiteOp]->ceilingForCall(['filter' => 'X'])->mutation);
+        }
     }
 
     /**

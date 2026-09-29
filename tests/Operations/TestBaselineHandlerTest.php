@@ -28,14 +28,50 @@ final class TestBaselineHandlerTest extends TestCase
 
     protected function tearDown(): void
     {
-        $it = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($this->root, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST,
-        );
-        foreach ($it as $f) {
-            $f->isDir() ? rmdir($f->getPathname()) : unlink($f->getPathname());
+        foreach ([$this->root, $this->root . '-baselines'] as $dir) {
+            if (! is_dir($dir)) {
+                continue;
+            }
+            $it = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+                \RecursiveIteratorIterator::CHILD_FIRST,
+            );
+            foreach ($it as $f) {
+                $f->isDir() ? rmdir($f->getPathname()) : unlink($f->getPathname());
+            }
+            rmdir($dir);
         }
-        rmdir($this->root);
+    }
+
+    /** Where this house's baseline of the given name lives: outside the house (decisions/0523). */
+    private function baselineFile(string $name = 'baseline'): string
+    {
+        return $this->root . '-baselines/' . substr(hash('sha256', (string) realpath($this->root)), 0, 16) . '/' . $name . '.json';
+    }
+
+    /** Write a baseline file by hand, as a previous run (or a corrupted one) would have left it. */
+    private function writeBaseline(string $contents): void
+    {
+        $file = $this->baselineFile();
+        mkdir(\dirname($file), 0777, true);
+        file_put_contents($file, $contents);
+    }
+
+    /**
+     * Every path under the house, so a test can assert the run left nothing in it.
+     *
+     * @return list<string>
+     */
+    private function houseTree(): array
+    {
+        $paths = [];
+        $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->root, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::SELF_FIRST);
+        foreach ($it as $f) {
+            $paths[] = substr($f->getPathname(), \strlen($this->root));
+        }
+        sort($paths);
+
+        return $paths;
     }
 
     /** A runner that writes the given JUnit XML to the --log-junit path and returns the given exit. */
@@ -71,17 +107,51 @@ final class TestBaselineHandlerTest extends TestCase
 
     private function handler(string $junit): TestBaselineHandler
     {
-        return new TestBaselineHandler(new RootResolver($this->root), $this->runnerWriting($junit));
+        return new TestBaselineHandler(new RootResolver($this->root), $this->runnerWriting($junit), baselines: $this->root . '-baselines');
     }
 
     public function testBaselineRecordsASnapshotOfWhichTestsPassedAndFailed(): void
     {
+        $before = $this->houseTree();
         $r = $this->handler($this->junit('failed'))->handleBaseline([]);
 
         self::assertTrue($r['ok'], (string) ($r['error'] ?? ''));
         self::assertSame(2, $r['tests']);
         self::assertSame(1, $r['failures']);
-        self::assertFileExists($this->root . '/.milpa/test-baseline.json');
+        self::assertFileExists($this->baselineFile());
+        self::assertSame($this->baselineFile(), $r['snapshot']);
+        // decisions/0523: recording a baseline leaves nothing in the house — it used to write .milpa/test-baseline.json.
+        self::assertSame($before, $this->houseTree());
+    }
+
+    public function testANamedBaselineIsKeptApartAndDiffedByItsName(): void
+    {
+        $this->handler($this->junit('passed'))->handleBaseline(['snapshot' => 'before-blog.json']);
+        $r = $this->handler($this->junit('failed'))->handleDelta(['snapshot' => 'before-blog']);
+
+        self::assertFileExists($this->baselineFile('before-blog'));
+        self::assertFileDoesNotExist($this->baselineFile());
+        self::assertTrue($r['ok'], (string) ($r['error'] ?? ''));
+        self::assertSame(['X::testBar'], $r['new_failures']);
+    }
+
+    public function testTheSuiteRunsWithoutAResultCache(): void
+    {
+        $runner = $this->spyRunner($this->junit('passed'));
+        (new TestBaselineHandler(new RootResolver($this->root), $runner, baselines: $this->root . '-baselines'))->handleBaseline([]);
+
+        self::assertContains('--do-not-cache-result', (array) $runner->command);
+    }
+
+    public function testWithoutAnInjectedDirectoryBaselinesLiveInTheSystemTempArea(): void
+    {
+        $r = (new TestBaselineHandler(new RootResolver($this->root), $this->runnerWriting($this->junit('passed'))))->handleBaseline([]);
+
+        self::assertTrue($r['ok'], (string) ($r['error'] ?? ''));
+        self::assertStringStartsWith(sys_get_temp_dir() . '/milpa-test-baselines/', (string) $r['snapshot']);
+        self::assertStringStartsNotWith((string) realpath($this->root), (string) $r['snapshot']);
+        @unlink((string) $r['snapshot']);
+        @rmdir(\dirname((string) $r['snapshot']));
     }
 
     public function testDeltaWithoutABaselineFailsClosedAndSaysToRecordOne(): void
@@ -126,12 +196,26 @@ final class TestBaselineHandlerTest extends TestCase
         self::assertSame([], $r['new_failures']);
     }
 
-    public function testASnapshotOutsideTheRootIsRefused(): void
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function paths(): iterable
     {
-        $r = $this->handler($this->junit('passed'))->handleBaseline(['snapshot' => '/etc/passwd']);
+        yield 'absolute' => ['/etc/passwd'];
+        yield 'into the house' => ['.milpa/test-baseline.json'];
+        yield 'parent' => ['../x'];
+        yield 'dot-dot name' => ['..'];
+        yield 'hidden' => ['.x'];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('paths')]
+    public function testASnapshotThatIsAPathIsRefused(string $path): void
+    {
+        $r = $this->handler($this->junit('passed'))->handleBaseline(['snapshot' => $path]);
 
         self::assertFalse($r['ok']);
-        self::assertStringContainsString('must stay inside', (string) $r['error']);
+        self::assertStringContainsString('not a path', (string) $r['error']);
+        self::assertDirectoryDoesNotExist($this->root . '/.milpa');
     }
 
     public function testNoJUnitReportIsReportedAsUnmeasurable(): void
@@ -152,11 +236,10 @@ final class TestBaselineHandlerTest extends TestCase
 
     public function testAMalformedSnapshotIsRefusedWithoutRunningTheSuite(): void
     {
-        mkdir($this->root . '/.milpa', 0777, true);
-        file_put_contents($this->root . '/.milpa/test-baseline.json', '{not-json');
+        $this->writeBaseline('{not-json');
 
         $runner = $this->spyRunner($this->junit('failed'));
-        $r = (new TestBaselineHandler(new RootResolver($this->root), $runner))->handleDelta([]);
+        $r = (new TestBaselineHandler(new RootResolver($this->root), $runner, baselines: $this->root . '-baselines'))->handleDelta([]);
 
         self::assertFalse($r['ok']);
         self::assertFalse($r['ran']);
@@ -167,8 +250,7 @@ final class TestBaselineHandlerTest extends TestCase
 
     public function testASnapshotMissingResultsIsMalformed(): void
     {
-        mkdir($this->root . '/.milpa', 0777, true);
-        file_put_contents($this->root . '/.milpa/test-baseline.json', json_encode(['version' => 1]));
+        $this->writeBaseline((string) json_encode(['version' => 1]));
 
         $r = $this->handler($this->junit('failed'))->handleDelta([]);
 
@@ -179,11 +261,7 @@ final class TestBaselineHandlerTest extends TestCase
 
     public function testDeltaAgainstAnEmptyBaselineTreatsCurrentFailuresAsNew(): void
     {
-        mkdir($this->root . '/.milpa', 0777, true);
-        file_put_contents(
-            $this->root . '/.milpa/test-baseline.json',
-            json_encode(['version' => 1, 'results' => []]),
-        );
+        $this->writeBaseline((string) json_encode(['version' => 1, 'results' => []]));
 
         $r = $this->handler($this->junit('failed'))->handleDelta([]);
 
@@ -197,13 +275,13 @@ final class TestBaselineHandlerTest extends TestCase
     public function testDeltaRefusesASnapshotOutsideTheRootWithoutRunning(): void
     {
         $runner = $this->spyRunner($this->junit('failed'));
-        $r = (new TestBaselineHandler(new RootResolver($this->root), $runner))
+        $r = (new TestBaselineHandler(new RootResolver($this->root), $runner, baselines: $this->root . '-baselines'))
             ->handleDelta(['snapshot' => '/etc/passwd']);
 
         self::assertFalse($r['ok']);
         self::assertFalse($r['ran']);
         self::assertNull($runner->command);
-        self::assertStringContainsString('must stay inside', (string) $r['error']);
+        self::assertStringContainsString('not a path', (string) $r['error']);
     }
 
     public function testDeltaReportsWhenTheSuiteCannotBeMeasured(): void
@@ -216,7 +294,7 @@ final class TestBaselineHandlerTest extends TestCase
                 return ['exit' => 2, 'output' => 'fatal'];
             }
         };
-        $r = (new TestBaselineHandler(new RootResolver($this->root), $runner))->handleDelta([]);
+        $r = (new TestBaselineHandler(new RootResolver($this->root), $runner, baselines: $this->root . '-baselines'))->handleDelta([]);
 
         self::assertFalse($r['ok']);
         self::assertStringContainsString('no JUnit report', (string) $r['error']);
@@ -236,7 +314,7 @@ final class TestBaselineHandlerTest extends TestCase
     public function testTheFilterAndTimeoutReachTheCommand(): void
     {
         $runner = $this->spyRunner($this->junit('passed'));
-        $r = (new TestBaselineHandler(new RootResolver($this->root), $runner))
+        $r = (new TestBaselineHandler(new RootResolver($this->root), $runner, baselines: $this->root . '-baselines'))
             ->handleBaseline(['filter' => 'testBar', 'timeout' => 0]);
 
         self::assertTrue($r['ok'], (string) ($r['error'] ?? ''));
@@ -244,7 +322,7 @@ final class TestBaselineHandlerTest extends TestCase
         self::assertContains('testBar', (array) $runner->command);
         self::assertSame(1, $runner->timeout, 'zero seconds is not a timeout; it clamps to one');
 
-        (new TestBaselineHandler(new RootResolver($this->root), $runner))
+        (new TestBaselineHandler(new RootResolver($this->root), $runner, baselines: $this->root . '-baselines'))
             ->handleBaseline(['timeout' => 99999]);
         self::assertSame(3600, $runner->timeout);
     }
@@ -262,7 +340,7 @@ final class TestBaselineHandlerTest extends TestCase
                 return ['exit' => 1, 'output' => 'broken'];
             }
         };
-        $r = (new TestBaselineHandler(new RootResolver($this->root), $runner))->handleBaseline([]);
+        $r = (new TestBaselineHandler(new RootResolver($this->root), $runner, baselines: $this->root . '-baselines'))->handleBaseline([]);
 
         self::assertFalse($r['ok']);
         self::assertStringContainsString('could not read the JUnit report', (string) $r['error']);
@@ -286,7 +364,7 @@ final class TestBaselineHandlerTest extends TestCase
                 return ['exit' => 0, 'output' => $this->output . "\nOK (1 test, 1 assertion)"];
             }
         };
-        $r = (new TestBaselineHandler(new RootResolver($this->root), $runner))->handleBaseline([]);
+        $r = (new TestBaselineHandler(new RootResolver($this->root), $runner, baselines: $this->root . '-baselines'))->handleBaseline([]);
 
         self::assertTrue($r['ok'], (string) ($r['error'] ?? ''));
         self::assertStringContainsString('output trimmed', $r['output']);
@@ -296,7 +374,8 @@ final class TestBaselineHandlerTest extends TestCase
 
     public function testItCannotCreateTheSnapshotDirectoryWhenAFileOccupiesThePath(): void
     {
-        file_put_contents($this->root . '/.milpa', 'not a directory');
+        mkdir($this->root . '-baselines', 0777, true);
+        file_put_contents(\dirname($this->baselineFile()), 'not a directory');
 
         $r = $this->handler($this->junit('passed'))->handleBaseline([]);
 
@@ -307,6 +386,7 @@ final class TestBaselineHandlerTest extends TestCase
 
     public function testItCannotWriteTheSnapshotOntoADirectory(): void
     {
+        mkdir($this->baselineFile('vendor'), 0777, true);
         $r = $this->handler($this->junit('passed'))->handleBaseline(['snapshot' => 'vendor']);
 
         self::assertFalse($r['ok']);

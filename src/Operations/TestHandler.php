@@ -86,7 +86,9 @@ final class TestHandler
             );
         }
 
-        $comando = [\PHP_BINARY, $binario, '--colors=never'];
+        // No result cache: a test run leaves nothing behind in the house, which is what lets it declare an
+        // `ephemeral` mutation (greenhouse decisions/0523).
+        $comando = [\PHP_BINARY, $binario, '--colors=never', '--do-not-cache-result'];
 
         $filtro = \is_string($input['filter'] ?? null) ? trim($input['filter']) : '';
         if ($filtro !== '') {

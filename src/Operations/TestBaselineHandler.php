@@ -33,20 +33,32 @@ use Milpa\DevTools\Test\TestDelta;
  * recursion nobody wants to debug) via an injected {@see ProcessRunner} seam, and reads per-test
  * identity from PHPUnit's JUnit log rather than the human summary, because counts cannot distinguish
  * one broken test from another.
+ *
+ * NEITHER LEAVES ANYTHING IN THE HOUSE (greenhouse decisions/0523). A baseline is the instrument's own note,
+ * not the house's state: it lives in the system's temp area, keyed by the house's root, and PHPUnit is told
+ * not to cache its results. So both operations declare an `ephemeral` mutation, and that one declaration is
+ * what the terminal's unsigned door (decisions/0522) and the house's closure both read: running the suite
+ * needs no signature and is not a change to the house. It used to write `.milpa/test-baseline.json` inside
+ * the house, which is a change that lasts, and declaring it ephemeral then would have been a lie.
  */
 final class TestBaselineHandler
 {
     /** How much captured output is echoed back; the summary and failures live at the end. */
     private const MAX_OUTPUT = 12000;
 
-    /** Where the snapshot lives when the caller does not name one. */
-    private const DEFAULT_SNAPSHOT = '.milpa/test-baseline.json';
+    /** The baseline's name when the caller does not give one. */
+    private const DEFAULT_SNAPSHOT = 'baseline';
 
+    /**
+     * @param string|null $baselines the directory baselines live under, outside every house; null is the
+     *                               system temp area's `milpa-test-baselines`
+     */
     public function __construct(
         private readonly RootResolver $roots = new RootResolver(),
         private readonly ProcessRunner $runner = new ProcessRunner(),
         private readonly JUnitParser $parser = new JUnitParser(),
         private readonly TestDelta $delta = new TestDelta(),
+        private readonly ?string $baselines = null,
     ) {
     }
 
@@ -67,11 +79,11 @@ final class TestBaselineHandler
 
         $snapshot = $this->snapshotPath($root, $input);
         if ($snapshot === null) {
-            return ['ok' => false, 'ran' => true, 'error' => '«snapshot» must stay inside ' . $root];
+            return ['ok' => false, 'ran' => true, 'error' => $this->notAName($input)];
         }
 
         $dir = \dirname($snapshot);
-        if (! is_dir($dir) && ! @mkdir($dir, 0777, true) && ! is_dir($dir)) {
+        if (! is_dir($dir) && ! @mkdir($dir, 0700, true) && ! is_dir($dir)) {
             return ['ok' => false, 'ran' => true, 'error' => "could not create {$dir} for the snapshot"];
         }
 
@@ -105,7 +117,7 @@ final class TestBaselineHandler
 
         $snapshot = $this->snapshotPath($root, $input);
         if ($snapshot === null) {
-            return ['ok' => false, 'ran' => false, 'error' => '«snapshot» must stay inside ' . $root];
+            return ['ok' => false, 'ran' => false, 'error' => $this->notAName($input)];
         }
         if (! is_file($snapshot)) {
             return ['ok' => false, 'ran' => false, 'error' => "no baseline at {$snapshot} — run test:baseline first"];
@@ -157,7 +169,8 @@ final class TestBaselineHandler
         }
 
         $junit = (string) tempnam(sys_get_temp_dir(), 'milpa-junit-');
-        $command = [\PHP_BINARY, $binary, '--colors=never', '--log-junit', $junit];
+        // No result cache: the run leaves nothing behind in the house (decisions/0523).
+        $command = [\PHP_BINARY, $binary, '--colors=never', '--do-not-cache-result', '--log-junit', $junit];
 
         $filter = \is_string($input['filter'] ?? null) ? trim($input['filter']) : '';
         if ($filter !== '') {
@@ -186,32 +199,43 @@ final class TestBaselineHandler
     }
 
     /**
-     * Resolves the snapshot path from input or the default, refusing anything outside the app root.
+     * The baseline's file: `<baselines>/<house>/<name>.json`, outside the house — or null when `snapshot` is not a
+     * plain name (a path, a parent reference, anything that could reach back into a house).
      *
      * @param array<string, mixed> $input
      */
     private function snapshotPath(string $root, array $input): ?string
     {
         $given = \is_string($input['snapshot'] ?? null) ? trim($input['snapshot']) : '';
-        $relative = $given !== '' ? $given : self::DEFAULT_SNAPSHOT;
-        $candidate = str_starts_with($relative, '/') ? $relative : $root . '/' . $relative;
-
+        $name = $given !== '' ? preg_replace('/\.json$/', '', $given) : self::DEFAULT_SNAPSHOT;
+        if (! \is_string($name) || preg_match('/^[A-Za-z0-9][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+)*$/D', $name) !== 1 || \strlen($name) > 64) {
+            return null;
+        }
         $realRoot = realpath($root);
         if ($realRoot === false) {
             return null;
         }
 
-        // The file may not exist yet, so validate the deepest existing ancestor stays inside the root.
-        $ancestor = $candidate;
-        while (! file_exists($ancestor) && \dirname($ancestor) !== $ancestor) {
-            $ancestor = \dirname($ancestor);
-        }
-        $realAncestor = realpath($ancestor);
-        if ($realAncestor === false) {
-            return null;
-        }
+        return $this->baselineDirectory() . '/' . substr(hash('sha256', $realRoot), 0, 16) . '/' . $name . '.json';
+    }
 
-        return str_starts_with($realAncestor, $realRoot . '/') || $realAncestor === $realRoot ? $candidate : null;
+    /** Where every house's baselines live: never inside a house. */
+    private function baselineDirectory(): string
+    {
+        return rtrim($this->baselines ?? sys_get_temp_dir() . '/milpa-test-baselines', '/');
+    }
+
+    /**
+     * The refusal of a `snapshot` that is not a plain name.
+     *
+     * @param array<string, mixed> $input
+     */
+    private function notAName(array $input): string
+    {
+        $given = \is_string($input['snapshot'] ?? null) ? $input['snapshot'] : '';
+
+        return "«snapshot» names a baseline (letters, digits, «.», «_», «-»), not a path — got «{$given}». "
+            . 'A baseline lives outside the house, under ' . $this->baselineDirectory() . ', so recording one changes nothing the house keeps';
     }
 
     /** Keeps the END of the output, where the summary and failures are. */

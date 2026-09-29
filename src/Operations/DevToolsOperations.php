@@ -395,8 +395,14 @@ final class DevToolsOperations implements CommandProvider
             new Operation(
                 name: 'test',
                 effects: new EffectProfile(
-                    // phpunit leaves its cache behind.
-                    Mutation::Persistent,
+                    // IT LEAVES NOTHING THAT LASTS (greenhouse decisions/0523). It used to declare
+                    // `persistent` because PHPUnit left its result cache in the house; the run now tells
+                    // PHPUnit not to cache, so the operation's own writes die with the process — the same
+                    // footing as `serve`, which also runs the app's code. What the app's own tests write
+                    // is theirs, as what a served request writes is the request's. This one declaration
+                    // is read twice: the terminal runs it unsigned (decisions/0522), and the house's
+                    // closure does not count a test run as a change to the house.
+                    Mutation::Ephemeral,
                     // THE CEILING, NOT THE TYPICAL CASE: this runs the app's own suite, which is code
                     // this operation does not control and cannot inspect. At worst those tests reach
                     // the public internet, so that is what the ceiling says.
@@ -555,8 +561,9 @@ final class DevToolsOperations implements CommandProvider
             new Operation(
                 name: 'test:baseline',
                 effects: new EffectProfile(
-                    // It runs the suite (phpunit leaves its cache) AND writes a snapshot file.
-                    Mutation::Persistent,
+                    // It runs the suite without a result cache and writes its snapshot OUTSIDE the house,
+                    // in the system temp area (greenhouse decisions/0523): nothing the house keeps.
+                    Mutation::Ephemeral,
                     // Same ceiling as `test`: it runs the app's own suite, code this operation does not
                     // control; at worst those tests reach the public internet.
                     Externality::Public,
@@ -571,7 +578,7 @@ final class DevToolsOperations implements CommandProvider
                     'type' => 'object',
                     'properties' => [
                         'filter' => ['type' => 'string', 'description' => 'Run only the tests whose name matches'],
-                        'snapshot' => ['type' => 'string', 'description' => 'Where to write the baseline, inside the app root (default .milpa/test-baseline.json)'],
+                        'snapshot' => ['type' => 'string', 'description' => 'The baseline\'s name — letters, digits, «.», «_», «-» (default «baseline»); it is kept outside the house, in the system temp area'],
                         'timeout' => ['type' => 'integer', 'description' => 'Seconds before it is stopped (default 300)'],
                     ],
                     'required' => [],
@@ -582,7 +589,8 @@ final class DevToolsOperations implements CommandProvider
             new Operation(
                 name: 'test:delta',
                 effects: new EffectProfile(
-                    Mutation::Persistent,
+                    // It reads the baseline and runs the suite without a result cache (decisions/0523).
+                    Mutation::Ephemeral,
                     Externality::Public,
                     Reversibility::ManualRecovery,
                     Authority::WriteAsUser,
@@ -594,7 +602,7 @@ final class DevToolsOperations implements CommandProvider
                     'type' => 'object',
                     'properties' => [
                         'filter' => ['type' => 'string', 'description' => 'Run only the tests whose name matches'],
-                        'snapshot' => ['type' => 'string', 'description' => 'The baseline to diff against, inside the app root (default .milpa/test-baseline.json)'],
+                        'snapshot' => ['type' => 'string', 'description' => 'The name of the baseline to diff against (default «baseline»)'],
                         'timeout' => ['type' => 'integer', 'description' => 'Seconds before it is stopped (default 300)'],
                     ],
                     'required' => [],

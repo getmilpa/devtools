@@ -23,7 +23,7 @@
         "composer-runtime-api": "^2.2",
         "milpa/command": ">=0.24 <1.0",
         "milpa/data": ">=0.2 <1.0",
-        "milpa/plugin": ">=0.7 <1.0",
+        "milpa/plugin": ">=0.19 <1.0",
         "milpa/core": ">=0.6.2 <1.0",
         "milpa/tool-runtime": ">=0.18 <1.0"
     },

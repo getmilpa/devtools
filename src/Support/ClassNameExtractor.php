@@ -29,7 +29,7 @@ final class ClassNameExtractor
      */
     public static function fromFile(string $filePath): ?string
     {
-        $source = file_get_contents($filePath);
+        $source = is_file($filePath) ? file_get_contents($filePath) : false;
         if ($source === false) {
             return null;
         }
@@ -39,7 +39,9 @@ final class ClassNameExtractor
             $namespace = $m[1];
         }
 
-        if (preg_match('/^class\s+(\w+)/m', $source, $m) !== 1) {
+        // Modifiers first: `make` writes `final class`, and an extractor that only read a bare `class` said «no class»
+        // about every file this package generates.
+        if (preg_match('/^(?:(?:final|abstract|readonly)\s+)*class\s+(\w+)/m', $source, $m) !== 1) {
             return null;
         }
         $class = $m[1];

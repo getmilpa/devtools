@@ -53,7 +53,9 @@ final class PluginManifestValidator
             return ['invalid JSON: ' . $e->getMessage()];
         }
 
-        if (!is_array($data)) {
+        // A JSON list decodes to a PHP array too: the root is asked in its JSON shape, or `["a"]` read as five
+        // missing fields instead of the one thing wrong with it.
+        if (!is_array($data) || !json_decode($raw) instanceof \stdClass) {
             return ['manifest root must be a JSON object'];
         }
 

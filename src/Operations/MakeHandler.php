@@ -30,6 +30,8 @@ use Milpa\DevTools\Make\PostconditionVerifier;
 use Milpa\DevTools\Make\VerifyRunner;
 use Milpa\DevTools\Make\WriteGuard;
 use Milpa\DevTools\Support\RootResolver;
+use Milpa\Plugin\Contracts\BootWitnessInterface;
+use Milpa\Plugin\Operations\PluginManagementPlugin;
 
 /**
  * Genera artefactos del framework —un controller, una entidad— siguiendo sus convenciones, y
@@ -56,6 +58,16 @@ use Milpa\DevTools\Support\RootResolver;
  * casar `^[A-Za-z_][A-Za-z0-9_]*$`. Un `name` como `../../../tmp/x` jamás llega a los generadores.
  * Esa guarda venía del comando y se conserva palabra por palabra: al volverse átomo la entrada deja
  * de venir sólo de una terminal, así que importa más, no menos.
+ *
+ * ── WHAT IT WRITES BOOTS FIRST (greenhouse decisions/0527) ──────────────────────────────────────
+ *
+ * `make` MERGES into a plugin that already exists — its `boot()` gains a service, a controller, routes.
+ * When that plugin is declared in `config/plugins.php`, a bad merge is a house that stops booting the
+ * moment the file lands: every process dies, the one that would undo it included. So every file a run
+ * writes goes through the host's witness (milpa/plugin's `BootWitnessInterface`, the same one
+ * `plugins.register` asks): the house is booted in a copy with the files written, and the live tree is
+ * written only if it booted. A refusal writes nothing and says why (`unwritten`, `house_boots`,
+ * `reason`); a host with no witness writes as it always did.
  */
 final class MakeHandler
 {
@@ -73,8 +85,16 @@ final class MakeHandler
      * plugin nuevo y viendo que no tenía a dónde ir. El séptimo (`test`, el juez conductual) llegó
      * luego, enchufado aquí mismo el día uno.
      */
-    public function __construct(private readonly RootResolver $roots = new RootResolver())
+    /** @var \Closure(string): ?BootWitnessInterface */
+    private readonly \Closure $witnessFor;
+
+    /**
+     * @param null|\Closure(string): ?BootWitnessInterface $witnessFor the house's witness for a root — a test's seam;
+     *                                                                 null asks milpa/plugin for the host's by name
+     */
+    public function __construct(private readonly RootResolver $roots = new RootResolver(), ?\Closure $witnessFor = null)
     {
+        $this->witnessFor = $witnessFor ?? static fn (string $root): ?BootWitnessInterface => PluginManagementPlugin::hostWitness($root);
         $generadores = [
             new ControllerGenerator(),
             new EntityGenerator(),
@@ -116,7 +136,10 @@ final class MakeHandler
      *
      * @param array<string, mixed> $input
      *
-     * @return array{ok: bool, files: list<array{path: string, action: string}>, verify: array{ok: bool, output: string}|null, guidance: string|null, postconditions?: array{ok: bool, checks: list<array{name: string, ok: bool, required: bool, detail: string}>, missing: list<string>}, incomplete?: bool, error?: string}
+     * The witness speaks in the answer too: `house_boots` after a write it let through; with a refusal, `unwritten`
+     * (or `rolled_back`), `house_boots` and `reason` — every file's action then says which (decisions/0527).
+     *
+     * @return array<string, mixed>&array{ok: bool, files: list<array{path: string, action: string}>, verify: array{ok: bool, output: string}|null, guidance: string|null, postconditions?: array{ok: bool, checks: list<array{name: string, ok: bool, required: bool, detail: string}>, missing: list<string>}, incomplete?: bool, error?: string}
      */
     public function handle(array $input): array
     {
@@ -247,13 +270,38 @@ final class MakeHandler
                 $existia => 'overwritten',
                 default => 'created',
             };
-            if (!$ensayo) {
-                $guarda->write($archivo->path, $archivo->contents);
-                if (!$existia) {
-                    $nuevos[] = $archivo->path;
-                }
+            if (!$ensayo && !$existia) {
+                $nuevos[] = $archivo->path;
             }
             $archivos[] = ['path' => $archivo->path, 'action' => $accion];
+        }
+
+        $said = [];
+        if (!$ensayo) {
+            $escribir = static function () use ($resultado, $guarda): void {
+                foreach ($resultado->files as $archivo) {
+                    $guarda->write($archivo->path, $archivo->contents);
+                }
+            };
+            // THE HOUSE BOOTS WITH IT FIRST (decisions/0527): the witness is shown every byte this run writes.
+            $bytes = $this->houseRelative($root, $resultado->files);
+            $testigo = $bytes === null ? null : ($this->witnessFor)($root);
+            if ($testigo === null) {
+                $escribir();
+            } else {
+                $boot = $testigo->writeIfItBoots($bytes, $escribir);
+                if ($boot['refused'] !== null) {
+                    return [
+                        'ok' => false,
+                        // Refused before writing, or written and put back by the net the house keeps after it (0506).
+                        'files' => array_map(static fn (array $f): array => ['path' => $f['path'], 'action' => isset($boot['said']['rolled_back']) ? 'rolled-back' : 'unwritten'], $archivos),
+                        'verify' => null,
+                        'guidance' => null,
+                        'error' => $boot['refused'],
+                    ] + $boot['said'];
+                }
+                $said = $boot['said'];
+            }
         }
 
         $verify = null;
@@ -334,7 +382,7 @@ final class MakeHandler
         // `incomplete` SÍ la conserva: ahí la guía es justo lo que falta por hacer.
         $guia = $verifyOk ? $resultado->guidance : null;
 
-        $salida = ['ok' => $ok, 'files' => $archivos, 'verify' => $verify, 'guidance' => $guia];
+        $salida = ['ok' => $ok, 'files' => $archivos, 'verify' => $verify, 'guidance' => $guia] + $said;
         if ($postcondiciones !== null) {
             $salida['postconditions'] = $postcondiciones;
         }
@@ -343,6 +391,28 @@ final class MakeHandler
         }
 
         return $salida;
+    }
+
+    /**
+     * The run's files as the witness reads them — path relative to the app root → bytes — or null when one
+     * falls outside the root (a legacy host's `plugins/` may): what cannot be copied cannot be booted.
+     *
+     * @param list<\Milpa\DevTools\Make\PlannedFile> $files
+     *
+     * @return null|array<string, string>
+     */
+    private function houseRelative(string $root, array $files): ?array
+    {
+        $prefix = rtrim($root, '/') . '/';
+        $bytes = [];
+        foreach ($files as $file) {
+            if (!str_starts_with($file->path, $prefix) || \in_array('..', explode('/', $file->path), true)) {
+                return null;
+            }
+            $bytes[substr($file->path, \strlen($prefix))] = $file->contents;
+        }
+
+        return $bytes;
     }
 
     /**

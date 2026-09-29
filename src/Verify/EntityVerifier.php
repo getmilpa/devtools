@@ -92,7 +92,7 @@ final class EntityVerifier implements VerifierInterface
         $file = $reflection->getFileName();
         $source = $file !== false ? file_get_contents($file) : false;
 
-        if ($source !== false && !str_contains($source, 'declare(strict_types=1)')) {
+        if ($source !== false && !self::declaresStrictTypes($source)) {
             $errors[] = 'Missing declare(strict_types=1) at top of file';
         }
 
@@ -251,7 +251,7 @@ final class EntityVerifier implements VerifierInterface
         $file = $reflection->getFileName();
         $source = $file !== false ? file_get_contents($file) : false;
 
-        if ($source !== false && !str_contains($source, 'declare(strict_types=1)')) {
+        if ($source !== false && !self::declaresStrictTypes($source)) {
             $errors[] = 'Missing declare(strict_types=1) at top of file';
         }
 
@@ -280,5 +280,14 @@ final class EntityVerifier implements VerifierInterface
         }
 
         return new VerificationResult($reflection->getShortName() . ' — runtime entity', $errors, $warnings);
+    }
+
+    /**
+     * Whether the file DECLARES strict types — the statement, not the words: a comment that mentions
+     * `declare(strict_types=1)` used to pass for one (greenhouse evidence/1061).
+     */
+    private static function declaresStrictTypes(string $source): bool
+    {
+        return preg_match('/^\s*declare\s*\(\s*strict_types\s*=\s*1\s*\)\s*;/m', $source) === 1;
     }
 }

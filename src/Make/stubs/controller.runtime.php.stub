@@ -8,6 +8,17 @@ use Nyholm\Psr7\Response;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
+/**
+ * The house builds this controller from its container when a route asks for it.
+ *
+ * With no constructor, or one whose parameters are concrete classes, it builds on its own. When it needs a
+ * collaborator behind an interface (a repository, a service), take it in the constructor and register the
+ * built controller in {{plugin}}::boot():
+ *
+ *     $this->container->registerService({{class}}::class, new {{class}}(...));
+ *
+ * Pass it what it needs, not the container.
+ */
 final class {{class}}
 {
     public function index(ServerRequestInterface $request): ResponseInterface

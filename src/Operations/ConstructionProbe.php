@@ -100,8 +100,16 @@ final class ConstructionProbe
     }
 
     /**
-     * The refusal a model corrects from: which route asks, what could not be filled, and the rule — with
-     * the line that registers the built controller in its plugin's boot().
+     * The refusal a model corrects from: which route asks, what could not be filled, the rule, and the ORDER
+     * in which the fix lands.
+     *
+     * ── WHY THE PARAMETER'S TYPE AND NOT THE BUILT CONTROLLER (greenhouse evidence/1075) ──────────────
+     *
+     * The first version said «register the built controller in boot()». A real resident followed it and hit a
+     * wall: `new BlogController($repository)` in the plugin is refused by static analysis while the live
+     * controller has no such constructor, and the controller is refused by THIS judge until something is
+     * registered. Registering the parameter's TYPE names no controller, so it lands on its own — and then the
+     * container fills the parameter and the controller lands.
      *
      * @param list<string>                                 $routes
      * @param list<array{parameter: string, type: string}> $unresolvable
@@ -110,20 +118,32 @@ final class ConstructionProbe
     {
         $missing = $unresolvable === [] ? '' : ' It could not fill '
             . implode(', ', array_map(static fn (array $u): string => $u['parameter'] . ' (' . $u['type'] . ')', $unresolvable)) . '.';
-        // A placeholder per parameter the container could not fill — except the container itself, which
-        // is replaced by what the controller would have pulled out of it.
-        $arguments = implode(', ', array_map(
-            static fn (array $u): string => \in_array($u['type'], self::CONTAINERS, true)
-                ? '/* what it would pull from the container */'
-                : '/* ' . substr((string) strrchr('\\' . $u['type'], '\\'), 1) . ' ' . $u['parameter'] . ' */',
-            $unresolvable,
-        ));
+        $container = array_values(array_filter($unresolvable, static fn (array $u): bool => \in_array($u['type'], self::CONTAINERS, true)));
+        $types = array_values(array_filter($unresolvable, static fn (array $u): bool => !\in_array($u['type'], self::CONTAINERS, true)));
 
-        return "refused: the house cannot build «{$class}» — " . implode(' and ', $routes)
-            . " asks the container for it, and the container said: {$error}.{$missing}\n"
-            . ControllerDependencies::RULE . " Register the built controller in {$plugin}::boot():\n"
-            . "    \$this->container->registerService({$class}::class, new {$class}({$arguments}));\n"
-            . 'and pass it what it needs, not the container — a controller that pulls its collaborators from '
-            . 'the container fails at request time, where no trial sees it.';
+        $text = "refused: the house cannot build «{$class}» — " . implode(' and ', $routes)
+            . " asks the container for it, and the container said: {$error}.{$missing}\n" . ControllerDependencies::RULE . "\n";
+        if ($container !== []) {
+            $text .= "Do not take the container: take what {$class} would pull from it as constructor parameters, "
+                . "not the container — a controller that pulls its collaborators from the container fails at request "
+                . "time, where no trial sees it. Then make those parameters buildable as below.\n";
+        }
+        if ($types === [] && $container === []) {
+            return $text . 'The constructor itself failed: fix what it does, or move that work out of the constructor.';
+        }
+
+        $lines = array_map(
+            static fn (array $u): string => "       \$this->container->registerService(\\{$u['type']}::class, /* the "
+                . substr((string) strrchr('\\' . $u['type'], '\\'), 1) . ' instance */);',
+            $types,
+        );
+
+        return $text . "Make it buildable in this order — each step lands on its own:\n"
+            . "  1. In {$plugin}::boot(), register what the parameter asks for under its type:\n"
+            . ($lines === [] ? "       \$this->container->registerService(SomeInterface::class, \$instance);\n" : implode("\n", $lines) . "\n")
+            . "  2. implement {$class} again: the container then fills "
+            . ($types === [] ? 'those parameters' : implode(', ', array_map(static fn (array $u): string => $u['parameter'], $types))) . ".\n"
+            . "(Registering the built controller instead — new {$class}(...) in boot() — only lands once {$class} "
+            . 'already has that constructor.)';
     }
 }

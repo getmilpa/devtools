@@ -172,9 +172,8 @@ final class ImplementBuildsThroughTheContainerTest extends TestCase
         self::assertStringContainsString('$container', $error);
         self::assertStringContainsString('Milpa\\Interfaces\\Di\\DIContainerInterface', $error);
         self::assertStringContainsString('boot()', $error);
-        self::assertStringContainsString('registerService(BlogController::class, new BlogController(', $error);
-        self::assertStringContainsString('new BlogController(/* what it would pull from the container */)', $error);
         self::assertStringContainsString('not the container', $error);
+        self::assertStringContainsString('take what BlogController would pull from it', $error);
         self::assertSame($before, (string) file_get_contents($this->controllerFile()), 'the refused body stayed on disk');
         self::assertSame('container', $r['diagnostic']['phase'] ?? null);
         self::assertTrue($r['diagnostic']['rolled_back'] ?? false);
@@ -193,7 +192,13 @@ final class ImplementBuildsThroughTheContainerTest extends TestCase
         self::assertFalse($r['ok']);
         self::assertStringContainsString('$posts', (string) $r['error']);
         self::assertStringContainsString('App\\Plugins\\Blog\\Services\\PostsInterface', (string) $r['error']);
-        self::assertStringContainsString('new BlogController(/* PostsInterface $posts */)', (string) $r['error']);
+        // THE ORDER THAT LANDS (measured on a real resident, evidence/1075): registering the BUILT controller
+        // in boot() cannot land first — the controller has no such constructor yet, and static analysis
+        // refuses the plugin — nor second, because this very judge refuses the controller. Registering the
+        // parameter's TYPE references no controller, so it lands alone, and then the controller builds.
+        self::assertStringContainsString("1. In Blog::boot(), register what the parameter asks for under its type:", (string) $r['error']);
+        self::assertStringContainsString('$this->container->registerService(\\App\\Plugins\\Blog\\Services\\PostsInterface::class, ', (string) $r['error']);
+        self::assertStringContainsString('2. implement BlogController again', (string) $r['error']);
     }
 
     /** The positive control of the refusal: the SAME controller, registered in boot(), lands and says it was built. */
@@ -209,6 +214,23 @@ final class ImplementBuildsThroughTheContainerTest extends TestCase
         self::assertTrue($r['ok'], (string) ($r['error'] ?? ''));
         self::assertStringContainsString('construction (GET /blog builds it through the container)', (string) $r['verified']);
         self::assertStringContainsString('PostsInterface $posts', (string) file_get_contents($this->controllerFile()));
+    }
+
+    /**
+     * The first step of the refusal, followed: the plugin registers the interface under its type (a line that
+     * names no controller, so it lands on its own), and the same controller then builds and lands.
+     */
+    public function testRegisteringTheParameterTypeInBootLetsTheSameControllerLand(): void
+    {
+        $this->plugin('$this->container->registerService(\\App\\Plugins\\Blog\\Services\\PostsInterface::class, new \\App\\Plugins\\Blog\\Services\\Posts());');
+
+        $r = $this->implement($this->controller(
+            "use App\\Plugins\\Blog\\Services\\PostsInterface;\n",
+            'private readonly PostsInterface $posts',
+        ));
+
+        self::assertTrue($r['ok'], (string) ($r['error'] ?? ''));
+        self::assertStringContainsString('construction (GET /blog builds it through the container)', (string) $r['verified']);
     }
 
     /** A concrete class the container can build needs no registration: autowiring is not the defect. */

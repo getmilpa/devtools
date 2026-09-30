@@ -15,7 +15,7 @@ declare(strict_types=1);
 namespace Milpa\DevTools\Make;
 
 /**
- * The rule for a controller with collaborators: it is registered, built, in its plugin's boot().
+ * The rule for a controller with collaborators: what it needs is registered, by type, in its plugin's boot().
  *
  * Rod's first live run (greenhouse evidence/1071) ended in a 500 because nothing told the resident this:
  * its controller asked for `DIContainerInterface`, nothing registers that, and the house could not build
@@ -38,9 +38,10 @@ final class ControllerDependencies
      */
     public static function guidance(string $plugin, string $controller): string
     {
-        return "If {$controller} needs collaborators, take them in its constructor and register the built controller "
-            . "in {$plugin}::boot(): `\$this->container->registerService({$controller}::class, new {$controller}(...));` — "
-            . 'pass it what it needs, not the container. ' . self::RULE . ' `implement` refuses a routed controller '
-            . 'the house cannot build.';
+        return "If {$controller} needs a collaborator behind an interface (a repository, a service), first register it "
+            . "under its type in {$plugin}::boot(): `\$this->container->registerService(SomeInterface::class, \$instance);` — "
+            . "then implement {$controller} with that constructor parameter, and the container fills it. Take what it "
+            . 'needs, not the container. ' . self::RULE . ' `implement` refuses a routed controller the house cannot build.';
     }
+
 }

@@ -129,15 +129,16 @@ final class ControllerGeneratorRuntimeTest extends TestCase
         foreach (['new plugin' => $fresh, 'existing plugin' => $existing] as $arm => $result) {
             $guidance = (string) $result->guidance;
             $class = $arm === 'new plugin' ? 'BlogController' : 'FeedController';
-            $this->assertStringContainsString("register the built controller in Blog::boot()", $guidance, $arm);
-            $this->assertStringContainsString("\$this->container->registerService({$class}::class, new {$class}(", $guidance, $arm);
+            $this->assertStringContainsString("first register it under its type in Blog::boot()", $guidance, $arm);
+            $this->assertStringContainsString('$this->container->registerService(SomeInterface::class, $instance)', $guidance, $arm);
+            $this->assertStringContainsString("then implement {$class}", $guidance, $arm);
             $this->assertStringContainsString('not the container', $guidance, $arm);
         }
         $this->assertStringContainsString('`plugins.register` with name=Blog', (string) $fresh->guidance, 'the rule replaced the registration step');
 
         $code = $this->fileNamed($fresh->files, 'BlogController.php')->contents;
         $this->assertStringContainsString('Blog::boot()', $code);
-        $this->assertStringContainsString('registerService(BlogController::class, new BlogController(', $code);
+        $this->assertStringContainsString('registerService(SomeInterface::class, $instance)', $code);
         $this->assertPhpLints($code);
     }
 

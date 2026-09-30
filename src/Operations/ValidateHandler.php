@@ -56,7 +56,7 @@ final class ValidateHandler
     {
         $target = \is_string($input['target'] ?? null) ? $input['target'] : '';
         if ($target === '') {
-            return ['ok' => false, 'target' => '', 'manifest' => '', 'error' => 'falta `target`: el nombre de un plugin o la ruta de un milpa.json'];
+            return ['ok' => false, 'target' => '', 'manifest' => '', 'error' => 'missing `target`: a plugin name or the path to a milpa.json'];
         }
 
         $root = $this->roots->resolve();
@@ -81,8 +81,8 @@ final class ValidateHandler
                 'ok' => false,
                 'target' => $target,
                 'manifest' => '',
-                'error' => "no encontré el plugin «{$target}»: ni plugins/{$target}/milpa.json ni una "
-                    . 'clase con `#[PluginMetadata]` bajo src/Plugins/',
+                'error' => "plugin «{$target}» not found: neither plugins/{$target}/milpa.json nor a "
+                    . 'class with `#[PluginMetadata]` under src/Plugins/',
             ];
         }
 
@@ -179,7 +179,7 @@ final class ValidateHandler
                 'ok' => false,
                 'target' => $target,
                 'manifest' => '',
-                'error' => "la clase «{$clase}» existe en disco y no se puede cargar (¿autoload? ¿namespace?)",
+                'error' => "class «{$clase}» exists on disk and cannot be loaded (autoload? namespace?)",
             ];
         }
 
@@ -189,20 +189,20 @@ final class ValidateHandler
                 'ok' => false,
                 'target' => $target,
                 'manifest' => '',
-                'error' => "«{$clase}» no declara `#[PluginMetadata]`, así que el kernel no la puede bootear",
+                'error' => "«{$clase}» declares no `#[PluginMetadata]`, so the kernel cannot boot it",
             ];
         }
 
         $meta = $atributos[0]->newInstance();
         $hallazgos = [];
         if (trim($meta->name) === '') {
-            $hallazgos[] = 'el atributo no declara `name`';
+            $hallazgos[] = 'the attribute declares no `name`';
         }
         if (preg_match('/^\d+\.\d+\.\d+/', $meta->version) !== 1) {
-            $hallazgos[] = "`version` no es semver: «{$meta->version}»";
+            $hallazgos[] = "`version` is not semver: «{$meta->version}»";
         }
         if (!is_subclass_of($clase, PluginInterface::class)) {
-            $hallazgos[] = "«{$clase}» no implementa PluginInterface";
+            $hallazgos[] = "«{$clase}» does not implement PluginInterface";
         }
 
         return [

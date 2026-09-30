@@ -145,14 +145,14 @@ final class MakeHandler
     {
         $que = \is_string($input['what'] ?? null) ? $input['what'] : '';
         if (!isset($this->generadores[$que])) {
-            return $this->falla("artefacto desconocido «{$que}» — válidos: " . implode(', ', $this->kinds()));
+            return $this->falla("unknown artifact «{$que}» — valid: " . implode(', ', $this->kinds()));
         }
 
         $plugin = \is_string($input['plugin'] ?? null) ? $input['plugin'] : '';
         $nombre = \is_string($input['name'] ?? null) ? $input['name'] : '';
         $identificador = '/^[A-Za-z_][A-Za-z0-9_]*$/';
         if (preg_match($identificador, $plugin) !== 1 || preg_match($identificador, $nombre) !== 1) {
-            return $this->falla('«plugin» y «name» tienen que casar ^[A-Za-z_][A-Za-z0-9_]*$ — sin diagonales ni puntos');
+            return $this->falla('«plugin» and «name» must match ^[A-Za-z_][A-Za-z0-9_]*$ — no slashes, no dots');
         }
 
         // `plugin` es el artefacto DESTINO en cinco de los seis; en `plugin` el destino ES el artefacto,
@@ -192,7 +192,7 @@ final class MakeHandler
             && (new ConventionDetector())->detect($root) === Flavor::Legacy
             && !is_dir($root . '/plugins/' . $plugin)
         ) {
-            return $this->falla("no existe el directorio del plugin «{$plugin}» en plugins/ — créalo antes de andamiar dentro");
+            return $this->falla("there is no plugin directory «{$plugin}» under plugins/ — create it before scaffolding inside it");
         }
 
         $contexto = new GenerationContext($plugin, $nombre, [

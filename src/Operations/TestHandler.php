@@ -88,7 +88,7 @@ final class TestHandler
         $binario = $root . '/vendor/bin/phpunit';
         if (!is_file($binario)) {
             return $this->falla(
-                "phpunit no está instalado en {$root} — corre: composer require --dev phpunit/phpunit",
+                "phpunit is not installed in {$root} — run: composer require --dev phpunit/phpunit",
             );
         }
 
@@ -108,7 +108,7 @@ final class TestHandler
         if ($ruta !== '') {
             $absoluta = $this->dentroDe($root, $ruta);
             if ($absoluta === null) {
-                return $this->falla("«path» tiene que existir y quedar dentro de {$root} — recibí: {$ruta}");
+                return $this->falla("«path» must exist and stay inside {$root} — received: {$ruta}");
             }
             $comando[] = $absoluta;
         }
@@ -151,7 +151,7 @@ final class TestHandler
             return $salida;
         }
 
-        return "[…salida recortada, se conservan los últimos " . self::MAX_OUTPUT . " caracteres…]\n"
+        return "[…output trimmed, keeping the last " . self::MAX_OUTPUT . " characters…]\n"
             . substr($salida, -self::MAX_OUTPUT);
     }
 

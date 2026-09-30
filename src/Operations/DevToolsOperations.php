@@ -111,14 +111,14 @@ final class DevToolsOperations implements CommandProvider
                 handler: [MakeHandler::class, 'handle'],
                 inputSchema: [
                     'type' => 'object',
-                    // El ORDEN importa: un materializador de terminal expone lo obligatorio como
-                    // argumentos posicionales en el orden en que se declaran las propiedades, así que
-                    // `make entity MiPlugin Cosa` se escribe como cualquiera esperaría.
+                    // ORDER matters: a terminal materializer exposes the required properties as
+                    // positional arguments in the order they are declared, so `make entity MyPlugin Thing`
+                    // is typed the way anyone would expect.
                     'properties' => [
                         'what' => [
                             'type' => 'string',
                             'enum' => ['plugin', 'controller', 'entity', 'crud', 'resource', 'service', 'tool', 'test'],
-                            'description' => 'Qué artefacto. Con «plugin», los dos nombres siguientes son el mismo',
+                            'description' => 'Which artifact. With «plugin», the next two names are the same',
                         ],
                         'plugin' => [
                             'type' => 'string',
@@ -126,36 +126,36 @@ final class DevToolsOperations implements CommandProvider
                             'x-milpa-source' => ['tool' => 'artifact:list', 'key' => 'plugin'],
                         ],
                         'name' => ['type' => 'string', 'description' => 'The class to create. For what=plugin, the same name as plugin'],
-                        'fields' => ['type' => 'string', 'description' => 'Campos `nombre:tipo` separados por coma; prefija el nombre con `?` para nullable. Ej: «titulo:string, ?fecha_limite:date, hecha:bool». Tipos escalares: string, text, int, bigint, bool, float, decimal, date, datetime, json. «enum:<Clase>(caso1,caso2,…)» GENERA el enum con esas cases (ej. «prioridad:enum:PrioridadTarea(baja,media,alta)») — declara siempre las cases para no dejar un enum colgando. «belongsTo:<Entidad>» crea una relación solo para entity con --flavor=legacy; resource runtime la degrada a <entidad>_id:int y la nombra en las postcondiciones; entity y crud runtime deben recibir el id escalar directamente (ej. «lista:int»). Mods de escalar: longitud («titulo:string:120») o precisión en decimal («precio:decimal:10,2»). NO existe «default» ni «:nullable» — la nullabilidad es el `?`'],
-                        'route' => ['type' => 'string', 'description' => 'Ruta base, para controller y crud'],
-                        'methods' => ['type' => 'string', 'description' => 'Métodos separados por coma, para controller'],
-                        'table' => ['type' => 'string', 'description' => 'Nombre de tabla, para entity, crud y resource'],
-                        // LA VISIBILIDAD SE DECLARA O NO EXISTE (greenhouse decisions/0460). No se
-                        // infiere del NOMBRE de un campo: un generador que adivina intención por
-                        // vocabulario se parchea por instancia y nunca cierra.
+                        'fields' => ['type' => 'string', 'description' => 'Comma-separated `name:type` fields, named in English; prefix the name with `?` for nullable. E.g. «title:string, ?due_date:date, done:bool». Scalar types: string, text, int, bigint, bool, float, decimal, date, datetime, json. «enum:<Class>(case1,case2,…)» GENERATES the enum with those cases (e.g. «priority:enum:TaskPriority(low,medium,high)») — always declare the cases so no enum is left dangling. «belongsTo:<Entity>» creates a relation only for entity with --flavor=legacy; runtime resource degrades it to <entity>_id:int and names it in the postconditions; runtime entity and crud must receive the scalar id directly (e.g. «list_id:int»). Scalar modifiers: length («title:string:120») or decimal precision («price:decimal:10,2»). There is NO «default» and NO «:nullable» — nullability is the `?`'],
+                        'route' => ['type' => 'string', 'description' => 'Base route, for controller and crud'],
+                        'methods' => ['type' => 'string', 'description' => 'Comma-separated methods, for controller'],
+                        'table' => ['type' => 'string', 'description' => 'Table name, for entity, crud and resource'],
+                        // VISIBILITY IS DECLARED OR IT DOES NOT EXIST (greenhouse decisions/0460). It is
+                        // not inferred from a field's NAME: a generator that guesses intent from
+                        // vocabulary gets patched per instance and never closes.
                         // `public_when` AND NOT `public-when`: the CLI normalizes a flag's dashes to
                         // underscores before the schema sees it (Application::tokens()), which is why
                         // `tool_name` is spelled that way too. Declared with a dash, the flag arrived
                         // as an undeclared key and the coercer dropped it — the option existed in the
                         // contract, in the handler and in the generator, and did nothing.
                         'public_when' => ['type' => 'string', 'description' => 'For crud and resource: the BOOL field that decides a row is public. Declaring it bounds the anonymous reads — a stranger sees only rows where it is true, and a draft answers 404 rather than 403, because a 403 confirms the row exists. A caller this app recognised (the `milpa.auth` request attribute) still sees everything. Omit it and every row is public, drafts included.'],
-                        'provides' => ['type' => 'string', 'description' => 'Capacidades que ofrece, separadas por coma, para plugin'],
-                        'requires' => ['type' => 'string', 'description' => 'Capacidades que necesita, separadas por coma, para plugin'],
+                        'provides' => ['type' => 'string', 'description' => 'Comma-separated capabilities it provides, for plugin'],
+                        'requires' => ['type' => 'string', 'description' => 'Comma-separated capabilities it requires, for plugin'],
                         'interface' => ['type' => 'boolean', 'description' => 'Generate a local <Name>Interface companion for a service. Omit for a plain class; this flag does not select an existing interface.'],
-                        'needs' => ['type' => 'string', 'description' => 'Dependencias que el tool recibe, separadas por coma, para tool'],
-                        'tool_name' => ['type' => 'string', 'description' => 'Nombre con el que se registra el tool, si no el derivado'],
-                        'description' => ['type' => 'string', 'description' => 'Descripción del tool, la que lee un agente'],
-                        'flavor' => ['type' => 'string', 'description' => 'Fuerza la convención: runtime o legacy, si no se detecta'],
-                        'dry_run' => ['type' => 'boolean', 'description' => 'Planea sin escribir nada'],
-                        'no_verify' => ['type' => 'boolean', 'description' => 'No corras la verificación'],
-                        'force' => ['type' => 'boolean', 'description' => 'Sobrescribe archivos existentes'],
+                        'needs' => ['type' => 'string', 'description' => 'Comma-separated dependencies the tool receives, for tool'],
+                        'tool_name' => ['type' => 'string', 'description' => 'The name the tool is registered under, instead of the derived one'],
+                        'description' => ['type' => 'string', 'description' => 'The tool description, the one an agent reads'],
+                        'flavor' => ['type' => 'string', 'description' => 'Force the convention: runtime or legacy, when it is not detected'],
+                        'dry_run' => ['type' => 'boolean', 'description' => 'Plan without writing anything'],
+                        'no_verify' => ['type' => 'boolean', 'description' => 'Skip the verification'],
+                        'force' => ['type' => 'boolean', 'description' => 'Overwrite existing files'],
                     ],
                     'required' => ['what', 'plugin', 'name'],
                 ],
                 mutating: true,
 
-                // El objetivo lo nombra el humano (ADR-0044), y lo puso una medición: Q-P20-J midió que
-                // una puerta que muta sin contrato se usa 8/8 veces sobre un objeto que nadie nombró.
+                // The human names the target (ADR-0044), and a measurement put it here: Q-P20-J measured
+                // that a mutating door without a contract is used 8/8 times on an object nobody named.
                 namedTarget: 'plugin',
 
                 // THE DECLARED CONTRACT (greenhouse decisions/0183): what must hold before the run,
@@ -418,9 +418,9 @@ final class DevToolsOperations implements CommandProvider
                 inputSchema: [
                     'type' => 'object',
                     'properties' => [
-                        'filter' => ['type' => 'string', 'description' => 'Corre sólo las pruebas cuyo nombre casa'],
-                        'path' => ['type' => 'string', 'description' => 'Archivo o directorio de pruebas, dentro de la raíz'],
-                        'timeout' => ['type' => 'integer', 'description' => 'Segundos antes de detenerla (por defecto 300)'],
+                        'filter' => ['type' => 'string', 'description' => 'Run only the tests whose name matches'],
+                        'path' => ['type' => 'string', 'description' => 'Test file or directory, inside the app root'],
+                        'timeout' => ['type' => 'integer', 'description' => 'Seconds before it is stopped (default 300)'],
                     ],
                     'required' => [],
                 ],

@@ -225,7 +225,7 @@ final class TestHandlerTest extends TestCase
         self::assertFalse($r['ok']);
         self::assertFalse($r['ran']);
         self::assertNull($doble->comando, 'nunca se corrió ningún comando');
-        self::assertStringContainsString('dentro de', (string) $r['error']);
+        self::assertStringContainsString('stay inside', (string) $r['error']);
     }
 
     /** Una ruta que no existe se rechaza igual: apuntar a la nada no es apuntar dentro. */
@@ -249,7 +249,7 @@ final class TestHandlerTest extends TestCase
         $ruido = str_repeat('x', 20000);
         $r = $this->handler(['exit' => 0, 'output' => $ruido . "\nOK (1 test, 1 assertion)"])->handle([]);
 
-        self::assertStringContainsString('recortada', $r['output']);
+        self::assertStringContainsString('output trimmed', $r['output']);
         self::assertStringContainsString('OK (1 test, 1 assertion)', $r['output'], 'el resumen sobrevive al recorte');
         self::assertLessThan(20000, \strlen($r['output']));
     }

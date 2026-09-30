@@ -75,7 +75,7 @@ final class Repair
     ): array {
         $paquete = trim($paquete);
         if ($paquete === '') {
-            return ['ok' => false, 'error' => 'falta `package`: cuál de las reparaciones que el doctor recomienda'];
+            return ['ok' => false, 'error' => 'missing `package`: which of the repairs the doctor recommends'];
         }
 
         $recomendados ??= self::recommendedPackages($raiz);
@@ -84,11 +84,11 @@ final class Repair
             return [
                 'ok' => false,
                 'error' => $recomendados === []
-                    ? "el diagnóstico no recomienda instalar nada, así que «{$paquete}» no es una reparación"
-                    : "«{$paquete}» no está entre lo que el diagnóstico recomienda",
+                    ? "the diagnosis recommends installing nothing, so «{$paquete}» is not a repair"
+                    : "«{$paquete}» is not among what the diagnosis recommends",
                 // LO QUE SÍ, para que la negativa no sea un callejón.
                 'recommended' => $recomendados,
-                'hint' => 'corre `coa doctor` y usa el paquete que nombra su `action`',
+                'hint' => 'run `coa doctor` and use the package its `action` names',
             ];
         }
 
@@ -125,8 +125,8 @@ final class Repair
                 'ok' => false,
                 'package' => $paquete,
                 'command' => $comando,
-                'error' => "composer terminó en 0 y «{$paquete}» no aparece instalado",
-                'hint' => 'el código de salida es una afirmación del subproceso sobre sí mismo, no sobre esta app',
+                'error' => "composer exited 0 and «{$paquete}» does not appear installed",
+                'hint' => 'the exit code is the subprocess\'s claim about itself, not about this app',
             ];
         }
 
@@ -144,9 +144,9 @@ final class Repair
             'package' => $paquete,
             'command' => $comando,
             'boots' => false,
-            'error' => "el paquete llegó y esta app ya no arranca — «{$paquete}» quedó instalado",
+            'error' => "the package arrived and this app no longer boots — «{$paquete}» stayed installed",
             'boot_error' => implode("\n", \array_slice($salidaArranque, -12)),
-            'hint' => 'corre `coa doctor` para el detalle, o `composer remove ' . $paquete . '` para deshacerlo',
+            'hint' => 'run `coa doctor` for the detail, or `composer remove ' . $paquete . '` to undo it',
         ];
     }
 

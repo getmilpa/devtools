@@ -106,18 +106,21 @@ final class ImplementHandler
     private const MODES = ['start', 'append', 'amend', 'reset', 'finish'];
 
     /**
-     * @param string|null $analyzer       the static-analysis command, or `null` to derive it from
-     *                                    the app (`vendor/bin/phpstan`, when present). Tests
-     *                                    inject a seam here — a gate only verifiable against a
-     *                                    running binary is a gate nobody verifies in practice
-     * @param string|null $behaviorRunner the command that runs one test file, or `null` to derive
-     *                                    it (`vendor/bin/phpunit`, when present) — same seam, same
-     *                                    reason
+     * @param string|null       $analyzer       the static-analysis command, or `null` to derive it from
+     *                                          the app (`vendor/bin/phpstan`, when present). Tests
+     *                                          inject a seam here — a gate only verifiable against a
+     *                                          running binary is a gate nobody verifies in practice
+     * @param string|null       $behaviorRunner the command that runs one test file, or `null` to derive
+     *                                          it (`vendor/bin/phpunit`, when present) — same seam, same
+     *                                          reason
+     * @param ConstructionProbe $construction   asks the booted house to build a routed class — the
+     *                                          request's own act (greenhouse decisions/0541)
      */
     public function __construct(
         private readonly RootResolver $roots = new RootResolver(),
         private readonly ?string $analyzer = null,
         private readonly ?string $behaviorRunner = null,
+        private readonly ConstructionProbe $construction = new ConstructionProbe(),
     ) {
     }
 
@@ -502,6 +505,43 @@ final class ImplementHandler
             ];
         }
 
+        // ── Construction: a class a route names is built the way the request builds it ──────────
+        //
+        // Measured on Rod's first live run (evidence/1071): a controller asking for an interface
+        // nobody registered passed every judge above and turned `GET /blog` into a 500. The house
+        // builds a controller with `$container->get()`; that act, in a booted copy, is the judge.
+        $constructionNote = '';
+        $built = $this->construction->probe($root, $expected . '\\' . $class);
+        if (isset($built['unjudged'])) {
+            $constructionNote = '; construction unjudged — ' . $built['unjudged'];
+        } elseif (($built['built'] ?? null) === true) {
+            $constructionNote = ', construction (' . implode(' and ', $built['routes'] ?? []) . ' builds it through the container)';
+        } elseif (($built['built'] ?? null) === false) {
+            $stable = hash_file('sha256', $file) === hash('sha256', $content);
+            $restored = $this->publishAtomically($file, $previous)
+                && hash_file('sha256', $file) === hash('sha256', $previous);
+
+            return [
+                'ok' => false,
+                'error' => ConstructionProbe::refusal($plugin, $class, $built['routes'] ?? [], $built['error'] ?? '', $built['unresolvable'] ?? []),
+                'diagnostic' => [
+                    'schema' => 'milpa.authoring-diagnostic/v1',
+                    'phase' => 'container',
+                    'subject' => substr($file, \strlen($root) + 1),
+                    'submitted_sha256' => $submitted,
+                    'judged_sha256' => hash('sha256', $content),
+                    'restored_sha256' => hash('sha256', $previous),
+                    'stable_subject' => $stable,
+                    'rolled_back' => $restored,
+                    'result' => [
+                        'routes' => $built['routes'] ?? [],
+                        'error' => $built['error'] ?? '',
+                        'unresolvable' => $built['unresolvable'] ?? [],
+                    ],
+                ],
+            ];
+        }
+
         $verdictNote = '; behavior unjudged — no test declares what this class must do';
         $testFile = $this->testFor($root, $plugin, $class);
         if ($testFile !== null) {
@@ -554,6 +594,7 @@ final class ImplementHandler
             'class' => $expected . '\\' . $class,
             'verified' => 'syntax, strict_types, class, namespace'
                 . ($analyzer !== null ? ' and static conformance' : ' — static analysis unavailable in this app')
+                . $constructionNote
                 . $verdictNote,
         ];
     }

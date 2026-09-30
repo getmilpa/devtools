@@ -47,7 +47,7 @@ final class Board
     public function add(Check $check): self
     {
         if (isset($this->checks[$check->id])) {
-            throw new \InvalidArgumentException("Ya hay una comprobación con el id '{$check->id}'.");
+            throw new \InvalidArgumentException("There is already a check with id '{$check->id}'.");
         }
 
         $this->checks[$check->id] = $check;
@@ -72,7 +72,7 @@ final class Board
         foreach ($this->checks as $id => $check) {
             $readings[$id] = \in_array($check->cost, $affordable, true)
                 ? $check->run()
-                : new Reading($check, Outcome::Unmeasured, 0, 'no se corrió: costo ' . $check->cost->value);
+                : new Reading($check, Outcome::Unmeasured, 0, 'not run: cost ' . $check->cost->value);
         }
 
         return new BoardState($readings, $this->blockers($readings));
@@ -122,7 +122,7 @@ final class Board
             foreach ($check->needs as $need) {
                 if (!isset($this->checks[$need])) {
                     throw new \InvalidArgumentException(
-                        "'{$check->id}' depende de '{$need}', que no existe en el tablero.",
+                        "'{$check->id}' depends on '{$need}', which is not on the board.",
                     );
                 }
             }

@@ -102,7 +102,7 @@ final class BoardTest extends TestCase
         $state = $board->run([Cost::Fast]);
 
         self::assertSame(Outcome::Unmeasured, $state->readings['cara']->outcome);
-        self::assertStringContainsString('costo slow', (string) $state->readings['cara']->note);
+        self::assertStringContainsString('cost slow', (string) $state->readings['cara']->note);
         self::assertCount(1, $state->done());
     }
 
@@ -203,7 +203,7 @@ final class BoardTest extends TestCase
         $board = new Board([$this->check('publicar', Outcome::Failed, needs: ['fantasma'])]);
 
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage("'publicar' depende de 'fantasma'");
+        $this->expectExceptionMessage("'publicar' depends on 'fantasma'");
 
         $board->run();
     }

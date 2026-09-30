@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 namespace Milpa\DevTools\Make\Generators;
 
+use Milpa\DevTools\Make\ControllerDependencies;
 use Milpa\DevTools\Make\ConventionDetector;
 use Milpa\DevTools\Make\Flavor;
 use Milpa\DevTools\Make\GenerationContext;
@@ -141,6 +142,7 @@ final class ControllerGenerator implements GeneratorInterface
         $contents = $this->renderer->render($this->stubs->path('controller.runtime.php.stub'), [
             'namespace' => $controllerNamespace,
             'class' => $context->name,
+            'plugin' => $context->plugin,
         ]);
 
         $files = [new PlannedFile($controllerPath, $contents)];
@@ -160,7 +162,9 @@ final class ControllerGenerator implements GeneratorInterface
             verifyKind: 'controller',
             verifyTarget: $controllerNamespace . '\\' . $context->name,
             flavor: Flavor::Runtime,
-            guidance: $guidance,
+            // Whichever way the route was wired, the answer ends with where a controller with
+            // collaborators is registered — the step 1071's resident was never told (0541).
+            guidance: $guidance . "\n" . ControllerDependencies::guidance($context->plugin, $context->name),
         );
     }
 

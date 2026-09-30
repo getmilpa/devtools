@@ -86,7 +86,7 @@ final class ProcessRunnerTest extends TestCase
         $tardo = microtime(true) - $inicio;
 
         self::assertSame(124, $r['exit']);
-        self::assertStringContainsString('se detuvo', $r['output']);
+        self::assertStringContainsString('was stopped', $r['output']);
         self::assertLessThan(10, $tardo, 'lo mató de verdad, no esperó los 30 segundos');
     }
 

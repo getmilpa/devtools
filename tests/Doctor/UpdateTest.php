@@ -156,7 +156,7 @@ final class UpdateTest extends TestCase
 
         self::assertFalse($r['ok']);
         self::assertFalse($r['boots']);
-        self::assertStringContainsString('ya no arranca', (string) $r['error']);
+        self::assertStringContainsString('no longer boots', (string) $r['error']);
         self::assertStringContainsString('MILPA_CAPABILITY_MISSING', (string) $r['boot_error']);
         self::assertStringContainsString('composer.lock', (string) $r['hint'], 'dice dónde está el punto de retorno');
     }

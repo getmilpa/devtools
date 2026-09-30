@@ -104,6 +104,45 @@ final class ControllerGeneratorRuntimeTest extends TestCase
     }
 
     /**
+     * WHAT 1071 NEVER TOLD THE RESIDENT (greenhouse decisions/0541): a controller with collaborators is
+     * registered in its plugin's boot(). The rule travels in the answer of `make controller` — whichever
+     * way the route was wired — with the plugin's and the controller's own names, and in the class it
+     * writes, which is what the resident reads before it fills the body.
+     */
+    public function testMakeControllerSaysWhereAControllerWithDependenciesIsRegistered(): void
+    {
+        $fresh = (new ControllerGenerator())->generate(new GenerationContext(
+            plugin: 'Blog',
+            name: 'BlogController',
+            options: ['flavor' => 'runtime', 'path' => '/blog'],
+            root: $this->root,
+        ));
+        mkdir($this->root . '/second/src/Plugins/Blog', 0o775, true);
+        file_put_contents($this->root . '/second/src/Plugins/Blog/Blog.php', $this->fileNamed($fresh->files, 'Blog.php')->contents);
+        $existing = (new ControllerGenerator())->generate(new GenerationContext(
+            plugin: 'Blog',
+            name: 'FeedController',
+            options: ['flavor' => 'runtime', 'path' => '/feed'],
+            root: $this->root . '/second',
+        ));
+
+        foreach (['new plugin' => $fresh, 'existing plugin' => $existing] as $arm => $result) {
+            $guidance = (string) $result->guidance;
+            $class = $arm === 'new plugin' ? 'BlogController' : 'FeedController';
+            $this->assertStringContainsString("first register it under its type in Blog::boot()", $guidance, $arm);
+            $this->assertStringContainsString('$this->container->registerService(SomeInterface::class, $instance)', $guidance, $arm);
+            $this->assertStringContainsString("then implement {$class}", $guidance, $arm);
+            $this->assertStringContainsString('not the container', $guidance, $arm);
+        }
+        $this->assertStringContainsString('`plugins.register` with name=Blog', (string) $fresh->guidance, 'the rule replaced the registration step');
+
+        $code = $this->fileNamed($fresh->files, 'BlogController.php')->contents;
+        $this->assertStringContainsString('Blog::boot()', $code);
+        $this->assertStringContainsString('registerService(SomeInterface::class, $instance)', $code);
+        $this->assertPhpLints($code);
+    }
+
+    /**
      * The fail-closed control (P0.2): a plugin file the surgeon REFUSES — no class declaration — is
      * the only case left where the route lands as guidance, and the guidance NAMES the file and the
      * reason, with the fully-qualified entry so following it needs no import edits.

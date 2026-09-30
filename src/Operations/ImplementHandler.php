@@ -517,6 +517,7 @@ final class ImplementHandler
         } elseif (($built['built'] ?? null) === true) {
             $constructionNote = ', construction (' . implode(' and ', $built['routes'] ?? []) . ' builds it through the container)';
         } elseif (($built['built'] ?? null) === false) {
+            $stable = hash_file('sha256', $file) === hash('sha256', $content);
             $restored = $this->publishAtomically($file, $previous)
                 && hash_file('sha256', $file) === hash('sha256', $previous);
 
@@ -530,6 +531,7 @@ final class ImplementHandler
                     'submitted_sha256' => $submitted,
                     'judged_sha256' => hash('sha256', $content),
                     'restored_sha256' => hash('sha256', $previous),
+                    'stable_subject' => $stable,
                     'rolled_back' => $restored,
                     'result' => [
                         'routes' => $built['routes'] ?? [],

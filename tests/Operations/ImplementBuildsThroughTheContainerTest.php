@@ -178,6 +178,7 @@ final class ImplementBuildsThroughTheContainerTest extends TestCase
         self::assertSame($before, (string) file_get_contents($this->controllerFile()), 'the refused body stayed on disk');
         self::assertSame('container', $r['diagnostic']['phase'] ?? null);
         self::assertTrue($r['diagnostic']['rolled_back'] ?? false);
+        self::assertTrue($r['diagnostic']['stable_subject'] ?? false, 'the judged body was the submitted one');
         self::assertSame([['parameter' => '$container', 'type' => 'Milpa\\Interfaces\\Di\\DIContainerInterface']], $r['diagnostic']['result']['unresolvable'] ?? null);
     }
 

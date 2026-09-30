@@ -91,9 +91,9 @@ final class Loose {}');
 
         self::assertFalse($result['ok']);
         self::assertSame([
-            'el atributo no declara `name`',
-            '`version` no es semver: «one»',
-            "«{$this->namespace}\\Plugins\\Loose\\Loose» no implementa PluginInterface",
+            'the attribute declares no `name`',
+            '`version` is not semver: «one»',
+            "«{$this->namespace}\\Plugins\\Loose\\Loose» does not implement PluginInterface",
         ], $result['checks']['attribute']['findings']);
     }
 
@@ -104,7 +104,7 @@ final class Loose {}');
         $result = $this->validate('Bare');
 
         self::assertFalse($result['ok']);
-        self::assertStringContainsString('no declara `#[PluginMetadata]`', (string) $result['error']);
+        self::assertStringContainsString('declares no `#[PluginMetadata]`', (string) $result['error']);
     }
 
     public function testAFileWhoseClassDoesNotLoadSaysSo(): void
@@ -114,7 +114,7 @@ final class Loose {}');
         $result = $this->validate('Misnamed');
 
         self::assertFalse($result['ok']);
-        self::assertStringContainsString('existe en disco y no se puede cargar', (string) $result['error']);
+        self::assertStringContainsString('exists on disk and cannot be loaded', (string) $result['error']);
     }
 
     public function testAPluginThatIsNowhereIsAnswerNotAnException(): void
@@ -122,11 +122,11 @@ final class Loose {}');
         $result = $this->validate('Ghost');
 
         self::assertFalse($result['ok']);
-        self::assertStringContainsString('no encontré el plugin «Ghost»', (string) $result['error']);
+        self::assertStringContainsString('plugin «Ghost» not found', (string) $result['error']);
     }
 
     public function testNoTargetIsAskedFor(): void
     {
-        self::assertStringContainsString('falta `target`', (string) $this->validate('')['error']);
+        self::assertStringContainsString('missing `target`', (string) $this->validate('')['error']);
     }
 }

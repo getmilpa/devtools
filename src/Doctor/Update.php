@@ -125,9 +125,9 @@ final class Update
             'command' => $comando,
             'changed' => $cambios,
             'boots' => false,
-            'error' => 'las versiones se actualizaron y esta app ya no arranca',
+            'error' => 'the versions were updated and this app no longer boots',
             'boot_error' => implode("\n", \array_slice($salidaArranque, -12)),
-            'hint' => 'el punto de retorno es composer.lock: `git checkout composer.lock && composer install`',
+            'hint' => 'the way back is composer.lock: `git checkout composer.lock && composer install`',
         ];
     }
 

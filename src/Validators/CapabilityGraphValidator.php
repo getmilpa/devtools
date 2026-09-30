@@ -167,7 +167,7 @@ final class CapabilityGraphValidator
             }
         }
 
-        return '(sin identidad)';
+        return '(no identity)';
     }
 
     /**

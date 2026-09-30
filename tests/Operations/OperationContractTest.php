@@ -65,7 +65,7 @@ final class OperationContractTest extends TestCase
             ],
             'plugin-directory-exists' => [
                 ['what' => 'entity', 'plugin' => 'Missing', 'name' => 'Task'],
-                'no existe el directorio del plugin',
+                'there is no plugin directory',
                 function (): void {
                     // `milpa.json` is the self-declaring legacy signal ConventionDetector honours.
                     file_put_contents($this->root . '/milpa.json', '{}');
@@ -106,7 +106,7 @@ final class OperationContractTest extends TestCase
             ],
             'path-inside-root' => [
                 ['path' => '../../../etc'],
-                'dentro de',
+                'stay inside',
                 function (): void {
                     mkdir($this->root . '/vendor/bin', 0o775, true);
                     file_put_contents($this->root . '/vendor/bin/phpunit', "#!/bin/sh\n");

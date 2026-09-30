@@ -58,7 +58,7 @@ class ProcessRunner
         $descriptores = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
         $proceso = @proc_open($command, $descriptores, $tuberias, $cwd);
         if (!\is_resource($proceso)) {
-            return ['exit' => 127, 'output' => 'no se pudo arrancar el proceso'];
+            return ['exit' => 127, 'output' => 'the process could not be started'];
         }
 
         stream_set_blocking($tuberias[1], false);
@@ -96,7 +96,7 @@ class ProcessRunner
         if ($vencido) {
             return [
                 'exit' => 124,
-                'output' => $salida . "\n\n[el proceso pasó de {$timeoutSeconds}s y se detuvo]",
+                'output' => $salida . "\n\n[the process went past {$timeoutSeconds}s and was stopped]",
             ];
         }
 

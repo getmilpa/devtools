@@ -545,7 +545,7 @@ final class DevToolsOperationsTest extends TestCase
 
         self::assertFalse($r['ok']);
         self::assertSame([], $r['files']);
-        self::assertStringContainsString('sin diagonales ni puntos', (string) $r['error']);
+        self::assertStringContainsString('no slashes, no dots', (string) $r['error']);
     }
 
     /** Un artefacto desconocido contesta con los que sí existen. */
@@ -732,7 +732,7 @@ final class DevToolsOperationsTest extends TestCase
         // declara y no se puede cargar. Antes contestaba «no hay manifiesto» sobre una convención que
         // no usa manifiestos, mandando a alguien a crear un archivo equivocado.
         self::assertFalse($r['ok']);
-        self::assertStringContainsString('no se puede cargar', (string) $r['error']);
+        self::assertStringContainsString('cannot be loaded', (string) $r['error']);
         self::assertStringNotContainsString('no hay manifiesto', (string) $r['error']);
     }
 

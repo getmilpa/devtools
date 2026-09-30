@@ -62,7 +62,7 @@ final class RepairTest extends TestCase
         $r = Repair::apply($this->raiz, 'vendor/lo-que-sea', recomendados: ['milpa/mcp-server']);
 
         self::assertFalse($r['ok']);
-        self::assertStringContainsString('no está entre lo que el diagnóstico recomienda', (string) $r['error']);
+        self::assertStringContainsString('is not among what the diagnosis recommends', (string) $r['error']);
         self::assertSame(['milpa/mcp-server'], $r['recommended'], 'la negativa no es un callejón');
     }
 
@@ -72,7 +72,7 @@ final class RepairTest extends TestCase
         $r = Repair::apply($this->raiz, 'milpa/mcp-server', recomendados: []);
 
         self::assertFalse($r['ok']);
-        self::assertStringContainsString('no recomienda instalar nada', (string) $r['error']);
+        self::assertStringContainsString('recommends installing nothing', (string) $r['error']);
     }
 
     /** En seco enseña el comando exacto y no toca nada. */
@@ -116,7 +116,7 @@ final class RepairTest extends TestCase
         );
 
         self::assertFalse($r['ok']);
-        self::assertStringContainsString('no aparece instalado', (string) $r['error']);
+        self::assertStringContainsString('does not appear installed', (string) $r['error']);
     }
 
     /**
@@ -143,7 +143,7 @@ final class RepairTest extends TestCase
 
         self::assertFalse($r['ok']);
         self::assertFalse($r['boots']);
-        self::assertStringContainsString('ya no arranca', (string) $r['error']);
+        self::assertStringContainsString('no longer boots', (string) $r['error']);
         self::assertStringContainsString('MILPA_CAPABILITY_MISSING', (string) $r['boot_error']);
         self::assertStringContainsString('composer remove', (string) $r['hint'], 'y cómo deshacerlo');
     }

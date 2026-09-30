@@ -62,14 +62,14 @@ final readonly class AppDoctor
             if (!class_exists($clase)) {
                 // El fallo más común de todos, y el que un mensaje de arranque nunca alcanza a
                 // nombrar: la clase está declarada y no se puede cargar.
-                $ilegibles[] = "{$clase} — declarado y no se puede cargar (¿autoload? ¿namespace?)";
+                $ilegibles[] = "{$clase} — declared and cannot be loaded (autoload? namespace?)";
 
                 continue;
             }
 
             $atributos = (new \ReflectionClass($clase))->getAttributes(PluginMetadata::class);
             if ($atributos === []) {
-                $ilegibles[] = "{$clase} — sin #[PluginMetadata], así que el kernel no lo puede bootear";
+                $ilegibles[] = "{$clase} — no #[PluginMetadata], so the kernel cannot boot it";
 
                 continue;
             }
@@ -93,7 +93,7 @@ final readonly class AppDoctor
             // problema.
             return new DoctorReport(
                 plugins: $this->resumen($registros),
-                unreadable: [...$ilegibles, 'un manifiesto está malformado: ' . $e->getMessage()],
+                unreadable: [...$ilegibles, 'a manifest is malformed: ' . $e->getMessage()],
                 graphCloses: false,
             );
         }

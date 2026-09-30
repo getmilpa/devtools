@@ -65,7 +65,7 @@ final class AppDoctorTest extends TestCase
 
         self::assertFalse($reporte->ok());
         self::assertCount(1, $reporte->unreadable);
-        self::assertStringContainsString('no se puede cargar', $reporte->unreadable[0]);
+        self::assertStringContainsString('cannot be loaded', $reporte->unreadable[0]);
     }
 
     /** Una clase sin `#[PluginMetadata]` también: el kernel no la puede bootear y hay que decirlo. */

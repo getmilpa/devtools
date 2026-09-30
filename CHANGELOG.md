@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.41.1](https://github.com/getmilpa/devtools/compare/v0.41.0...v0.41.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* **implement,make:** a routed controller builds through the house's container before it lands; make speaks English ([#133](https://github.com/getmilpa/devtools/issues/133)) ([de6a4d2](https://github.com/getmilpa/devtools/commit/de6a4d2c352adbf7e81dccb0e63c2eb36023c93a))
+
 ## [0.41.0](https://github.com/getmilpa/devtools/compare/v0.40.3...v0.41.0) (2026-09-29)
 
 

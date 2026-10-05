@@ -355,7 +355,7 @@ final class ImplementHandler
         $root = rtrim($this->roots->resolve(), '/');
         // The same file `implement` would land on: a plugin's class, or its test. A judge is edited like
         // any class — an edit that could not see it sent the caller to `make`, which refuses a file that
-        // exists (greenhouse evidence/1081 D2, decisions/0569).
+        // exists (greenhouse evidence/1081 D2, decisions/0571).
         $file = self::scaffold($root, $plugin, $class);
         if ($file === null) {
             return ['ok' => false, 'error' => self::unscaffolded($plugin, $class, 'editing')];

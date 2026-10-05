@@ -107,7 +107,7 @@ final class DevToolsOperations implements CommandProvider
                     // different afterwards, even though nothing boots until someone declares it.
                     subject: Subject::Executable,
                 ),
-                description: 'Scaffold a framework artifact (plugin, controller, entity, crud, resource, service, tool or test) and verify it',
+                description: 'Scaffold a framework artifact (plugin, page, controller, entity, crud, resource, service, tool or test) and verify it. A page a visitor reads is what=page: it scaffolds the public entity and answers with `next`, the screen:declare call that serves it at its route with no HTML of yours',
                 handler: [MakeHandler::class, 'handle'],
                 inputSchema: [
                     'type' => 'object',
@@ -117,7 +117,7 @@ final class DevToolsOperations implements CommandProvider
                     'properties' => [
                         'what' => [
                             'type' => 'string',
-                            'enum' => ['plugin', 'controller', 'entity', 'crud', 'resource', 'service', 'tool', 'test'],
+                            'enum' => ['plugin', 'page', 'controller', 'entity', 'crud', 'resource', 'service', 'tool', 'test'],
                             'description' => 'Which artifact. With «plugin», the next two names are the same',
                         ],
                         'plugin' => [
@@ -125,9 +125,12 @@ final class DevToolsOperations implements CommandProvider
                             'description' => 'Target plugin directory: one identifier ^[A-Za-z_][A-Za-z0-9_]*$, no paths. Use an existing directory when adding artifacts. When scaffolding a NEW plugin, use exactly the name the task gives it: no suffix is added. Write scopes are granted per this name (plugins.<plugin>:write).',
                             'x-milpa-source' => ['tool' => 'artifact:list', 'key' => 'plugin'],
                         ],
-                        'name' => ['type' => 'string', 'description' => 'The class to create. For what=plugin, the same name as plugin'],
+                        'name' => ['type' => 'string', 'description' => 'The class to create. For what=plugin, the same name as plugin. For what=page, the screen: lowercase letters and digits, e.g. blog'],
                         'fields' => ['type' => 'string', 'description' => 'Comma-separated `name:type` fields, named in English; prefix the name with `?` for nullable. E.g. «title:string, ?due_date:date, done:bool». Scalar types: string, text, int, bigint, bool, float, decimal, date, datetime, json. «enum:<Class>(case1,case2,…)» GENERATES the enum with those cases (e.g. «priority:enum:TaskPriority(low,medium,high)») — always declare the cases so no enum is left dangling. «belongsTo:<Entity>» creates a relation only for entity with --flavor=legacy; runtime resource degrades it to <entity>_id:int and names it in the postconditions; runtime entity and crud must receive the scalar id directly (e.g. «list_id:int»). Scalar modifiers: length («title:string:120») or decimal precision («price:decimal:10,2»). There is NO «default» and NO «:nullable» — nullability is the `?`'],
-                        'route' => ['type' => 'string', 'description' => 'Base route, for controller and crud'],
+                        'route' => ['type' => 'string', 'description' => 'Base route, for page, controller and crud: a literal path such as /blog, no parameters. Refused where a screen is already mounted'],
+                        'returns' => ['type' => 'string', 'enum' => ['page', 'data'], 'description' => 'Required for controller: what its GET route returns. page: a page a visitor reads — no controller is written, the answer is what=page; data: an API'],
+                        'entity' => ['type' => 'string', 'description' => 'For page: the entity whose public rows it lists, e.g. Post. With fields it is scaffolded; without, it must exist and declare PUBLIC_WHEN'],
+                        'columns' => ['type' => 'string', 'description' => 'For page: comma-separated fields it shows, in order — the first is the title, the second the body. Default with fields: every field that is not a bool'],
                         'methods' => ['type' => 'string', 'description' => 'Comma-separated methods, for controller'],
                         'table' => ['type' => 'string', 'description' => 'Table name, for entity, crud and resource'],
                         // VISIBILITY IS DECLARED OR IT DOES NOT EXIST (greenhouse decisions/0460). It is
@@ -138,7 +141,7 @@ final class DevToolsOperations implements CommandProvider
                         // `tool_name` is spelled that way too. Declared with a dash, the flag arrived
                         // as an undeclared key and the coercer dropped it — the option existed in the
                         // contract, in the handler and in the generator, and did nothing.
-                        'public_when' => ['type' => 'string', 'description' => 'For crud and resource: the BOOL field that decides a row is public. Declaring it bounds the anonymous reads — a stranger sees only rows where it is true, and a draft answers 404 rather than 403, because a 403 confirms the row exists. A caller this app recognised (the `milpa.auth` request attribute) still sees everything. Omit it and every row is public, drafts included.'],
+                        'public_when' => ['type' => 'string', 'description' => 'For entity, crud, resource and page: a screen can only be bound to an entity that declares it. For crud and resource: the BOOL field that decides a row is public. Declaring it bounds the anonymous reads — a stranger sees only rows where it is true, and a draft answers 404 rather than 403, because a 403 confirms the row exists. A caller this app recognised (the `milpa.auth` request attribute) still sees everything. Omit it and every row is public, drafts included.'],
                         'provides' => ['type' => 'string', 'description' => 'Comma-separated capabilities it provides, for plugin'],
                         'requires' => ['type' => 'string', 'description' => 'Comma-separated capabilities it requires, for plugin'],
                         'interface' => ['type' => 'boolean', 'description' => 'Generate a local <Name>Interface companion for a service. Omit for a plain class; this flag does not select an existing interface.'],

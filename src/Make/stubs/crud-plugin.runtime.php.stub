@@ -84,33 +84,33 @@ final class {{class}} implements PluginInterface, RouteProviderInterface
     {
         return [
             new Route(
-                path: '/{{table}}',
+                path: '{{base}}',
                 methods: HttpMethod::GET,
                 name: '{{table}}_index',
                 handler: new HandlerReference({{controllerClass}}::class, 'index'),
             ),
             new Route(
-                path: '/{{table}}/{id}',
+                path: '{{base}}/{id}',
                 methods: HttpMethod::GET,
                 name: '{{table}}_show',
                 handler: new HandlerReference({{controllerClass}}::class, 'show'),
             ),
             new Route(
-                path: '/{{table}}',
+                path: '{{base}}',
                 methods: HttpMethod::POST,
                 name: '{{table}}_create',
                 middleware: [{{gateClass}}::class],
                 handler: new HandlerReference({{controllerClass}}::class, 'create'),
             ),
             new Route(
-                path: '/{{table}}/{id}',
+                path: '{{base}}/{id}',
                 methods: HttpMethod::PUT,
                 name: '{{table}}_update',
                 middleware: [{{gateClass}}::class],
                 handler: new HandlerReference({{controllerClass}}::class, 'update'),
             ),
             new Route(
-                path: '/{{table}}/{id}',
+                path: '{{base}}/{id}',
                 methods: HttpMethod::DELETE,
                 name: '{{table}}_delete',
                 middleware: [{{gateClass}}::class],

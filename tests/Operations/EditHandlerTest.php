@@ -15,6 +15,7 @@ declare(strict_types=1);
 namespace Milpa\DevTools\Tests\Operations;
 
 use Milpa\DevTools\Operations\EditHandler;
+use Milpa\DevTools\Operations\ImplementHandler;
 use Milpa\DevTools\Support\RootResolver;
 use PHPUnit\Framework\TestCase;
 
@@ -172,5 +173,37 @@ final class EditHandlerTest extends TestCase
 
         self::assertFalse($r['ok']);
         self::assertStringContainsString('make', $r['error']);
+    }
+
+    /**
+     * A plugin's test is a class of the plugin, and `edit` lands on it like `implement` does.
+     *
+     * Measured twice with a real resident (greenhouse evidence/1081 D2, 1101): `edit PostControllerTest`
+     * answered «scaffold it first with `make`» about a file `make` had already written — once after a
+     * person had been asked to confirm that very edit. A hint toward a door that refuses is not a hint.
+     */
+    public function testAPluginsTestClassIsEditedWhereItIs(): void
+    {
+        $test = $this->raiz . '/tests/Plugins/Demo/GreeterServiceTest.php';
+        mkdir(\dirname($test), 0o775, true);
+        file_put_contents($test, "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Tests\\Plugins\\Demo;\n\n"
+            . "final class GreeterServiceTest\n{\n    public const EXPECTED = 'hola';\n}\n");
+
+        $r = $this->edit([['find' => "'hola'", 'replace' => "'bye'"]], 'GreeterServiceTest');
+
+        self::assertTrue($r['ok'], $r['error'] ?? '');
+        self::assertSame('tests/Plugins/Demo/GreeterServiceTest.php', $r['file']);
+        self::assertStringContainsString("EXPECTED = 'bye'", (string) file_get_contents($test));
+        self::assertStringContainsString('this class IS a judge', $r['verified']);
+        self::assertSame($test, ImplementHandler::scaffold($this->raiz, 'Demo', 'GreeterServiceTest'));
+    }
+
+    /** «scaffold it first with `make`» is said only about a class no tree of the plugin declares. */
+    public function testTheHintTowardMakeIsOnlyForAClassNothingDeclares(): void
+    {
+        self::assertNull(ImplementHandler::scaffold($this->raiz, 'Demo', 'Nobody'));
+        self::assertNull(ImplementHandler::scaffold($this->raiz, 'Absent', 'GreeterService'));
+        self::assertSame($this->edit([['find' => 'a', 'replace' => 'b']], 'Nobody')['error'], ImplementHandler::unscaffolded('Demo', 'Nobody', 'editing'));
+        self::assertNotNull(ImplementHandler::scaffold($this->raiz . '/', 'Demo', 'GreeterService'));
     }
 }

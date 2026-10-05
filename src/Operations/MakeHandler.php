@@ -15,6 +15,7 @@ declare(strict_types=1);
 namespace Milpa\DevTools\Operations;
 
 use Milpa\DevTools\Make\ConventionDetector;
+use Milpa\DevTools\Make\FieldParser;
 use Milpa\DevTools\Make\Flavor;
 use Milpa\DevTools\Make\GenerationContext;
 use Milpa\DevTools\Make\GeneratorInterface;
@@ -27,8 +28,10 @@ use Milpa\DevTools\Make\Generators\ServiceGenerator;
 use Milpa\DevTools\Make\Generators\TestGenerator;
 use Milpa\DevTools\Make\Generators\ToolGenerator;
 use Milpa\DevTools\Make\PostconditionVerifier;
+use Milpa\DevTools\Make\Surface;
 use Milpa\DevTools\Make\VerifyRunner;
 use Milpa\DevTools\Make\WriteGuard;
+use Milpa\DevTools\Support\ComposerAutoload;
 use Milpa\DevTools\Support\RootResolver;
 use Milpa\Plugin\Contracts\BootWitnessInterface;
 use Milpa\Plugin\Operations\PluginManagementPlugin;
@@ -71,6 +74,9 @@ use Milpa\Plugin\Operations\PluginManagementPlugin;
  */
 final class MakeHandler
 {
+    /** The one artifact no generator writes whole: a page is a screen, declared by the house ({@see Surface}). */
+    private const PAGE = 'page';
+
     /** @var array<string, GeneratorInterface> */
     private array $generadores = [];
 
@@ -88,13 +94,18 @@ final class MakeHandler
     /** @var \Closure(string): ?BootWitnessInterface */
     private readonly \Closure $witnessFor;
 
+    /** @var \Closure(string): array<string, string> the routes declared screens are mounted at in a house, each with its screen */
+    private readonly \Closure $mounted;
+
     /**
      * @param null|\Closure(string): ?BootWitnessInterface $witnessFor the house's witness for a root — a test's seam;
      *                                                                 null asks milpa/plugin for the host's by name
      */
-    public function __construct(private readonly RootResolver $roots = new RootResolver(), ?\Closure $witnessFor = null)
+    public function __construct(private readonly RootResolver $roots = new RootResolver(), ?\Closure $witnessFor = null, ?\Closure $mounted = null)
     {
         $this->witnessFor = $witnessFor ?? static fn (string $root): ?BootWitnessInterface => PluginManagementPlugin::hostWitness($root);
+        // Route → screen mounted there, for a root. Null: the booted house is asked ({@see ServedRoutes}).
+        $this->mounted = $mounted ?? static fn (string $root): array => (new ServedRoutes())->mountedScreens($root);
         $generadores = [
             new ControllerGenerator(),
             new EntityGenerator(),
@@ -117,7 +128,7 @@ final class MakeHandler
      */
     public function kinds(): array
     {
-        return array_keys($this->generadores);
+        return [...array_keys($this->generadores), self::PAGE];
     }
 
     /**
@@ -144,7 +155,7 @@ final class MakeHandler
     public function handle(array $input): array
     {
         $que = \is_string($input['what'] ?? null) ? $input['what'] : '';
-        if (!isset($this->generadores[$que])) {
+        if (!isset($this->generadores[$que]) && $que !== self::PAGE) {
             return $this->falla("unknown artifact «{$que}» — valid: " . implode(', ', $this->kinds()));
         }
 
@@ -193,6 +204,47 @@ final class MakeHandler
             && !is_dir($root . '/plugins/' . $plugin)
         ) {
             return $this->falla("there is no plugin directory «{$plugin}» under plugins/ — create it before scaffolding inside it");
+        }
+
+        // WHAT THE ROUTE SERVES IS ASKED BEFORE ANYTHING IS SCAFFOLDED (greenhouse decisions/0567, slice BV-2).
+        $runtime = (new ConventionDetector())->detect($root, \is_string($input['flavor'] ?? null) ? $input['flavor'] : null) === Flavor::Runtime;
+        $surface = null;
+        if ($que === self::PAGE || ($runtime && \in_array($que, ['controller', 'crud'], true))) {
+            $typed = $input['route'] ?? $input['path'] ?? null;
+            try {
+                $route = \is_string($typed) && trim($typed) !== '' ? Surface::route($typed) : null;
+            } catch (\InvalidArgumentException $e) {
+                return $this->falla($e->getMessage());
+            }
+            if ($que === self::PAGE) {
+                return $this->page($input, $root, $plugin, $nombre, $route);
+            }
+            if ($que === 'controller') {
+                $route ??= '/' . strtolower(str_replace('Controller', '', $nombre));
+                $returns = $input['returns'] ?? null;
+                if ($returns === null || $returns === '') {
+                    return $this->falla("«{$nombre}» would serve GET {$route}, and `make` does not know what that route returns. Say it: "
+                        . 'returns=page for a page a visitor reads — it is declared as a screen, with the house\'s look and no HTML of yours — '
+                        . 'or returns=data for an API.') + ['surface' => Surface::undeclared($route)];
+                }
+                if (!\in_array($returns, Surface::RETURNS, true)) {
+                    return $this->falla('«returns» is page or data');
+                }
+                if ($returns === 'page') {
+                    return $this->page($input, $root, $plugin, strtolower(str_replace('Controller', '', $nombre)), $route);
+                }
+                $surface = Surface::data($route);
+            } else {
+                $route ??= '/' . (\is_string($input['table'] ?? null) && $input['table'] !== '' ? $input['table'] : strtolower($nombre) . 's');
+            }
+            $taken = $this->screenMountedAt($root, $route);
+            if ($taken !== null) {
+                return $this->falla($this->mountedRefusal($route, $taken));
+            }
+            $input['route'] = $route;
+            if ($que === 'controller') {
+                $input['path'] = $route;
+            }
         }
 
         $contexto = new GenerationContext($plugin, $nombre, [
@@ -383,6 +435,9 @@ final class MakeHandler
         $guia = $verifyOk ? $resultado->guidance : null;
 
         $salida = ['ok' => $ok, 'files' => $archivos, 'verify' => $verify, 'guidance' => $guia] + $said;
+        if ($surface !== null) {
+            $salida['surface'] = $surface;
+        }
         if ($postcondiciones !== null) {
             $salida['postconditions'] = $postcondiciones;
         }
@@ -391,6 +446,107 @@ final class MakeHandler
         }
 
         return $salida;
+    }
+
+    /**
+     * A page a visitor reads (greenhouse decisions/0567 §3, slice BV-2): `make` scaffolds what is its own — the
+     * public entity, when `fields` are given — and answers with the surface in fields and the exact next call,
+     * `screen:declare … route=…`. It writes no controller and declares no screen: see {@see Surface}.
+     *
+     * @param array<string, mixed> $input
+     *
+     * @return array<string, mixed>
+     */
+    private function page(array $input, string $root, string $plugin, string $screen, ?string $route): array
+    {
+        if (preg_match('/^[a-z][a-z0-9]*$/D', $screen) !== 1) {
+            return $this->falla("a page is named like its screen: lowercase letters and digits, starting with a letter — «{$screen}» is not");
+        }
+        if ($route === null) {
+            return $this->falla('a page needs a route: route=/' . $screen);
+        }
+        $entity = \is_string($input['entity'] ?? null) ? trim($input['entity']) : '';
+        if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $entity) !== 1) {
+            return $this->falla('a page needs «entity»: the entity whose public rows it lists, e.g. entity=Post');
+        }
+        $taken = $this->screenMountedAt($root, $route);
+        if ($taken !== null && $taken !== $screen) {
+            return $this->falla($this->mountedRefusal($route, $taken));
+        }
+        $columns = array_values(array_filter(array_map('trim', explode(',', \is_string($input['columns'] ?? null) ? $input['columns'] : '')), static fn (string $c): bool => $c !== ''));
+        $made = ['ok' => true, 'files' => [], 'verify' => null];
+
+        if (\is_string($input['fields'] ?? null) && trim($input['fields']) !== '') {
+            try {
+                $fields = (new FieldParser())->parse($input['fields'], false);
+            } catch (\Throwable $e) {
+                return $this->falla($e->getMessage());
+            }
+            $kinds = [];
+            foreach ($fields as $field) {
+                $kinds[$field->name] = $field->phpType;
+            }
+            $publicWhen = \is_string($input['public_when'] ?? null) ? trim($input['public_when']) : '';
+            if ($publicWhen === '') {
+                return $this->falla("a page needs «public_when»: the bool field of {$entity} that decides a row is public — a page shows only those rows");
+            }
+            if (($kinds[$publicWhen] ?? null) !== 'bool') {
+                return $this->falla("«{$publicWhen}» is not a bool field of {$entity}; its bool fields are: "
+                    . (implode(', ', array_keys($kinds, 'bool', true)) ?: 'none'));
+            }
+            foreach ($columns as $column) {
+                if (!isset($kinds[$column])) {
+                    return $this->falla("«{$column}» is not a field of {$entity}; its fields are: " . implode(', ', array_keys($kinds)));
+                }
+            }
+            $columns = $columns !== [] ? $columns : array_keys(array_filter($kinds, static fn (string $kind): bool => $kind !== 'bool'));
+            if ($columns === []) {
+                return $this->falla("a page needs «columns»: {$entity} has no field to show besides its bools");
+            }
+            $made = $this->handle(['what' => 'entity', 'name' => $entity] + array_intersect_key($input, array_flip(
+                ['plugin', 'fields', 'table', 'public_when', 'flavor', 'dry_run', 'no_verify', 'force'],
+            )));
+            if ($made['ok'] !== true) {
+                return $made;
+            }
+        } else {
+            [, $appDir] = ComposerAutoload::primaryNamespace($root) ?? ['App', 'src'];
+            $file = $root . '/' . trim($appDir, '/') . '/Plugins/' . $plugin . '/Entities/' . $entity . '.php';
+            if (!is_file($file)) {
+                return $this->falla("plugin {$plugin} has no entity «{$entity}»: name one it has, or pass fields=… and public_when=… to scaffold it");
+            }
+            if ($columns === []) {
+                return $this->falla("a page needs «columns»: the fields of {$entity} it shows, in order, e.g. columns=\"title, body\"");
+            }
+            if (!str_contains((string) file_get_contents($file), 'const PUBLIC_WHEN')) {
+                return $this->falla("{$entity} declares no PUBLIC_WHEN, so nothing of it is public and no page can list it: "
+                    . 'scaffold it with public_when=<its bool field> (make what=entity … force=true), or add that constant');
+            }
+        }
+        $next = Surface::next($screen, $route, $plugin, $entity, $columns);
+
+        return ['guidance' => "The page is NOT served yet: `make` scaffolds, and a screen is declared by the house. Once what this call scaffolded has landed in the house, run `next` exactly as given — "
+            . "{$next['operation']} declares the screen «{$screen}» and mounts it at GET {$route}, with the house's look and no HTML of yours."]
+            + $made
+            + ['surface' => Surface::visual($route, $screen, $taken === $screen), 'next' => $next];
+    }
+
+    /** The screen mounted at a route in this house, or null. */
+    private function screenMountedAt(string $root, string $route): ?string
+    {
+        foreach (($this->mounted)($root) as $mounted => $screen) {
+            if (Surface::key((string) $mounted) === Surface::key($route)) {
+                return $screen;
+            }
+        }
+
+        return null;
+    }
+
+    private function mountedRefusal(string $route, string $screen): string
+    {
+        return 'GET /' . Surface::key($route) . " is where the screen «{$screen}» is mounted: one route serves one thing. Scaffold at another "
+            . "route, or forget that screen first (screen:forget name={$screen}).";
     }
 
     /**

@@ -57,6 +57,9 @@ final class CrudGenerator implements GeneratorInterface
 {
     private StubLocator $stubs;
 
+    /** The base path of the five routes of the generation in course: the given `route`, or `/<table>`. */
+    private string $base = '';
+
     public function __construct(
         private readonly EntityGenerator $entityGenerator = new EntityGenerator(),
         private readonly StubRenderer $renderer = new StubRenderer(),
@@ -143,6 +146,11 @@ final class CrudGenerator implements GeneratorInterface
         $controllerPath = $context->root . '/' . $appDir . '/Plugins/' . $context->plugin
             . '/Controllers/' . $controllerClass . '.php';
         $table = $context->option('table') ?? strtolower($context->name) . 's';
+        // THE ROUTE IT IS GIVEN (greenhouse decisions/0567, slice BV-2). `route` was declared in the contract of
+        // `make` for crud and never read: `make crud … route=/blog` left `/posts`, and a goal that writes
+        // `GET /blog` met a 404 (measured twice, greenhouse evidence/1088 and 1101). The table still names the
+        // store and the route NAMES — what the wiring and the postconditions look for — and only the paths move.
+        $this->base = $context->option('route') ?? '/' . $table;
 
         $controllerContents = $this->renderer->render($this->stubs->path('crud-controller.runtime.php.stub'), [
             'namespace' => $controllerNamespace,
@@ -305,6 +313,7 @@ final class CrudGenerator implements GeneratorInterface
             'gateNamespace' => self::gateNamespace($pluginNamespace),
             'gateClass' => self::gateClass($context->name),
             'table' => $table,
+            'base' => $this->base,
         ]);
 
         $guidance = PluginRegistration::guidance($context->plugin) . " Its boot() builds the {$context->name} repository "
@@ -388,7 +397,7 @@ final class CrudGenerator implements GeneratorInterface
                 . "— add this to its boot() (fully qualified, no imports needed):\n\n{$bootSnippet}";
         }
 
-        $routesSnippet = $this->fullyQualifiedRoutesSnippet($controllerFqcn, $table, $gateFqcn);
+        $routesSnippet = $this->fullyQualifiedRoutesSnippet($controllerFqcn, $table, $gateFqcn, $this->base);
         if (str_contains($merged, "'{$table}_index'")) {
             // all 5 names travel together in every shape this engine emits; index stands for the set.
             //
@@ -629,19 +638,19 @@ final class CrudGenerator implements GeneratorInterface
     }
 
     /** The 5 REST route entries (one per line, trailing commas), fully qualified inline. */
-    private function fullyQualifiedRoutesSnippet(string $controllerFqcn, string $table, string $gateFqcn): string
+    private function fullyQualifiedRoutesSnippet(string $controllerFqcn, string $table, string $gateFqcn, string $base): string
     {
         $behind = "middleware: [\\{$gateFqcn}::class], ";
 
-        return "new \\Milpa\\Http\\Routing\\Route(path: '/{$table}', methods: \\Milpa\\Http\\HttpMethod::GET, "
+        return "new \\Milpa\\Http\\Routing\\Route(path: '{$base}', methods: \\Milpa\\Http\\HttpMethod::GET, "
             . "name: '{$table}_index', handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'index')),\n"
-            . "new \\Milpa\\Http\\Routing\\Route(path: '/{$table}/{id}', methods: \\Milpa\\Http\\HttpMethod::GET, "
+            . "new \\Milpa\\Http\\Routing\\Route(path: '{$base}/{id}', methods: \\Milpa\\Http\\HttpMethod::GET, "
             . "name: '{$table}_show', handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'show')),\n"
-            . "new \\Milpa\\Http\\Routing\\Route(path: '/{$table}', methods: \\Milpa\\Http\\HttpMethod::POST, "
+            . "new \\Milpa\\Http\\Routing\\Route(path: '{$base}', methods: \\Milpa\\Http\\HttpMethod::POST, "
             . "name: '{$table}_create', " . $behind . "handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'create')),\n"
-            . "new \\Milpa\\Http\\Routing\\Route(path: '/{$table}/{id}', methods: \\Milpa\\Http\\HttpMethod::PUT, "
+            . "new \\Milpa\\Http\\Routing\\Route(path: '{$base}/{id}', methods: \\Milpa\\Http\\HttpMethod::PUT, "
             . "name: '{$table}_update', " . $behind . "handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'update')),\n"
-            . "new \\Milpa\\Http\\Routing\\Route(path: '/{$table}/{id}', methods: \\Milpa\\Http\\HttpMethod::DELETE, "
+            . "new \\Milpa\\Http\\Routing\\Route(path: '{$base}/{id}', methods: \\Milpa\\Http\\HttpMethod::DELETE, "
             . "name: '{$table}_delete', " . $behind . "handler: new \\Milpa\\Http\\Routing\\HandlerReference(\\{$controllerFqcn}::class, 'delete')),";
     }
 

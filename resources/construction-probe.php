@@ -76,6 +76,20 @@ try {
     $say(['booted' => false, 'reason' => $relative($e::class . ': ' . $e->getMessage())]);
 }
 
+// WITH NO CLASS TO BUILD, THE HOUSE IS ASKED FOR ITS WHOLE ROUTE TABLE (greenhouse decisions/0567, slice BV-2):
+// what `make` needs to know before scaffolding a route — whether something already answers there.
+if ($class === '') {
+    $served = [];
+    foreach ($kernel->router()->routes() as $route) {
+        $served[] = [
+            'method' => implode('|', array_map(static fn (\Milpa\Http\HttpMethod $m): string => $m->value, $route->methods)),
+            'path' => $route->path,
+            'name' => (string) ($route->name ?? ''),
+        ];
+    }
+    $say(['booted' => true, 'served' => $served]);
+}
+
 $routes = [];
 foreach ($kernel->router()->routes() as $route) {
     if ($route->handler !== null && ltrim($route->handler->controller, '\\') === ltrim($class, '\\')) {

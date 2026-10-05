@@ -1,6 +1,18 @@
 # Changelog
 
 
+## [0.42.0](https://github.com/getmilpa/devtools/compare/v0.41.1...v0.42.0) (2026-10-05)
+
+
+### Features
+
+* make asks what a route serves, and a page is answered with the declaration to run (greenhouse decisions/0571) ([#136](https://github.com/getmilpa/devtools/issues/136)) ([8b510f1](https://github.com/getmilpa/devtools/commit/8b510f1417cf14a1f1fbc1c7b0d8d6a02045b9c4))
+
+
+### Bug Fixes
+
+* **edit:** edit lands on a plugin's test class, where implement already does ([#135](https://github.com/getmilpa/devtools/issues/135)) ([c5f556f](https://github.com/getmilpa/devtools/commit/c5f556ffc802305f3ff9324b5afc6e99a890f049))
+
 ## [0.41.1](https://github.com/getmilpa/devtools/compare/v0.41.0...v0.41.1) (2026-09-30)
 
 

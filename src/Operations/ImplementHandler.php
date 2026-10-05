@@ -202,16 +202,11 @@ final class ImplementHandler
         }
 
         $root = rtrim($this->roots->resolve(), '/');
-        $tree = $root . '/src/Plugins/' . $plugin;
-        if (!is_dir($tree)) {
+        if (!is_dir($root . '/src/Plugins/' . $plugin)) {
             return ['ok' => false, 'error' => "this app has no plugin «{$plugin}» under src/Plugins"];
         }
 
-        // The path is DERIVED, never received: the class is searched inside the plugin's own trees
-        // only — its sources, and its tests. A judge is a class too, and the TDD flow depends on it
-        // landing through the SAME gate before the body it will judge.
-        $file = $this->fileFor($tree, $class)
-            ?? (is_dir($root . '/tests/Plugins/' . $plugin) ? $this->fileFor($root . '/tests/Plugins/' . $plugin, $class) : null);
+        $file = self::scaffold($root, $plugin, $class);
         if ($file === null) {
             if (\in_array($mode, ['append', 'amend', 'reset', 'finish'], true)) {
                 return [
@@ -221,10 +216,7 @@ final class ImplementHandler
                 ];
             }
 
-            return [
-                'ok' => false,
-                'error' => "no scaffold declares class «{$class}» in plugin «{$plugin}» — filling is not creating; scaffold it first with `make`",
-            ];
+            return ['ok' => false, 'error' => self::unscaffolded($plugin, $class, 'filling')];
         }
 
         // The staging sibling: a partial writes HERE, never to the live scaffold the app boots.
@@ -361,11 +353,12 @@ final class ImplementHandler
             return ['ok' => false, 'error' => 'plugin and class are bare identifiers, no paths'];
         }
         $root = rtrim($this->roots->resolve(), '/');
-        $tree = $root . '/src/Plugins/' . $plugin;
-        // Current-file edit has always targeted plugin sources, not test classes.
-        $file = is_dir($tree) ? $this->fileFor($tree, $class) : null;
+        // The same file `implement` would land on: a plugin's class, or its test. A judge is edited like
+        // any class — an edit that could not see it sent the caller to `make`, which refuses a file that
+        // exists (greenhouse evidence/1081 D2, decisions/0571).
+        $file = self::scaffold($root, $plugin, $class);
         if ($file === null) {
-            return ['ok' => false, 'error' => "no scaffold declares class «{$class}» in plugin «{$plugin}» — editing is not creating; scaffold it first with `make`"];
+            return ['ok' => false, 'error' => self::unscaffolded($plugin, $class, 'editing')];
         }
         $edited = EditPairs::apply((string) file_get_contents($file), $edits);
         if (!$edited['ok']) {
@@ -734,8 +727,35 @@ final class ImplementHandler
         return $result;
     }
 
+    /**
+     * The file `implement` and `edit` land a class on, or `null` when no scaffold declares it.
+     *
+     * The path is DERIVED, never received: the class is searched inside the plugin's own trees only — its
+     * sources, then its tests. A judge is a class too, and the TDD flow depends on it landing through the
+     * SAME gate before the body it will judge. Public so a host can know, before it asks a person to
+     * confirm a call, that the call has nothing to land on.
+     */
+    public static function scaffold(string $root, string $plugin, string $class): ?string
+    {
+        $root = rtrim($root, '/');
+        foreach (['/src/Plugins/', '/tests/Plugins/'] as $tree) {
+            $file = is_dir($root . $tree . $plugin) ? self::fileFor($root . $tree . $plugin, $class) : null;
+            if ($file !== null) {
+                return $file;
+            }
+        }
+
+        return null;
+    }
+
+    /** What a caller is told when nothing declares the class: `make` is the only door that creates one. */
+    public static function unscaffolded(string $plugin, string $class, string $act): string
+    {
+        return "no scaffold declares class «{$class}» in plugin «{$plugin}» — {$act} is not creating; scaffold it first with `make`";
+    }
+
     /** The one file inside the plugin's tree whose basename is the class — or null. */
-    private function fileFor(string $tree, string $class): ?string
+    private static function fileFor(string $tree, string $class): ?string
     {
         $iterator = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($tree, \FilesystemIterator::SKIP_DOTS),

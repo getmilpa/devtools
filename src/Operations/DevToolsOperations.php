@@ -362,7 +362,7 @@ final class DevToolsOperations implements CommandProvider
                     escalatesOn: ['class'],
                     subject: Subject::Executable,
                 ),
-                description: 'Edit a current scaffolded class by exact find-replace pairs, verified before it lands. '
+                description: 'Edit a current scaffolded class — a plugin class or its test — by exact find-replace pairs, verified before it lands. '
                     . 'Total find + replace input is capped at ' . ImplementHandler::MAX_INLINE_BYTES
                     . ' bytes; the current file may be larger. Existing multipart staging is untouched',
                 handler: [EditHandler::class, 'handle'],

@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [0.43.0](https://github.com/getmilpa/devtools/compare/v0.42.0...v0.43.0) (2026-10-07)
+
+
+### Features
+
+* make scaffolds an operation ([#140](https://github.com/getmilpa/devtools/issues/140)) ([3421dd0](https://github.com/getmilpa/devtools/commit/3421dd0717623dacfde748bfa66d020545f679f9))
+* the skill about make travels with make ([#141](https://github.com/getmilpa/devtools/issues/141)) ([430a905](https://github.com/getmilpa/devtools/commit/430a90582341b24cf05ac180637c7b30145cf0a6))
+
 ## [0.42.0](https://github.com/getmilpa/devtools/compare/v0.41.1...v0.42.0) (2026-10-05)
 
 

@@ -69,8 +69,24 @@ final class TheAuthoringSkillTravelsWithMakeTest extends TestCase
         [, $body] = $this->parts();
 
         self::assertStringContainsString('`make what=operation`', $body);
-        self::assertMatchesRegularExpression('/entity=\w+/', $body, 'and how an operation reaches the rows it works over');
+        self::assertStringContainsString('entity=<Entity>', $body, 'and how an operation reaches the rows it works over');
         self::assertStringContainsString('operation=domain:verb', $body);
+    }
+
+    /**
+     * AN EXAMPLE IS NOT THE EXAM (greenhouse decisions/0594 §5). This skill said which verbs were operations by
+     * listing the verbs of the very request a resident was being measured with, and showed an entity by naming
+     * that request's own. What a resident reads here names the FORM of an argument — a placeholder — never a domain.
+     */
+    public function testEveryArgumentItShowsIsAFormNotADomain(): void
+    {
+        [, $body] = $this->parts();
+        preg_match_all('/\b(entity|operation|plugin|name|fields|needs)=([^\s`,)]+)/', $body, $shown, PREG_SET_ORDER);
+
+        self::assertNotSame([], $shown, 'the control: the skill shows arguments');
+        foreach ($shown as [$whole, , $value]) {
+            self::assertMatchesRegularExpression('/^(<[A-Za-z]+>|domain:verb)$/', $value, "«{$whole}» names a domain: show the form");
+        }
     }
 
     public function testItSaysThatATrialIsPromotedBeforeWhatItScaffoldedIsFilled(): void

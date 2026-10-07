@@ -11,7 +11,8 @@ description: >-
 #       uses: getmilpa/devtools/.github/actions/message-gate@main
 #
 # The workflow that calls it needs `pull-requests: read`, and has to run on `edited` pull requests
-# too — the title and the body become the squashed commit, and they can change after the last push.
+# too: the title becomes the squashed commit, the body stays public beside it, and both can change
+# after the last push.
 # The rule, its admitted identities and its controls live in tools/message-gate.php and
 # tests/Tools/ACommitSpeaksForItsAuthorAloneTest.php.
 

@@ -148,7 +148,7 @@ final class DevToolsOperations implements CommandProvider
                         'needs' => ['type' => 'string', 'description' => 'Comma-separated classes it receives: the constructor of a tool, the run() of an operation'],
                         'tool_name' => ['type' => 'string', 'description' => 'The name the tool is registered under, instead of the derived one'],
                         'description' => ['type' => 'string', 'description' => 'For tool and operation: what it does, the sentence an agent reads'],
-                        'operation' => ['type' => 'string', 'description' => 'For operation: the name it is called by, domain:verb in lower case, e.g. herramientas:prestar. Its scope is the domain: <domain>:write, or <domain>:read with reads. For operation, fields are its input (string, int, bool or float)'],
+                        'operation' => ['type' => 'string', 'description' => 'For operation: the name it is called by, domain:verb in lower case. Its scope is the domain: <domain>:write, or <domain>:read with reads. For operation, fields are its input (string, int, bool or float)'],
                         'reads' => ['type' => 'boolean', 'description' => 'For operation: it changes nothing. Omit it and the operation is declared as one that writes'],
                         'flavor' => ['type' => 'string', 'description' => 'Force the convention: runtime or legacy, when it is not detected'],
                         'dry_run' => ['type' => 'boolean', 'description' => 'Plan without writing anything'],

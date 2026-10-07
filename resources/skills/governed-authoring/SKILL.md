@@ -56,11 +56,11 @@ unjudged when no test declares what the class must do*. A body with no test is s
    | an HTTP client | `make what=controller`, `crud` or `resource` | routes |
    | other code in this plugin | `make what=service`, `entity` | a class the plugin wires |
 
-   **"Register, list, lend, return" are things to work with: they are operations**, one `make` each. A
-   controller serves a route; it does not give an agent anything to call. An operation over stored rows
-   names their entity (`entity=Herramienta`) and its `run()` receives that entity's repository; its
-   `operation=domain:verb` names it and fixes the scope it spends (`domain:write`, or `domain:read` with
-   `reads=true`); `fields` are its input.
+   **What a request asks the house to be able to DO is a verb, and each verb is an operation**, one
+   `make` each. A controller serves a route; it does not give an agent anything to call. An operation
+   over stored rows names their entity (`entity=<Entity>`) and its `run()` receives that entity's
+   repository; its `operation=domain:verb` names it and fixes the scope it spends (`domain:write`, or
+   `domain:read` with `reads=true`); `fields` are its input.
 
    **Having decided WHAT, do not hand-type what a governed op builds whole.** Hand-author (`implement`,
    below) ONLY the criterion no op can know: the **business rule**, the validation, the **domain

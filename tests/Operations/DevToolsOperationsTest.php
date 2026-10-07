@@ -218,6 +218,20 @@ final class DevToolsOperationsTest extends TestCase
         self::assertStringContainsString('same name as plugin', $name);
     }
 
+    /**
+     * AN EXAMPLE IS NOT THE EXAM (greenhouse decisions/0594 §5). The contract every session reads taught the name
+     * of an operation with an example taken from the request a resident was being measured with — and one run of
+     * six named its operation exactly that. It teaches the FORM of the name, and names no domain.
+     */
+    public function testAnOperationsNameIsTaughtByItsFormNotByADomain(): void
+    {
+        $schema = (new DevToolsOperations())->operations()[1]->inputSchema ?? [];
+        $operation = (string) ($schema['properties']['operation']['description'] ?? '');
+        preg_match_all('/\b[a-z][a-z0-9_-]*[:.][a-z][a-z0-9_-]*\b/', $operation, $named);
+
+        self::assertSame(['domain:verb'], array_values(array_unique($named[0])), 'the form, and nothing that is a name');
+    }
+
     public function testTheRequiredInputsAreDeclaredInTheOrderTheyAreTyped(): void
     {
         $make = (new DevToolsOperations())->operations()[1];

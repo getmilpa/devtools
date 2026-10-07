@@ -176,7 +176,7 @@ final class OperationGenerator implements GeneratorInterface
         $given = trim($given);
         if (preg_match(self::NAME, $given) !== 1) {
             throw new \InvalidArgumentException(
-                "«{$given}» is not an operation name — it is a domain, a separator and a verb, in lower case: herramientas:prestar",
+                "«{$given}» is not an operation name — it is a domain, a separator and a verb, in lower case: domain:verb",
             );
         }
 
@@ -235,7 +235,7 @@ final class OperationGenerator implements GeneratorInterface
         return $entity;
     }
 
-    /** How `run()` names the repository it receives: `Herramienta` → `herramientas`. */
+    /** How `run()` names the repository it receives: `Widget` → `widgets`. */
     private static function repositoryParameter(string $entity): string
     {
         return lcfirst($entity) . 's';
@@ -416,7 +416,7 @@ final class OperationGenerator implements GeneratorInterface
         return $description !== null && trim($description) !== '' ? trim($description) : "{$context->name} operation.";
     }
 
-    /** `PrestarHerramienta` → `prestar-herramienta`. */
+    /** `ShipWidget` → `ship-widget`. */
     private static function kebab(string $value): string
     {
         return strtolower(trim((string) preg_replace('/(?<!^)[A-Z]/', '-$0', str_replace('_', '-', $value)), '-'));

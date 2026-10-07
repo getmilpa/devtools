@@ -156,6 +156,7 @@ final class MakeScaffoldsAnOperationTest extends TestCase
 
         self::assertFalse($made['ok']);
         self::assertStringContainsString('is not an operation name', (string) $made['error']);
+        self::assertStringEndsWith('in lower case: domain:verb', (string) $made['error'], 'it says the form, and names no domain');
         self::assertDirectoryDoesNotExist($this->root . '/src/Plugins/Prestamos');
     }
 

@@ -161,6 +161,19 @@ final class MakeHandler
             return $this->falla("unknown artifact «{$que}» — valid: " . implode(', ', $this->kinds()));
         }
 
+        // A FORM IS NOT A VALUE (greenhouse decisions/0594 §5). The contract shows each argument by its form
+        // — <Entity>, /<path>, <name>:string, domain:verb — and an example gets copied letter for letter
+        // (evidence/1071, B11). A form that arrives as it was shown is answered by name, before anything is
+        // scaffolded: further down it would be refused too, for a reason that says something else.
+        foreach (['plugin', 'name', 'entity', 'route', 'path', 'fields', 'columns', 'public_when', 'operation'] as $argument) {
+            $given = \is_string($input[$argument] ?? null) ? $input[$argument] : '';
+            if (preg_match('/<[^<>\s]+>/', $given, $form) === 1 || $given === 'domain:verb') {
+                $shown = $form[0] ?? $given;
+
+                return $this->falla("«{$given}» is the form the contract shows for «{$argument}», not a value: write the name itself where «{$shown}» is");
+            }
+        }
+
         $plugin = \is_string($input['plugin'] ?? null) ? $input['plugin'] : '';
         $nombre = \is_string($input['name'] ?? null) ? $input['name'] : '';
         $identificador = '/^[A-Za-z_][A-Za-z0-9_]*$/';
@@ -473,7 +486,7 @@ final class MakeHandler
         }
         $entity = \is_string($input['entity'] ?? null) ? trim($input['entity']) : '';
         if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $entity) !== 1) {
-            return $this->falla('a page needs «entity»: the entity whose public rows it lists, e.g. entity=Post');
+            return $this->falla('a page needs «entity»: the entity whose public rows it lists, e.g. entity=<Entity>');
         }
         $taken = $this->screenMountedAt($root, $route);
         if ($taken !== null && $taken !== $screen) {
@@ -522,7 +535,7 @@ final class MakeHandler
                 return $this->falla("plugin {$plugin} has no entity «{$entity}»: name one it has, or pass fields=… and public_when=… to scaffold it");
             }
             if ($columns === []) {
-                return $this->falla("a page needs «columns»: the fields of {$entity} it shows, in order, e.g. columns=\"title, body\"");
+                return $this->falla("a page needs «columns»: the fields of {$entity} it shows, in order, e.g. columns=\"<field>, <field>\"");
             }
             if (!str_contains((string) file_get_contents($file), 'const PUBLIC_WHEN')) {
                 return $this->falla("{$entity} declares no PUBLIC_WHEN, so nothing of it is public and no page can list it: "

@@ -356,7 +356,9 @@ final class DevToolsOperations implements CommandProvider
                 namedTarget: 'class',
                 createsNamedTarget: true,
             ),
-            new Operation(
+            // AN EDIT AMENDS THE CLASS IT NAMES (greenhouse decisions/0596): declared around the contract, not
+            // inside it, because the oldest milpa/command this package runs with cannot carry the declaration.
+            self::amendingItsNamedTarget(new Operation(
                 name: 'edit',
                 effects: new EffectProfile(
                     Mutation::Persistent,
@@ -396,9 +398,13 @@ final class DevToolsOperations implements CommandProvider
                     'required' => ['plugin', 'class', 'edits'],
                 ],
                 mutating: true,
-                // Same contract as implement: the target is THE CLASS, named by the human.
+                // Same contract as implement: the target is THE CLASS, named by the human — or, since greenhouse
+                // decisions/0596, by the session's own record of where that class came from. The record of the
+                // lab's houses: of 34 times a house asked a person to confirm an `edit`, 28 were about a class the
+                // same session had brought into the house. `edit` declares what it does — it amends a class that
+                // exists — and the session's floor reads the rest from facts. It still never creates one.
                 namedTarget: 'class',
-            ),
+            )),
             new Operation(
                 name: 'test',
                 effects: new EffectProfile(
@@ -719,5 +725,33 @@ final class DevToolsOperations implements CommandProvider
                 observableEvidence: 'the found rows in the result: each row is {kind, identity, path?, detail} where detail names a declared operation call that answers in full; an empty found still names the queried kinds',
             ),
         ];
+    }
+    /**
+     * The same operation, declaring that it amends the target it names — where the installed contract can carry it.
+     *
+     * `amendsNamedTarget` was born in a later milpa/command than the oldest this package runs with, and this
+     * `src/` travels with whatever vendor its owner has: a named argument the installed `Operation` does not know
+     * is a fatal error at the moment the catalogue is built. Where the contract cannot carry it, the operation is
+     * returned as it was declared and the session's floor keeps asking — the fail-closed answer an older house
+     * wants anyway.
+     */
+    private static function amendingItsNamedTarget(Operation $operation): Operation
+    {
+        if (!self::contractCarries('amendsNamedTarget')) {
+            return $operation;
+        }
+
+        return new Operation(...array_replace(get_object_vars($operation), ['amendsNamedTarget' => true]));
+    }
+
+    /**
+     * Whether the installed `Operation` has that public property.
+     *
+     * The name arrives as a plain string on purpose: static analysis sees the milpa/command installed HERE and
+     * would rule the question settled, while this code runs against the one its owner installed.
+     */
+    private static function contractCarries(string $property): bool
+    {
+        return property_exists(Operation::class, $property);
     }
 }

@@ -36,7 +36,7 @@ final class ACommitSpeaksForItsAuthorAloneTest extends TestCase
 {
     private const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678';
 
-    /** A release pull request's body after the squash: GitHub wraps it at 72 columns and names the bot. */
+    /** A release as a squash that takes the pull request's body leaves it on main: wrapped at 72 columns, the bot named. */
     private const WRAPPED_RELEASE = <<<'TEXT'
         chore(main): release 1.2.3 (#12)
 

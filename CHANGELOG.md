@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.43.1](https://github.com/getmilpa/devtools/compare/v0.43.0...v0.43.1) (2026-10-07)
+
+
+### Bug Fixes
+
+* an example in what a session reads names the form, not a domain ([#143](https://github.com/getmilpa/devtools/issues/143)) ([7ef03f7](https://github.com/getmilpa/devtools/commit/7ef03f74bcac0929319bee378e377d3edcd4e566))
+
 ## [0.43.0](https://github.com/getmilpa/devtools/compare/v0.42.0...v0.43.0) (2026-10-07)
 
 

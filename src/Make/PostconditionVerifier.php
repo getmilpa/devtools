@@ -64,6 +64,12 @@ final class PostconditionVerifier
     /** The behavioral judge the resource run promised was scaffolded under tests/ (resource). */
     public const TEST_FILE = 'test_file';
 
+    /** The declared operation class `make:operation` promised, checked on disk. */
+    public const OPERATION_FILE = 'operation_file';
+
+    /** The plugin lists the operation in what its `operations()` returns — unlisted, no catalogue shows it. */
+    public const OPERATION_REGISTERED = 'operation_registered';
+
     /** The 3 mutating routes are declared behind a middleware that exists (crud). */
     public const WRITES_GATED = 'writes_gated';
 
@@ -99,6 +105,8 @@ final class PostconditionVerifier
         self::SERVICE_FILE,
         self::SERVICE_REGISTERED,
         self::TEST_FILE,
+        self::OPERATION_FILE,
+        self::OPERATION_REGISTERED,
         self::PLUGIN_REGISTERED,
     ];
     public function __construct(
@@ -111,11 +119,14 @@ final class PostconditionVerifier
      * Builds the {@see PostconditionReport} for a completed `$kind` generation, checking each
      * consequence that `$kind` promised against the tree under `$context->root`.
      *
-     * Kinds other than `entity`/`crud`/`resource` have no filesystem consequences beyond the class
-     * the shape verifier already covers, so they get an empty (always-ok) report.
+     * Kinds other than `entity`/`crud`/`resource`/`operation` have no filesystem consequences beyond the
+     * class the shape verifier already covers, so they get an empty (always-ok) report.
      */
     public function verify(string $kind, GenerationContext $context, Flavor $flavor): PostconditionReport
     {
+        if ($kind === 'operation') {
+            return $this->verifyOperation($context);
+        }
         if ($kind !== 'entity' && $kind !== 'crud' && $kind !== 'resource') {
             return new PostconditionReport([]);
         }
@@ -205,6 +216,36 @@ final class PostconditionVerifier
         $checks[] = $this->pluginRegistered($context, $appNamespace, $appDir);
 
         return new PostconditionReport($checks);
+    }
+
+    /**
+     * Checks a `make:operation`: the declared class, and that its plugin lists it. The second is the one that
+     * matters — a declared operation nobody lists is in no catalogue, so a registration that came back as prose
+     * is an incomplete run (greenhouse decisions/0591).
+     */
+    private function verifyOperation(GenerationContext $context): PostconditionReport
+    {
+        [, $appDir] = $this->appLayout($context->root);
+        $path = $this->pluginDir($context, $appDir) . '/Operations/' . $context->name . '.php';
+        $source = $this->pluginSource($context, $appDir);
+        $listed = $source !== null && Generators\OperationGenerator::lists($source, $context->name);
+        $pluginPath = $this->pluginPath($context, $appDir);
+
+        return new PostconditionReport([
+            new PostconditionCheck(
+                self::OPERATION_FILE,
+                is_file($path),
+                is_file($path) ? "operation declared at {$path}" : "operation file missing: {$path}",
+            ),
+            new PostconditionCheck(
+                self::OPERATION_REGISTERED,
+                $listed,
+                $listed
+                    ? "{$context->name} listed by operations() in {$pluginPath}"
+                    : "{$context->name} is NOT listed — the plugin's operations() must return it"
+                        . $this->autoWireObstacle($context, $appDir),
+            ),
+        ]);
     }
 
     /** The `<Name>Service` class file the resource run promised, checked on disk. */

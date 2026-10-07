@@ -1,0 +1,26 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+{{uses}}
+/**
+ * {{docDescription}}
+ *
+ * THE DECLARATION IS THE CONTRACT. Its name, what it does at worst and the authority it spends are read from the
+ * attributes below; its input is this class's constructor; `run()` receives the services it works through.
+ *
+ * A SCAFFOLD: the declaration is complete and the body is not. Until `run()` is filled it answers `ok: false`.
+ */
+#[Operation(name: '{{operationName}}', description: '{{description}}')]
+{{effect}}
+#[Needs(scopes: ['{{scope}}'])]
+final class {{class}}
+{
+{{constructor}}{{runDoc}}
+    public function run({{collaborators}}): array
+    {
+        return ['ok' => false, 'error' => 'not implemented: {{class}}::run() is a scaffold — fill it with implement'];
+    }
+}

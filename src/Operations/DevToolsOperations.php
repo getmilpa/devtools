@@ -107,7 +107,7 @@ final class DevToolsOperations implements CommandProvider
                     // different afterwards, even though nothing boots until someone declares it.
                     subject: Subject::Executable,
                 ),
-                description: 'Scaffold a framework artifact (plugin, page, controller, entity, crud, resource, service, tool or test) and verify it. A page a visitor reads is what=page: it scaffolds the public entity and answers with `next`, the screen:declare call that serves it at its route with no HTML of yours',
+                description: 'Scaffold a framework artifact (plugin, page, controller, entity, crud, resource, service, operation, tool or test) and verify it. Something an agent, the terminal and MCP WORK WITH is what=operation: it scaffolds a declared operation, registered in its plugin, whose body you then write with implement. A page a visitor reads is what=page: it scaffolds the public entity and answers with `next`, the screen:declare call that serves it at its route with no HTML of yours',
                 handler: [MakeHandler::class, 'handle'],
                 inputSchema: [
                     'type' => 'object',
@@ -117,7 +117,7 @@ final class DevToolsOperations implements CommandProvider
                     'properties' => [
                         'what' => [
                             'type' => 'string',
-                            'enum' => ['plugin', 'page', 'controller', 'entity', 'crud', 'resource', 'service', 'tool', 'test'],
+                            'enum' => ['plugin', 'page', 'controller', 'entity', 'crud', 'resource', 'service', 'operation', 'tool', 'test'],
                             'description' => 'Which artifact. With «plugin», the next two names are the same',
                         ],
                         'plugin' => [
@@ -129,7 +129,7 @@ final class DevToolsOperations implements CommandProvider
                         'fields' => ['type' => 'string', 'description' => 'Comma-separated `name:type` fields, named in English; prefix the name with `?` for nullable. E.g. «title:string, ?due_date:date, done:bool». Scalar types: string, text, int, bigint, bool, float, decimal, date, datetime, json. «enum:<Class>(case1,case2,…)» GENERATES the enum with those cases (e.g. «priority:enum:TaskPriority(low,medium,high)») — always declare the cases so no enum is left dangling. «belongsTo:<Entity>» creates a relation only for entity with --flavor=legacy; runtime resource degrades it to <entity>_id:int and names it in the postconditions; runtime entity and crud must receive the scalar id directly (e.g. «list_id:int»). Scalar modifiers: length («title:string:120») or decimal precision («price:decimal:10,2»). There is NO «default» and NO «:nullable» — nullability is the `?`'],
                         'route' => ['type' => 'string', 'description' => 'Base route, for page, controller and crud: a literal path such as /blog, no parameters. Refused where a screen is already mounted'],
                         'returns' => ['type' => 'string', 'enum' => ['page', 'data'], 'description' => 'Required for controller: what its GET route returns. page: a page a visitor reads — no controller is written, the answer is what=page; data: an API'],
-                        'entity' => ['type' => 'string', 'description' => 'For page: the entity whose public rows it lists, e.g. Post. With fields it is scaffolded; without, it must exist and declare PUBLIC_WHEN'],
+                        'entity' => ['type' => 'string', 'description' => 'For page: the entity whose public rows it lists, e.g. Post. With fields it is scaffolded; without, it must exist and declare PUBLIC_WHEN. For operation: the entity of this plugin whose repository its run() receives'],
                         'columns' => ['type' => 'string', 'description' => 'For page: comma-separated fields it shows, in order — the first is the title, the second the body. Default with fields: every field that is not a bool'],
                         'methods' => ['type' => 'string', 'description' => 'Comma-separated methods, for controller'],
                         'table' => ['type' => 'string', 'description' => 'Table name, for entity, crud and resource'],
@@ -145,9 +145,11 @@ final class DevToolsOperations implements CommandProvider
                         'provides' => ['type' => 'string', 'description' => 'Comma-separated capabilities it provides, for plugin'],
                         'requires' => ['type' => 'string', 'description' => 'Comma-separated capabilities it requires, for plugin'],
                         'interface' => ['type' => 'boolean', 'description' => 'Generate a local <Name>Interface companion for a service. Omit for a plain class; this flag does not select an existing interface.'],
-                        'needs' => ['type' => 'string', 'description' => 'Comma-separated dependencies the tool receives, for tool'],
+                        'needs' => ['type' => 'string', 'description' => 'Comma-separated classes it receives: the constructor of a tool, the run() of an operation'],
                         'tool_name' => ['type' => 'string', 'description' => 'The name the tool is registered under, instead of the derived one'],
-                        'description' => ['type' => 'string', 'description' => 'The tool description, the one an agent reads'],
+                        'description' => ['type' => 'string', 'description' => 'For tool and operation: what it does, the sentence an agent reads'],
+                        'operation' => ['type' => 'string', 'description' => 'For operation: the name it is called by, domain:verb in lower case, e.g. herramientas:prestar. Its scope is the domain: <domain>:write, or <domain>:read with reads. For operation, fields are its input (string, int, bool or float)'],
+                        'reads' => ['type' => 'boolean', 'description' => 'For operation: it changes nothing. Omit it and the operation is declared as one that writes'],
                         'flavor' => ['type' => 'string', 'description' => 'Force the convention: runtime or legacy, when it is not detected'],
                         'dry_run' => ['type' => 'boolean', 'description' => 'Plan without writing anything'],
                         'no_verify' => ['type' => 'boolean', 'description' => 'Skip the verification'],
@@ -194,15 +196,17 @@ final class DevToolsOperations implements CommandProvider
                     new DeclaredCondition(PostconditionVerifier::SERVICE_FILE, 'resource: the service class file exists on disk'),
                     new DeclaredCondition(PostconditionVerifier::SERVICE_REGISTERED, 'resource: the service is registered in the wiring plugin'),
                     new DeclaredCondition(PostconditionVerifier::TEST_FILE, 'resource: the behavioral judge is scaffolded under tests/'),
+                    new DeclaredCondition(PostconditionVerifier::OPERATION_FILE, 'operation: the declared operation class exists on disk'),
+                    new DeclaredCondition(PostconditionVerifier::OPERATION_REGISTERED, 'operation: its plugin lists it in what operations() returns — unlisted, no catalogue shows it'),
                     new DeclaredCondition(PostconditionVerifier::PLUGIN_REGISTERED, 'advisory — entity, crud, resource: the plugin is listed in config/plugins.php; reported, never failing, because activation is the decision make hands to a human'),
                     new DeclaredCondition(PostconditionVerifier::PREFIX_ENUM, 'dynamic — entity, crud, resource: one check per enum a --fields entry referenced, named enum:<Class>; the enum file must resolve on disk'),
                     new DeclaredCondition(PostconditionVerifier::PREFIX_RELATION, 'dynamic advisory — resource: one check per belongsTo field, named relation:<Entity>; names the scalar id column the relation was degraded to'),
                 ],
                 artifacts: [
-                    'the scaffolded files by kind: plugin wiring, entity, controller, service, tool, test scaffold',
-                    'the postcondition report, for entity, crud and resource runs',
+                    'the scaffolded files by kind: plugin wiring, entity, controller, service, operation, tool, test scaffold',
+                    'the postcondition report, for entity, crud, resource and operation runs',
                 ],
-                observableEvidence: 'the files list with per-file actions and, for entity/crud/resource, the postcondition report in the result',
+                observableEvidence: 'the files list with per-file actions and, for entity/crud/resource/operation, the postcondition report in the result',
             ),
             // THE STUBS ARE THE APP'S TO OVERRIDE (greenhouse decisions/0216, point 6): `make` reads
             // <root>/stubs/<name> before the package's copy, and this is how a copy gets there.

@@ -22,6 +22,7 @@ use Milpa\DevTools\Make\GeneratorInterface;
 use Milpa\DevTools\Make\Generators\ControllerGenerator;
 use Milpa\DevTools\Make\Generators\CrudGenerator;
 use Milpa\DevTools\Make\Generators\EntityGenerator;
+use Milpa\DevTools\Make\Generators\OperationGenerator;
 use Milpa\DevTools\Make\Generators\PluginGenerator;
 use Milpa\DevTools\Make\Generators\ResourceGenerator;
 use Milpa\DevTools\Make\Generators\ServiceGenerator;
@@ -114,6 +115,7 @@ final class MakeHandler
             new ResourceGenerator(),
             new ServiceGenerator(),
             new ToolGenerator(),
+            new OperationGenerator(),
             new TestGenerator(),
         ];
         foreach ($generadores as $generador) {
@@ -269,6 +271,10 @@ final class MakeHandler
             'needs' => $input['needs'] ?? null,
             'tool-name' => $input['tool_name'] ?? null,
             'description' => $input['description'] ?? null,
+            // What an operation declares about itself (greenhouse decisions/0591): its name, and that it only reads.
+            'operation' => $input['operation'] ?? null,
+            'reads' => $input['reads'] ?? null,
+            'entity' => $input['entity'] ?? null,
             // `force` NO viaja, y es a propósito.
             //
             // Los generadores compuestos lo leen para otra cosa: reinsertar en un marcador que ya
@@ -414,7 +420,7 @@ final class MakeHandler
             $verifyOk
             && !$ensayo
             && ($input['no_verify'] ?? false) !== true
-            && ($que === 'crud' || $que === 'entity' || $que === 'resource')
+            && ($que === 'crud' || $que === 'entity' || $que === 'resource' || $que === 'operation')
         ) {
             $reporte = (new PostconditionVerifier())->verify($que, $contexto, $resultado->flavor ?? Flavor::Runtime);
             $postcondiciones = $reporte->toArray();

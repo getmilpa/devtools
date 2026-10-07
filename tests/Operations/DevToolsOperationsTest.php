@@ -268,7 +268,7 @@ final class DevToolsOperationsTest extends TestCase
     public function testEveryGeneratorThePackageImplementsIsReachableAndOffered(): void
     {
         // «page» is offered and wired too, though no generator writes it whole: a page is a screen (greenhouse decisions/0567).
-        $esperados = ['controller', 'entity', 'plugin', 'crud', 'resource', 'service', 'tool', 'test', 'page'];
+        $esperados = ['controller', 'entity', 'plugin', 'crud', 'resource', 'service', 'operation', 'tool', 'test', 'page'];
 
         $cableados = (new MakeHandler(new RootResolver($this->raiz)))->kinds();
         sort($cableados);

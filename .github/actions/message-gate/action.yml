@@ -1,0 +1,31 @@
+name: Message gate
+description: >-
+  A commit speaks for its author alone. Reads a pull request's title, body and commits as they are
+  now (or the commits a push added) and refuses a co-author trailer for an identity the house does
+  not list, a generator signature and a session reference.
+
+# The one copy of this gate. Every repository of the family runs it as a step of a job its branch
+# protection already requires:
+#
+#     - name: Message gate (a commit speaks for its author alone)
+#       uses: getmilpa/devtools/.github/actions/message-gate@main
+#
+# The workflow that calls it needs `pull-requests: read`, and has to run on `edited` pull requests
+# too — the title and the body become the squashed commit, and they can change after the last push.
+# The rule, its admitted identities and its controls live in tools/message-gate.php and
+# tests/Tools/ACommitSpeaksForItsAuthorAloneTest.php.
+
+inputs:
+  token:
+    description: Reads the pull request and its commits. Read access is all it needs.
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: A commit speaks for its author alone
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+      run: php "$GITHUB_ACTION_PATH/../../../tools/message-gate.php"

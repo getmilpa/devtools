@@ -174,6 +174,53 @@ final class MakeAsksWhatASurfaceIsTest extends TestCase
         }
     }
 
+    /**
+     * AN EXAMPLE IS NOT THE EXAM (greenhouse decisions/0594 §5). A refusal that says what a page needs shows
+     * the FORM of the argument it asks for — a placeholder where the name goes — and names no entity or field
+     * of its own choosing.
+     */
+    public function testWhatAPageNeedsIsShownByItsForm(): void
+    {
+        $this->make(['what' => 'entity', 'plugin' => 'Blog', 'name' => 'Note', 'fields' => 'text:string, body:text']);
+        $page = ['what' => 'page', 'plugin' => 'Blog', 'name' => 'blog', 'route' => '/blog'];
+
+        $noEntity = $this->make($page);
+        $noColumns = $this->make($page + ['entity' => 'Note']);
+
+        self::assertStringEndsWith('e.g. entity=<Entity>', (string) $noEntity['error']);
+        self::assertStringEndsWith('e.g. columns="<field>, <field>"', (string) $noColumns['error']);
+    }
+
+    /**
+     * A FORM IS NOT A VALUE. The contract shows an argument by its form, and an example is copied letter for
+     * letter (greenhouse evidence/1071, B11). Each form, sent back exactly as the contract shows it, is refused
+     * by name — which argument, and what to write there — and nothing is scaffolded. Two of them used to get
+     * through: fields named «<name>» died later as «class not found», and «domain:verb» became an operation.
+     */
+    public function testAFormCopiedToTheLetterIsAnsweredByNameAndWritesNothing(): void
+    {
+        $this->make(['what' => 'entity', 'plugin' => 'Blog', 'name' => 'Note', 'fields' => 'text:string, shown:bool', 'public_when' => 'shown']);
+        $before = $this->tree();
+        $page = ['what' => 'page', 'plugin' => 'Blog', 'name' => 'notes', 'route' => '/notes', 'entity' => 'Note', 'columns' => 'text'];
+
+        foreach ([
+            'fields' => ['what' => 'entity', 'plugin' => 'Blog', 'name' => 'Other', 'fields' => '<name>:string, ?<name>:date, <name>:bool'],
+            'name' => ['what' => 'entity', 'plugin' => 'Blog', 'name' => '<Name>', 'fields' => 'text:string'],
+            'entity' => ['entity' => '<Entity>'] + $page,
+            'route' => ['route' => '/<path>'] + $page,
+            'columns' => ['columns' => '<field>, <field>'] + $page,
+            'operation' => ['what' => 'operation', 'plugin' => 'Blog', 'name' => 'DoIt', 'operation' => 'domain:verb'],
+        ] as $argument => $input) {
+            $refused = $this->make($input);
+
+            self::assertFalse($refused['ok'], $argument);
+            self::assertStringContainsString("is the form the contract shows for «{$argument}», not a value", (string) $refused['error'], $argument);
+            self::assertSame($before, $this->tree(), "the form of «{$argument}» wrote something");
+        }
+
+        self::assertTrue($this->make($page)['ok'], 'the control: the same page, with names where the forms were, is scaffolded');
+    }
+
     public function testAPageDoesNotOverwriteAnEntityThatIsAlreadyThere(): void
     {
         $this->make(['what' => 'entity', 'plugin' => 'Blog', 'name' => 'Post', 'fields' => 'title:string, body:text']);

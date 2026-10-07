@@ -46,13 +46,16 @@ final class TheModelReadsEnglishTest extends TestCase
         self::assertSame([], $spanish, 'the model reads Spanish here');
     }
 
-    /** The example the resident copied is the one that has to be English. */
+    /**
+     * The example the resident copied is the one that has to be English — and, since a resident copies an
+     * example letter for letter, it shows the form of a field and no field of its own (decisions/0594 §5).
+     */
     public function testTheFieldsExampleIsEnglish(): void
     {
         $make = array_values(array_filter((new DevToolsOperations())->operations(), static fn ($o): bool => $o->name === 'make'))[0];
         $fields = (string) ($make->inputSchema['properties']['fields']['description'] ?? '');
 
-        self::assertStringContainsString('title:string, ?due_date:date, done:bool', $fields);
+        self::assertStringContainsString('<name>:string, ?<name>:date, <name>:bool', $fields);
         self::assertStringNotContainsString('titulo', $fields);
     }
 

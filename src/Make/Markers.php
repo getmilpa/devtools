@@ -56,6 +56,12 @@ final class Markers
      */
     public const TOOL_PROMPTS = 'coa:tool-prompts';
 
+    /**
+     * Inside `operations(): array`'s return list: `Milpa\Command\Operation` entries —
+     * {@see Generators\OperationGenerator} inserts here.
+     */
+    public const OPERATIONS = 'coa:operations';
+
     /** A static catalog of marker names — never instantiated. */
     private function __construct()
     {

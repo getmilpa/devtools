@@ -1,0 +1,64 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use {{operationNamespace}}\{{operationClass}};
+use Milpa\Attributes\PluginMetadata;
+use Milpa\Command\CommandProvider;
+use Milpa\Command\Declaration\DeclaredOperation;
+use Milpa\Command\Operation;
+use Milpa\Interfaces\Di\DIContainerInterface;
+use Milpa\Interfaces\Plugin\PluginInterface;
+
+#[PluginMetadata(
+    version: '0.1.0',
+    author: 'Your Name',
+    site: 'https://example.com',
+    name: '{{class}}',
+    type: 'Service',
+)]
+final class {{class}} implements PluginInterface, CommandProvider
+{
+    public function __construct(private readonly DIContainerInterface $container)
+    {
+        // PluginInterface fixes the constructor to ($container) — kept as a promoted readonly
+        // property: operations() below hands it to each operation as the resolver of what its
+        // run() works through.
+    }
+
+    public function boot(): void
+    {
+        // {coa:services}
+    }
+
+    public function install(): void
+    {
+    }
+
+    public function uninstall(): void
+    {
+    }
+
+    public function enable(): void
+    {
+    }
+
+    public function disable(): void
+    {
+    }
+
+    /**
+     * The operations this plugin contributes — what an agent, the terminal and MCP can call.
+     *
+     * @return list<Operation>
+     */
+    public function operations(): array
+    {
+        return [
+            DeclaredOperation::from({{operationClass}}::class, fn (string $type): object => $this->container->get($type)),
+            // {coa:operations}
+        ];
+    }
+}

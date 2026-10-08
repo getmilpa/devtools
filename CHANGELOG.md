@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.44.1](https://github.com/getmilpa/devtools/compare/v0.44.0...v0.44.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* a read of the house does not hand over a file that keeps a secret ([#151](https://github.com/getmilpa/devtools/issues/151)) ([685e387](https://github.com/getmilpa/devtools/commit/685e38709a65fa226647cfa8b4bbc3cb85194415))
+
 ## [0.44.0](https://github.com/getmilpa/devtools/compare/v0.43.1...v0.44.0) (2026-10-08)
 
 

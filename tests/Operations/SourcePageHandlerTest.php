@@ -153,4 +153,20 @@ final class SourcePageHandlerTest extends TestCase
         file_put_contents($this->root . '/sample.txt', "\xFF");
         self::assertFalse($this->handler->handle(['path' => 'sample.txt', 'max_chars' => 800])['ok']);
     }
+
+    /**
+     * A SECRET HAS ONE PLACE TO LIVE (greenhouse evidence/1161): a page of source does not hand back a file
+     * the house keeps a secret in.
+     */
+    public function testAFileThatHoldsASecretIsNotPaged(): void
+    {
+        file_put_contents($this->root . '/.env', "SECRET=canary\n");
+        $context = new ToolContext(resultBudget: ResultBudget::json(8000));
+
+        $result = $this->handler->handle(['path' => '.env'], null, $context);
+
+        self::assertFalse($result['ok']);
+        self::assertArrayNotHasKey('content', $result);
+        self::assertStringNotContainsString('canary', (string) ($result['error'] ?? ''));
+    }
 }

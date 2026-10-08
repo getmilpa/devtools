@@ -95,6 +95,105 @@ final class SourceReadHandlerTest extends TestCase
     }
 
     /** Without `path` there is nothing to read — answered, not thrown. */
+    /**
+     * A SECRET HAS ONE PLACE TO LIVE (greenhouse evidence/1161). The files a house keeps a secret in — its
+     * environment file, the envelope a declared key is written to, Composer's credentials — are inside the
+     * root and real, but a read does not hand them back. Everything else reads as before.
+     *
+     * @param string $path the relative path of a file that holds a secret
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('secretFiles')]
+    public function testAFileThatHoldsASecretIsNotRead(string $path): void
+    {
+        $full = $this->root . '/' . $path;
+        @mkdir(\dirname($full), 0o775, true);
+        file_put_contents($full, "SECRET=canary\n");
+
+        $result = $this->handler()->handle(['path' => $path]);
+
+        self::assertFalse($result['ok'], $path);
+        self::assertArrayNotHasKey('content', $result);
+        self::assertStringNotContainsString('canary', (string) ($result['error'] ?? ''), 'the refusal never carries the value');
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function secretFiles(): iterable
+    {
+        yield 'the environment file' => ['.env'];
+        yield 'the secret envelope' => ['.milpa/secrets.json'];
+        yield 'composer credentials' => ['auth.json'];
+    }
+
+    /**
+     * A COPY OF A SECRET IS A SECRET (greenhouse evidence/1161). A trial under `var/trials/<id>/copy/` keeps a
+     * copy of the envelope; a house that has not discarded its old trials still holds it. A read withholds a
+     * file whose path ENDS in one of the secret files, at any depth — but not one that merely looks like it.
+     *
+     * @param string $path the relative path of a copy of a secret file
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('secretCopies')]
+    public function testACopyOfASecretFileIsNotReadEither(string $path): void
+    {
+        $full = $this->root . '/' . $path;
+        @mkdir(\dirname($full), 0o775, true);
+        file_put_contents($full, "SECRET=canary\n");
+
+        $result = $this->handler()->handle(['path' => $path]);
+
+        self::assertFalse($result['ok'], $path);
+        self::assertArrayNotHasKey('content', $result);
+        self::assertStringNotContainsString('canary', (string) ($result['error'] ?? ''));
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function secretCopies(): iterable
+    {
+        yield 'a trial copy of the envelope' => ['var/trials/w1/copy/.milpa/secrets.json'];
+        yield 'a trial copy of composer credentials' => ['var/trials/w1/copy/auth.json'];
+        yield 'a trial copy of the environment file' => ['var/trials/w1/copy/.env'];
+        yield 'a boot candidate copy of the envelope' => ['var/boot-candidates/b1/.milpa/secrets.json'];
+        yield 'an env-local of the house' => ['.env.local'];
+        yield 'an env for production' => ['.env.production'];
+        yield 'the envelope in upper case' => ['.MILPA/SECRETS.JSON'];
+        yield 'an env in upper case' => ['.ENV'];
+        yield 'composer credentials in upper case' => ['AUTH.JSON'];
+        yield 'a trial copy of env-local' => ['var/trials/w1/copy/.env.local'];
+    }
+
+    /**
+     * @param string $path a file that only resembles a secret file
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('lookAlikes')]
+    public function testAFileThatOnlyLooksLikeASecretIsReadAsAlways(string $path): void
+    {
+        $full = $this->root . '/' . $path;
+        @mkdir(\dirname($full), 0o775, true);
+        file_put_contents($full, "not a secret\n");
+
+        self::assertTrue($this->handler()->handle(['path' => $path])['ok'], $path);
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function lookAlikes(): iterable
+    {
+        yield 'a secrets.json outside .milpa' => ['docs/secrets.json'];
+        yield 'an auth.json with a suffix' => ['src/auth.json.php'];
+        yield 'an env example' => ['.env.example'];
+        yield 'a file ending in env' => ['config/myenv'];
+        yield 'an env example template' => ['.env.example'];
+        yield 'an env dist template' => ['.env.dist'];
+        yield 'an env template' => ['.env.template'];
+    }
+
+    public function testASourceFileNamedLikeNoSecretStillReads(): void
+    {
+        file_put_contents($this->root . '/src/secrets.php', "<?php // not the envelope\n");
+
+        $result = $this->handler()->handle(['path' => 'src/secrets.php']);
+
+        self::assertTrue($result['ok'], 'only the house\'s own secret files are withheld, by their exact path');
+    }
+
     public function testAMissingPathInputIsAnswered(): void
     {
         $result = $this->handler()->handle([]);

@@ -230,6 +230,21 @@ final class OperationGeneratorTest extends TestCase
         self::assertStringContainsString('Its run() receives the repository of Herramienta — the only entity of this plugin.', (string) $result->guidance);
     }
 
+    /**
+     * The entity's own scaffold said how to reach its repository with the container's id — and `run()` has no
+     * container to ask. It says the way an operation has, too.
+     */
+    public function testTheEntitysScaffoldSaysHowAnOperationReachesItsRepository(): void
+    {
+        $plugin = (new \Milpa\DevTools\Make\Generators\PluginGenerator())->generate(new GenerationContext($this->plugin, $this->plugin, ['flavor' => 'runtime'], $this->root));
+        $this->write($plugin);
+
+        $result = (new EntityGenerator())->generate(new GenerationContext($this->plugin, 'Herramienta', ['flavor' => 'runtime', 'fields' => 'nombre:string'], $this->root));
+
+        self::assertStringContainsString('Resolve the repository later via', (string) $result->guidance);
+        self::assertStringContainsString('An operation of this plugin does not ask the container for it: its run() receives it', (string) $result->guidance);
+    }
+
     /** A read works over the same store: it receives it too. */
     public function testAReadOfAPluginWithOneEntityReceivesItToo(): void
     {

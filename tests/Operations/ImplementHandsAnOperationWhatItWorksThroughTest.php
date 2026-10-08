@@ -109,6 +109,7 @@ final class ImplementHandsAnOperationWhatItWorksThroughTest extends TestCase
         self::assertStringContainsString('«bodega:guardar»', $error);
         self::assertStringContainsString('Milpa\\Data\\RepositoryInterface', $error);
         self::assertStringContainsString('is not registered in the container', $error, 'what the house itself answered');
+        self::assertStringNotContainsString('..', $error, 'the house\'s sentence ends once');
         self::assertStringContainsString('A repository has no class to be found by: it is reached by its entity', $error);
         self::assertStringContainsString('This plugin\'s entities: Caja', $error);
         // The way, exact and in order: the entry first, then this body again.

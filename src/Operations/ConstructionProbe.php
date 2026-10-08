@@ -152,7 +152,7 @@ final class ConstructionProbe
      */
     public static function unhanded(string $pluginDir, string $plugin, string $class, string $fqcn, string $name, array $unhanded): string
     {
-        $asked = implode('; ', array_map(static fn (array $u): string => $u['type'] . ' — the house answered: ' . $u['error'], $unhanded));
+        $asked = implode('; ', array_map(static fn (array $u): string => $u['type'] . ', and the house answered: ' . rtrim($u['error'], '. '), $unhanded));
         $text = "refused: the house cannot hand «{$class}» what its run() works through — «{$name}» asked for {$asked}.\n"
             . "What run() takes is found by the entry that lists this operation in operations() of its plugin, and by nothing else.\n";
         $again = "Then send this same implement plugin={$plugin} class={$class} again.";

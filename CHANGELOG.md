@@ -1,6 +1,18 @@
 # Changelog
 
 
+## [0.44.0](https://github.com/getmilpa/devtools/compare/v0.43.1...v0.44.0) (2026-10-08)
+
+
+### Features
+
+* edit says it amends the class it names (greenhouse decisions/0596) ([#146](https://github.com/getmilpa/devtools/issues/146)) ([51dd224](https://github.com/getmilpa/devtools/commit/51dd22468ec2aa5543a6d6a5d9ceb6fbfc86f6cc))
+
+
+### Bug Fixes
+
+* an example in a contract shows the form of the value, and a form sent back is refused by name ([#145](https://github.com/getmilpa/devtools/issues/145)) ([82c902c](https://github.com/getmilpa/devtools/commit/82c902cc8c0718454f182dba6839487b8d7c1610))
+
 ## [0.43.1](https://github.com/getmilpa/devtools/compare/v0.43.0...v0.43.1) (2026-10-07)
 
 

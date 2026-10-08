@@ -38,6 +38,9 @@ final class ConstructionProbe
     /** The child that boots the house and asks its container; one JSON object on its STDOUT. */
     public const SCRIPT = __DIR__ . '/../../resources/construction-probe.php';
 
+    /** What an operation over stored rows takes: registered by nobody, handed by the entry that names its entity. */
+    private const REPOSITORY = 'Milpa\\Data\\RepositoryInterface';
+
     /** The container contracts a controller should not ask for (greenhouse decisions/0541, point 3). */
     private const CONTAINERS = ['Milpa\\Interfaces\\Di\\DIContainerInterface', 'Psr\\Container\\ContainerInterface'];
 
@@ -56,7 +59,11 @@ final class ConstructionProbe
      * and, when some does, `built` says whether the container gave it back, with `error` and
      * `unresolvable` (parameter → type) when it did not.
      *
-     * @return array{unjudged?: string, routes?: list<string>, built?: bool, error?: string, unresolvable?: list<array{parameter: string, type: string}>}
+     * `operation` is there when the class is an operation the booted house offers (greenhouse evidence/1154): its
+     * name, whether the entry that lists it handed `run()` everything it works through, and — when it did not —
+     * each type it could not hand with what the house answered.
+     *
+     * @return array{unjudged?: string, routes?: list<string>, built?: bool, error?: string, unresolvable?: list<array{parameter: string, type: string}>, operation?: array{name: string, handed: bool, unhanded: list<array{type: string, error: string}>}}
      */
     public function probe(string $root, string $class): array
     {
@@ -76,12 +83,13 @@ final class ConstructionProbe
             return ['unjudged' => 'the house did not boot: ' . (\is_string($answer['reason'] ?? null) ? $answer['reason'] : 'no reason given')];
         }
 
+        $asked = self::operationIn($answer);
         $routes = array_values(array_filter((array) ($answer['routes'] ?? []), 'is_string'));
         if ($routes === []) {
-            return ['routes' => []];
+            return ['routes' => []] + $asked;
         }
         if (($answer['built'] ?? false) === true) {
-            return ['routes' => $routes, 'built' => true];
+            return ['routes' => $routes, 'built' => true] + $asked;
         }
 
         $unresolvable = [];
@@ -96,7 +104,85 @@ final class ConstructionProbe
             'built' => false,
             'error' => \is_string($answer['error'] ?? null) ? $answer['error'] : 'the container gave nothing back',
             'unresolvable' => $unresolvable,
-        ];
+        ] + $asked;
+    }
+
+    /**
+     * What the child said of the operation this class is, read strictly — or nothing: it is none.
+     *
+     * @param array<mixed> $answer
+     *
+     * @return array{}|array{operation: array{name: string, handed: bool, unhanded: list<array{type: string, error: string}>}}
+     */
+    private static function operationIn(array $answer): array
+    {
+        $said = $answer['operation'] ?? null;
+        if (!\is_array($said) || !\is_string($said['name'] ?? null) || !\is_bool($said['handed'] ?? null)) {
+            return [];
+        }
+        $unhanded = [];
+        foreach ((array) ($said['unhanded'] ?? []) as $entry) {
+            if (\is_array($entry) && \is_string($entry['type'] ?? null)) {
+                $unhanded[] = ['type' => $entry['type'], 'error' => \is_string($entry['error'] ?? null) ? $entry['error'] : ''];
+            }
+        }
+
+        return ['operation' => ['name' => $said['name'], 'handed' => $said['handed'], 'unhanded' => $unhanded]];
+    }
+
+    /**
+     * The refusal a model corrects from when the house cannot hand an operation what its `run()` works through:
+     * what it asked for, what the house answered, why, and THE WAY with the order in which it lands.
+     *
+     * ── A REPOSITORY IS REACHED BY ITS ENTITY (greenhouse evidence/1154) ──────────────────────────────────────────
+     *
+     * `Milpa\Data\RepositoryInterface` is registered by nobody, and should not be: there is one repository per
+     * entity, under the id `make entity` gave it. What hands it to `run()` is the entry that lists the operation in
+     * its plugin — written with the entity when the operation was scaffolded with one, and by class when it was
+     * not. A real resident scaffolded with none, wrote `run()` against the repository, and nothing said a word
+     * until the first call. The fix is one exact edit of that entry, and it is written out here: with one entity
+     * in the plugin it names it; with several it leaves the name to whoever knows which.
+     *
+     * Anything else nobody registered is the defect a controller's constructor has, and takes the same fix: its
+     * type registered in the plugin's `boot()`.
+     *
+     * @param string                                   $pluginDir the plugin's source directory
+     * @param string                                   $fqcn      the operation's class
+     * @param list<array{type: string, error: string}> $unhanded
+     */
+    public static function unhanded(string $pluginDir, string $plugin, string $class, string $fqcn, string $name, array $unhanded): string
+    {
+        $asked = implode('; ', array_map(static fn (array $u): string => $u['type'] . ' — the house answered: ' . $u['error'], $unhanded));
+        $text = "refused: the house cannot hand «{$class}» what its run() works through — «{$name}» asked for {$asked}.\n"
+            . "What run() takes is found by the entry that lists this operation in operations() of its plugin, and by nothing else.\n";
+        $again = "Then send this same implement plugin={$plugin} class={$class} again.";
+
+        $types = array_column($unhanded, 'type');
+        $others = array_values(array_filter($types, static fn (string $type): bool => $type !== self::REPOSITORY));
+        $steps = [];
+        if (\in_array(self::REPOSITORY, $types, true)) {
+            $entities = \Milpa\DevTools\Make\Generators\OperationGenerator::entitiesIn($pluginDir);
+            $text .= 'A repository has no class to be found by: it is reached by its entity, under the id `make entity` registered it with. '
+                . ($entities === [] ? "This plugin has no entity yet.\n" : "This plugin's entities: " . implode(', ', $entities) . ".\n");
+            $byClass = \Milpa\DevTools\Make\Generators\OperationGenerator::entry($fqcn);
+            $source = (string) @file_get_contents($pluginDir . '/' . $plugin . '.php');
+            $namespace = substr($fqcn, 0, (int) strrpos($fqcn, '\\Operations\\'));
+            $entity = \count($entities) === 1 ? $entities[0] : '<Entity>';
+            $byEntity = \Milpa\DevTools\Make\Generators\OperationGenerator::entry($fqcn, $namespace . '\\Entities\\' . $entity);
+            if ($entities === []) {
+                $steps[] = "Scaffold the entity it stores — make what=entity plugin={$plugin} name=<Entity> fields=… — and promote it.";
+            }
+            $steps[] = str_contains($source, $byClass)
+                ? "Make its entry say which entity — edit plugin={$plugin} class={$plugin} with one {find, replace} pair, and promote it:\n   find: {$byClass}\n   replace: {$byEntity}"
+                : "Make the entry that lists it in operations() of {$plugin} resolve " . self::REPOSITORY . " to its entity's repository — the resolver `make` writes is:\n   {$byEntity}";
+        }
+        foreach ($others as $type) {
+            $steps[] = "Register «{$type}» in boot() of {$plugin} — \$this->container->registerService(\\" . ltrim($type, '\\')
+                . '::class, <how it is built>); — or take a concrete class the container can build; and promote it.';
+        }
+        $steps[] = $again;
+
+        return $text . "In this order:\n" . implode("\n", array_map(static fn (int $n, string $step): string => ($n + 1) . '. ' . $step, array_keys($steps), $steps));
     }
 
     /**

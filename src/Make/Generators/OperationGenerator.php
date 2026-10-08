@@ -45,8 +45,11 @@ use Milpa\DevTools\Support\ComposerAutoload;
  * - THE AUTHORITY IT SPENDS — `#[Needs(scopes: ['<domain>:write'])]`, or `:read`. The domain is what stands before
  *   the separator of its name, so nobody invents a word of authority. It is what a person grants to admit it;
  * - ITS INPUT — the `--fields`, as the constructor;
- * - WHERE ITS STATE LIVES — with `--entity`, `run()` receives the repository of that entity of its plugin, the one
- *   `make entity` registered. Nothing is invented: it is the same store, reached by the same key;
+ * - WHERE ITS STATE LIVES — `run()` receives the repository of an entity of its plugin, the one `make entity`
+ *   registered: the one `--entity` names, or the plugin's ONLY entity when none is named. Nothing is invented: it
+ *   is the same store, reached by the same key. With several entities and none named, none is guessed — and the
+ *   result says so, because a `run()` written against a repository nobody hands it lands and fails at its first
+ *   call (greenhouse evidence/1154);
  * - what else `run()` WORKS THROUGH — the `--needs`, resolved by whoever registers it.
  *
  * AND IT IS REGISTERED, never left as prose to paste: `operations()` of the plugin lists it through
@@ -109,7 +112,11 @@ final class OperationGenerator implements GeneratorInterface
         $path = $context->root . '/' . $appDir . '/Plugins/' . $context->plugin . '/Operations/' . $context->name . '.php';
 
         $reads = $context->flag('reads');
-        $entity = self::entityOf($context, $appDir);
+        $named = self::entityOf($context, $appDir);
+        // WHERE ITS STATE LIVES IS NOT SOMETHING TO REMEMBER TO SAY (greenhouse evidence/1154): a plugin's only
+        // entity is the one its operations work over. Which of several is a decision, and nobody made it.
+        $entities = $named === null ? self::entitiesOf($context, $appDir) : [];
+        $entity = $named ?? (\count($entities) === 1 ? $entities[0] : null);
         $entityFqcn = $entity === null ? null : $appNamespace . '\\Plugins\\' . $context->plugin . '\\Entities\\' . $entity;
         $name = self::operationName($context);
         $scope = self::domainOf($name) . ($reads ? ':read' : ':write');
@@ -154,7 +161,13 @@ final class OperationGenerator implements GeneratorInterface
                 $name,
                 self::toolName($name),
                 $scope,
-                $entity === null ? '' : "Its run() receives the repository of {$entity}. ",
+                match (true) {
+                    $named !== null => "Its run() receives the repository of {$entity}. ",
+                    $entity !== null => "Its run() receives the repository of {$entity} — the only entity of this plugin. ",
+                    $entities !== [] => 'Its run() receives NO repository: this plugin has several entities (' . implode(', ', $entities)
+                        . ') and none was named — if it stores or reads rows, scaffold it with entity=<Entity>. ',
+                    default => '',
+                },
                 $wiring,
                 $context->plugin,
                 $context->name,
@@ -233,6 +246,35 @@ final class OperationGenerator implements GeneratorInterface
         }
 
         return $entity;
+    }
+
+    /**
+     * The entities a plugin has, by name and in order: the classes under its `Entities/` that are entities.
+     *
+     * @return list<string>
+     */
+    private static function entitiesOf(GenerationContext $context, string $appDir): array
+    {
+        return self::entitiesIn($context->root . '/' . $appDir . '/Plugins/' . $context->plugin);
+    }
+
+    /**
+     * The entities under a plugin's source directory, by name and in order.
+     *
+     * @return list<string>
+     */
+    public static function entitiesIn(string $pluginDir): array
+    {
+        $found = [];
+        foreach (glob(rtrim($pluginDir, '/') . '/Entities/*.php') ?: [] as $file) {
+            // An entity says it is one; an enum or a value object that lives beside them is not counted.
+            if (str_contains((string) file_get_contents($file), 'EntityInterface')) {
+                $found[] = basename($file, '.php');
+            }
+        }
+        sort($found);
+
+        return $found;
     }
 
     /** How `run()` names the repository it receives: `Widget` → `widgets`. */

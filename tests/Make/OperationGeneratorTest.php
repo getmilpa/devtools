@@ -206,6 +206,82 @@ final class OperationGeneratorTest extends TestCase
         self::assertStringContainsString('the repository of Herramienta', (string) $result->guidance);
     }
 
+    /**
+     * WHERE ITS STATE LIVES IS NOT SOMETHING TO REMEMBER TO SAY (greenhouse evidence/1154). A real resident
+     * scaffolded four operations of a plugin with one entity, named the entity in none, and wrote `run()` against
+     * the repository: the house landed them green and the first call answered «RepositoryInterface is not
+     * registered in the container». A plugin's only entity is the one its operations work over — the house says
+     * the same of where their state lives (decisions/0588) — so the scaffold hands it without being asked.
+     */
+    public function testWithNoEntityNamedThePluginsOnlyEntityIsTheOneRunReceives(): void
+    {
+        $this->write((new EntityGenerator())->generate(new GenerationContext($this->plugin, 'Herramienta', ['flavor' => 'runtime', 'fields' => 'nombre:string'], $this->root)));
+
+        $result = $this->make('RegistrarHerramienta', ['operation' => 'herramientas:registrar', 'fields' => 'nombre:string']);
+
+        $operation = $this->fileNamed($result->files, 'RegistrarHerramienta.php');
+        self::assertStringContainsString('public function run(RepositoryInterface $herramientas): array', $operation->contents);
+        self::assertStringContainsString('@param RepositoryInterface<Herramienta> $herramientas', $operation->contents);
+        self::assertStringContainsString(
+            "\\App\\Plugins\\{$this->plugin}\\Entities\\Herramienta::class . 'Repository'",
+            $this->fileNamed($result->files, $this->plugin . '.php')->contents,
+            'and the entry that lists it hands that repository',
+        );
+        self::assertStringContainsString('Its run() receives the repository of Herramienta — the only entity of this plugin.', (string) $result->guidance);
+    }
+
+    /** A read works over the same store: it receives it too. */
+    public function testAReadOfAPluginWithOneEntityReceivesItToo(): void
+    {
+        $this->write((new EntityGenerator())->generate(new GenerationContext($this->plugin, 'Herramienta', ['flavor' => 'runtime', 'fields' => 'nombre:string'], $this->root)));
+
+        $result = $this->make('HerramientasDisponibles', ['operation' => 'herramientas:disponibles', 'reads' => '1']);
+
+        self::assertStringContainsString('public function run(RepositoryInterface $herramientas): array', $this->fileNamed($result->files, 'HerramientasDisponibles.php')->contents);
+    }
+
+    /** What lives beside the entities and is not one — a value object, an enum — does not make them several. */
+    public function testAClassBesideTheEntitiesThatIsNotOneIsNotCounted(): void
+    {
+        $this->write((new EntityGenerator())->generate(new GenerationContext($this->plugin, 'Herramienta', ['flavor' => 'runtime', 'fields' => 'nombre:string'], $this->root)));
+        file_put_contents(
+            "{$this->root}/src/Plugins/{$this->plugin}/Entities/Estado.php",
+            "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Plugins\\{$this->plugin}\\Entities;\n\nenum Estado: string\n{\n    case Disponible = 'disponible';\n}\n",
+        );
+
+        $result = $this->make('RegistrarHerramienta', ['operation' => 'herramientas:registrar']);
+
+        self::assertStringContainsString('public function run(RepositoryInterface $herramientas): array', $this->fileNamed($result->files, 'RegistrarHerramienta.php')->contents);
+        self::assertStringContainsString('the only entity of this plugin', (string) $result->guidance);
+    }
+
+    /** Which of several is a decision nobody made: none is guessed, and the scaffold says there is one to make. */
+    public function testWithSeveralEntitiesNoneIsGuessedAndTheGuidanceNamesThem(): void
+    {
+        foreach (['Herramienta', 'Prestamo'] as $entity) {
+            $this->write((new EntityGenerator())->generate(new GenerationContext($this->plugin, $entity, ['flavor' => 'runtime', 'fields' => 'nombre:string'], $this->root)));
+        }
+
+        $result = $this->make('RegistrarHerramienta', ['operation' => 'herramientas:registrar', 'fields' => 'nombre:string']);
+
+        $operation = $this->fileNamed($result->files, 'RegistrarHerramienta.php')->contents;
+        self::assertStringContainsString('public function run(): array', $operation);
+        self::assertStringNotContainsString('RepositoryInterface', $operation);
+        self::assertStringContainsString(
+            'Its run() receives NO repository: this plugin has several entities (Herramienta, Prestamo) and none was named — if it stores or reads rows, scaffold it with entity=<Entity>.',
+            (string) $result->guidance,
+        );
+    }
+
+    /** A plugin with no entity has no store to hand: nothing is wired, as before, and nothing is said of one. */
+    public function testWithNoEntityInThePluginNothingIsWired(): void
+    {
+        $result = $this->make('PrestarHerramienta', ['operation' => 'herramientas:prestar']);
+
+        self::assertStringContainsString('public function run(): array', $this->fileNamed($result->files, 'PrestarHerramienta.php')->contents);
+        self::assertStringNotContainsString('repository', (string) $result->guidance);
+    }
+
     public function testThePluginResolvesThatRepositoryAndEverythingElseByItsClass(): void
     {
         $this->write((new EntityGenerator())->generate(new GenerationContext($this->plugin, 'Herramienta', ['flavor' => 'runtime', 'fields' => 'nombre:string'], $this->root)));

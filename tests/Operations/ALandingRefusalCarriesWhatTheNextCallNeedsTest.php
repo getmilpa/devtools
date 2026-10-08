@@ -183,7 +183,9 @@ final class ALandingRefusalCarriesWhatTheNextCallNeedsTest extends TestCase
 
         self::assertFalse($r['ok']);
         self::assertStringStartsWith("refused: syntax or compilation check failed (exit 255):\n", $r['error']);
-        self::assertStringContainsString('A void function must not return a value in ', $r['error']);
+        // What the check printed, in the engine's own words — which change with its version («A void function…»,
+        // «A void method…»): only what both say is asked for.
+        self::assertStringContainsString(' must not return a value in ', $r['error']);
         self::assertStringEndsWith(
             "\nThe check names line 20. Your proposal reads there — after «│» every line is yours, byte for byte:\n"
             . "   17 │ \n"

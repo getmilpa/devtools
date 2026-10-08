@@ -58,9 +58,11 @@ unjudged when no test declares what the class must do*. A body with no test is s
 
    **What a request asks the house to be able to DO is a verb, and each verb is an operation**, one
    `make` each. A controller serves a route; it does not give an agent anything to call. An operation
-   over stored rows names their entity (`entity=<Entity>`) and its `run()` receives that entity's
-   repository; its `operation=domain:verb` names it and fixes the scope it spends (`domain:write`, or
-   `domain:read` with `reads=true`); `fields` are its input.
+   over stored rows receives their entity's repository in its `run()` — that is the ONLY way it reaches
+   them: a plugin's only entity is handed without being named; with several, name it (`entity=<Entity>`).
+   Write `run()` against what the scaffold gave it: `implement` refuses a `run()` that asks for something
+   its plugin cannot hand it, and says the edit that fixes it. Its `operation=domain:verb` names it and
+   fixes the scope it spends (`domain:write`, or `domain:read` with `reads=true`); `fields` are its input.
 
    **Having decided WHAT, do not hand-type what a governed op builds whole.** Hand-author (`implement`,
    below) ONLY the criterion no op can know: the **business rule**, the validation, the **domain

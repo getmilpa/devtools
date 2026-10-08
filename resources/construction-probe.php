@@ -90,6 +90,41 @@ if ($class === '') {
     $say(['booted' => true, 'served' => $served]);
 }
 
+// WHAT AN OPERATION'S run() WORKS THROUGH IS HANDED BY THE ENTRY THAT LISTS IT (greenhouse evidence/1154). The house
+// resolves each collaborator of `run()` with the resolver `DeclaredOperation::from()` was given in the plugin's
+// `operations()` — at the call, and nowhere before it: an operation written against something that entry cannot
+// hand landed green and failed at its first call. So the same act is done here, without running `run()`: the
+// resolver is asked for each type it would be asked for. It is closed over by the handler of the operation, and
+// that is where it is read.
+$operation = null;
+foreach ($kernel->commands() as $command) {
+    $handler = $command->handler ?? null;
+    if (!$handler instanceof \Closure) {
+        continue;
+    }
+    $closed = (new \ReflectionFunction($handler))->getStaticVariables();
+    if (!\is_string($closed['class'] ?? null) || ltrim($closed['class'], '\\') !== ltrim($class, '\\') || !\is_array($closed['collaborators'] ?? null)) {
+        continue;
+    }
+    $resolve = $closed['resolve'] ?? null;
+    $unhanded = [];
+    foreach ($closed['collaborators'] as $type) {
+        if (!\is_string($type)) {
+            continue;
+        }
+        try {
+            if (!$resolve instanceof \Closure || !\is_object($resolve($type))) {
+                $unhanded[] = ['type' => $type, 'error' => 'the entry that lists it gave nothing back'];
+            }
+        } catch (\Throwable $e) {
+            $unhanded[] = ['type' => $type, 'error' => $relative($e->getMessage())];
+        }
+    }
+    $operation = ['name' => (string) $command->name, 'handed' => $unhanded === [], 'unhanded' => $unhanded];
+    break;
+}
+$asked = $operation === null ? [] : ['operation' => $operation];
+
 $routes = [];
 foreach ($kernel->router()->routes() as $route) {
     if ($route->handler !== null && ltrim($route->handler->controller, '\\') === ltrim($class, '\\')) {
@@ -97,13 +132,13 @@ foreach ($kernel->router()->routes() as $route) {
     }
 }
 if ($routes === []) {
-    $say(['booted' => true, 'routes' => []]);
+    $say(['booted' => true, 'routes' => []] + $asked);
 }
 
 $container = $kernel->container();
 try {
     $built = $container->get($class);
-    $say(['booted' => true, 'routes' => $routes, 'built' => \is_object($built)]);
+    $say(['booted' => true, 'routes' => $routes, 'built' => \is_object($built)] + $asked);
 } catch (\Throwable $e) {
     // What the container could not fill, named from the constructor: a parameter whose class-typed hint
     // nothing registered and PHP cannot `new`, with no default and no null to fall back on.
@@ -131,5 +166,5 @@ try {
         'built' => false,
         'error' => (new \ReflectionClass($e))->getShortName() . ': ' . implode(' ← ', $messages),
         'unresolvable' => $unresolvable,
-    ]);
+    ] + $asked);
 }

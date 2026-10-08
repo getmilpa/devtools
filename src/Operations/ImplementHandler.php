@@ -535,6 +535,45 @@ final class ImplementHandler
             ];
         }
 
+        // ── Collaborators: what an operation's run() works through is handed the way a call hands it ──
+        //
+        // Measured on a real resident's run (greenhouse evidence/1154): an operation scaffolded with no entity
+        // and written against `RepositoryInterface` passed every judge above and answered «is not registered in
+        // the container» at its first call. The house resolves what `run()` takes through the entry that lists
+        // the operation in its plugin; that act, in a booted copy and without running `run()`, is the judge.
+        $asked = $built['operation'] ?? null;
+        if ($asked !== null && !$asked['handed']) {
+            $stable = hash_file('sha256', $file) === hash('sha256', $content);
+            $restored = $this->publishAtomically($file, $previous)
+                && hash_file('sha256', $file) === hash('sha256', $previous);
+            $marker = '/Plugins/' . $plugin . '/';
+            $pluginDir = substr($file, 0, (int) strpos($file, $marker)) . rtrim($marker, '/');
+
+            return [
+                'ok' => false,
+                'error' => ConstructionProbe::unhanded($pluginDir, $plugin, $class, $expected . '\\' . $class, $asked['name'], $asked['unhanded']),
+                'diagnostic' => [
+                    'schema' => 'milpa.authoring-diagnostic/v1',
+                    'phase' => 'collaborators',
+                    'subject' => substr($file, \strlen($root) + 1),
+                    'submitted_sha256' => $submitted,
+                    'judged_sha256' => hash('sha256', $content),
+                    'restored_sha256' => hash('sha256', $previous),
+                    'stable_subject' => $stable,
+                    'rolled_back' => $restored,
+                    'result' => ['operation' => $asked['name'], 'unhanded' => $asked['unhanded']],
+                ],
+            ];
+        }
+        if ($asked !== null) {
+            $constructionNote .= ', collaborators (' . $asked['name'] . ': run() is handed what it works through)';
+        } elseif (!isset($built['unjudged']) && str_contains($content, '#[Operation(')) {
+            // A silent gap reads as covered: an operation the booted house does not offer — its plugin is not
+            // registered yet, or does not list it — cannot be asked, and that is said.
+            $constructionNote .= '; what run() works through unjudged — no operation the booted house offers is this class'
+                . ' (its plugin is not registered, or does not list it)';
+        }
+
         $verdictNote = '; behavior unjudged — no test declares what this class must do';
         $testFile = $this->testFor($root, $plugin, $class);
         if ($testFile !== null) {

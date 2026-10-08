@@ -56,6 +56,12 @@ use Milpa\DevTools\Support\DoctrineAvailability;
  */
 final class EntityGenerator implements GeneratorInterface
 {
+    /**
+     * How an operation reaches the repository: said beside the container's id, because `run()` has no container
+     * to ask and a real resident wrote one against the interface (greenhouse evidence/1154).
+     */
+    private const REACHED_BY_AN_OPERATION = ' An operation of this plugin does not ask the container for it: its run() receives it — make what=operation hands it.';
+
     private StubLocator $stubs;
 
     /**
@@ -347,7 +353,7 @@ final class EntityGenerator implements GeneratorInterface
             if ($this->markers->hasMarker($existing, Markers::SERVICES)) {
                 $merged = $this->markers->insertBefore($existing, Markers::SERVICES, $snippet, $context->flag('force'));
                 $guidance = "Auto-wired into the existing plugin at {$pluginPath} (// {" . Markers::SERVICES
-                    . "} marker found). Resolve the repository later via \$container->get({$repositoryId}).";
+                    . "} marker found). Resolve the repository later via \$container->get({$repositoryId})." . self::REACHED_BY_AN_OPERATION;
 
                 return ['file' => new PlannedFile($pluginPath, $merged, merge: true), 'guidance' => $guidance];
             }
@@ -378,7 +384,7 @@ final class EntityGenerator implements GeneratorInterface
                 . "{$snippet}\n\n"
                 . "The backend is one config line: set storage.driver in config/app.php to file, sqlite, "
                 . "mysql or memory (with its path/dsn); with no storage block the default above persists "
-                . "to var/{$table}.json. Resolve the repository later via \$container->get({$repositoryId}).";
+                . "to var/{$table}.json. Resolve the repository later via \$container->get({$repositoryId})." . self::REACHED_BY_AN_OPERATION;
 
             return ['file' => null, 'guidance' => $guidance];
         }

@@ -422,7 +422,8 @@ final class ImplementHandler
                     'ok' => false,
                     'error' => 'refused: syntax error in the proposal for ' . substr($file, strlen($root) + 1)
                         . ' on line ' . $finding['line'] . ': ' . $finding['message']
-                        . ($unchanged ? '; destination preserved, proposal never installed' : '; destination preservation could not be verified'),
+                        . ($unchanged ? '; destination preserved, proposal never installed' : '; destination preservation could not be verified')
+                        . SyntaxFinding::shown($judged, $finding),
                     'diagnostic' => [
                         'schema' => 'milpa.authoring-diagnostic/v1',
                         'phase' => 'syntax',
@@ -442,8 +443,11 @@ final class ImplementHandler
                 // The diagnostic travels whole — it is what the model corrects from. The temp path
                 // inside it would only mislead, so it is renamed to the file it was meant for.
                 $detail = str_replace($staged, $file, implode("\n", $lines));
+                // …and so do the builder's own lines where the check names one (greenhouse evidence/1162).
+                $named = SyntaxFinding::lineNamedIn($detail);
 
-                return ['ok' => false, 'error' => "refused: syntax or compilation check failed (exit {$code}):\n{$detail}"];
+                return ['ok' => false, 'error' => "refused: syntax or compilation check failed (exit {$code}):\n{$detail}"
+                    . ($named === null ? '' : SyntaxFinding::shownAt($judged, $named))];
             }
         } finally {
             @unlink($staged);

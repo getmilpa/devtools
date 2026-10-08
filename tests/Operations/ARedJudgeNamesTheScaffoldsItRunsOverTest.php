@@ -149,6 +149,17 @@ final class ARedJudgeNamesTheScaffoldsItRunsOverTest extends TestCase
         self::assertSame(['GuardarCaja'], $r['diagnostic']['scaffolds']);
     }
 
+    /** A name that only contains a scaffold's name is another name. */
+    public function testANameThatOnlyContainsAScaffoldsNameIsNotIt(): void
+    {
+        $this->judge("self::fail('MiGuardarCaja, GuardarCajaGrande y GuardarCajas no son de este plugin');");
+
+        $r = $this->handler()->handle(['plugin' => $this->plugin, 'class' => 'ListarCajas', 'content' => $this->listar()]);
+
+        self::assertFalse($r['ok']);
+        self::assertSame([], $r['diagnostic']['scaffolds']);
+    }
+
     /** The class being landed is the proposal: it is never its own obstacle, whatever its text still says. */
     public function testTheClassBeingLandedIsNeverNamedAsItsOwnObstacle(): void
     {
@@ -172,7 +183,12 @@ final class ARedJudgeNamesTheScaffoldsItRunsOverTest extends TestCase
         self::assertSame(['GuardarCaja', 'ListarCajas'], OperationGenerator::unfilledIn($dir));
         self::assertStringContainsString('GuardarCaja' . OperationGenerator::UNFILLED, (string) file_get_contents($this->operation('GuardarCaja')));
 
-        file_put_contents($this->operation('GuardarCaja'), $this->guardar());
+        // Filled — and a filled body that quotes ANOTHER class's sentence is still filled.
+        file_put_contents($this->operation('GuardarCaja'), str_replace(
+            "return ['ok' => true];",
+            "// ListarCajas::run() is a scaffold — fill it with implement\n        return ['ok' => true];",
+            $this->guardar(),
+        ));
 
         self::assertSame(['ListarCajas'], OperationGenerator::unfilledIn($dir));
         self::assertSame([], OperationGenerator::unfilledIn($dir . '/nowhere'));
@@ -207,6 +223,7 @@ final class ARedJudgeNamesTheScaffoldsItRunsOverTest extends TestCase
     /** The judge of ListarCajas: it stores a row first — through another operation — and then lists. */
     private function judge(string $arrange): void
     {
+        $uses = preg_match('/(?<![A-Za-z0-9_\\\\])GuardarCaja\(/', $arrange) === 1 ? "use App\\Plugins\\{$this->plugin}\\Operations\\GuardarCaja;\n" : '';
         @mkdir("{$this->root}/tests/Plugins/{$this->plugin}", 0o775, true);
         file_put_contents("{$this->root}/tests/Plugins/{$this->plugin}/ListarCajasTest.php", <<<PHP
 <?php
@@ -216,8 +233,7 @@ declare(strict_types=1);
 namespace App\\Tests\\Plugins\\{$this->plugin};
 
 use App\\Plugins\\{$this->plugin}\\Entities\\Caja;
-use App\\Plugins\\{$this->plugin}\\Operations\\GuardarCaja;
-use App\\Plugins\\{$this->plugin}\\Operations\\ListarCajas;
+{$uses}use App\\Plugins\\{$this->plugin}\\Operations\\ListarCajas;
 use Milpa\\Data\\InMemoryRepository;
 use Milpa\\Data\\RepositoryInterface;
 use PHPUnit\\Framework\\TestCase;

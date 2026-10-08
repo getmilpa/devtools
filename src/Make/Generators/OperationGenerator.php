@@ -303,7 +303,6 @@ final class OperationGenerator implements GeneratorInterface
                 $unfilled[] = $class;
             }
         }
-        sort($unfilled);
 
         return $unfilled;
     }

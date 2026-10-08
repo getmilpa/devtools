@@ -130,14 +130,76 @@ final class TheJudgeOfAnOperationHoldsWhatItWorksThroughTest extends TestCase
         self::assertStringContainsString('->run();', $judge);
     }
 
+    /** Read from the entry of THIS operation: another operation of the plugin, over another entity, is listed first. */
     public function testTheNamedEntityIsTheOneTheJudgeHolds(): void
     {
-        $this->house(entities: ['Caja', 'Estante'], operation: ['entity' => 'Estante']);
+        $this->write((new PluginGenerator())->generate(new GenerationContext($this->plugin, $this->plugin, ['flavor' => 'runtime'], $this->root)));
+        foreach (['Caja', 'Estante'] as $entity) {
+            $this->write((new EntityGenerator())->generate(new GenerationContext($this->plugin, $entity, ['flavor' => 'runtime', 'fields' => 'etiqueta:string'], $this->root)));
+        }
+        foreach (['ContarCajas' => 'Caja', 'GuardarCaja' => 'Estante'] as $operation => $entity) {
+            $this->write((new OperationGenerator())->generate(new GenerationContext(
+                $this->plugin,
+                $operation,
+                ['flavor' => 'runtime', 'operation' => 'bodega:' . strtolower($operation), 'fields' => 'etiqueta:string', 'entity' => $entity],
+                $this->root,
+            )));
+        }
 
         $judge = $this->judge('GuardarCaja')->files[0]->contents;
 
         self::assertStringContainsString('$this->estantes = new InMemoryRepository(Estante::class);', $judge);
         self::assertStringNotContainsString('Caja::class', $judge);
+    }
+
+    /**
+     * The state a resident left by hand: `run()` written against a repository while the entry that lists the
+     * operation hands none. The judge holds what the house hands, so it holds nothing — and shows what is missing.
+     */
+    public function testARepositoryTheEntryDoesNotHandIsNotHeldByTheJudge(): void
+    {
+        $this->house(entities: []);
+        $this->write((new EntityGenerator())->generate(new GenerationContext($this->plugin, 'Caja', ['flavor' => 'runtime', 'fields' => 'etiqueta:string'], $this->root)));
+        $file = "{$this->root}/src/Plugins/{$this->plugin}/Operations/GuardarCaja.php";
+        file_put_contents($file, str_replace('public function run(): array', 'public function run(\\Milpa\\Data\\RepositoryInterface $cajas): array', (string) file_get_contents($file), $replaced));
+        self::assertSame(1, $replaced);
+
+        $judge = $this->judge('GuardarCaja')->files[0]->contents;
+
+        self::assertStringNotContainsString('InMemoryRepository', $judge);
+        self::assertStringNotContainsString('$this->cajas', $judge);
+        self::assertStringContainsString("->run(/* \\Milpa\\Data\\RepositoryInterface \$cajas */);", $judge);
+        self::assertStringContainsString('It shows the call the house makes', (string) $this->judge('GuardarCaja')->guidance);
+    }
+
+    /**
+     * An entry hands ONE repository: `run()` is handed by type. A second one in the signature is not held as if it
+     * were the same — the judge shows it is missing, as the house would find it missing.
+     */
+    public function testASecondRepositoryInTheSignatureIsShownMissingAndNotHeld(): void
+    {
+        $this->house();
+        $file = "{$this->root}/src/Plugins/{$this->plugin}/Operations/GuardarCaja.php";
+        file_put_contents($file, str_replace('RepositoryInterface $cajas): array', 'RepositoryInterface $cajas, RepositoryInterface $estantes): array', (string) file_get_contents($file), $replaced));
+        self::assertSame(1, $replaced);
+
+        $judge = $this->judge('GuardarCaja')->files[0]->contents;
+
+        self::assertStringContainsString("->run(\$this->cajas, /* RepositoryInterface \$estantes */);", $judge);
+        self::assertStringContainsString('private RepositoryInterface $cajas;', $judge);
+        self::assertStringNotContainsString('$this->estantes', $judge);
+    }
+
+    /** A class that lives beside the operations and is not one gets the bare judge. */
+    public function testAClassBesideTheOperationsThatIsNotOneGetsTheBareJudge(): void
+    {
+        $this->house();
+        file_put_contents(
+            "{$this->root}/src/Plugins/{$this->plugin}/Operations/Etiquetador.php",
+            "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Plugins\\{$this->plugin}\\Operations;\n\nfinal class Etiquetador\n{\n    public function run(\\Milpa\\Data\\RepositoryInterface \$cajas): array\n    {\n        return [];\n    }\n}\n",
+        );
+
+        self::assertSame(self::bare($this->plugin, 'Etiquetador'), $this->judge('Etiquetador')->files[0]->contents);
     }
 
     public function testTheGuidanceSaysWhatTheJudgeHoldsAndWhatItRunsOver(): void

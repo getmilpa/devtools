@@ -15,6 +15,7 @@ declare(strict_types=1);
 namespace Milpa\DevTools\Operations;
 
 use Milpa\DevTools\Support\RootResolver;
+use Milpa\DevTools\Support\SecretFiles;
 use Milpa\DevTools\Support\SourcePath;
 
 /**
@@ -64,6 +65,11 @@ final class SourceReadHandler
         $file = $this->insideRoot($root, $path);
         if ($file === null) {
             return ['ok' => false, 'error' => "`path` has to be a file inside {$root} — got: {$path}"];
+        }
+        if (SecretFiles::holds($file, $root)) {
+            // A SECRET HAS ONE PLACE TO LIVE (greenhouse evidence/1161): the files the house keeps a secret in
+            // are inside the root and real, but a read does not hand them back. The refusal names the path only.
+            return ['ok' => false, 'error' => "{$path} is where this house keeps a secret: it is not read"];
         }
 
         $from = \is_int($input['from'] ?? null) ? max(1, $input['from']) : 1;

@@ -1,6 +1,15 @@
 # Changelog
 
 
+## [0.44.2](https://github.com/getmilpa/devtools/compare/v0.44.1...v0.44.2) (2026-10-08)
+
+
+### Bug Fixes
+
+* a landing refusal carries the text the next call needs ([#150](https://github.com/getmilpa/devtools/issues/150)) ([e6e96fa](https://github.com/getmilpa/devtools/commit/e6e96fa175b8cdb8d4926ebe14b128bfa70a63e7))
+* the judge of an operation holds what the operation works through, and a red judge names the scaffolds it runs over ([#149](https://github.com/getmilpa/devtools/issues/149)) ([931766e](https://github.com/getmilpa/devtools/commit/931766e016a2d3dcd54451b78cb28cd636528a48))
+* what an operation's run() works through, the house hands it — a plugin's only entity by default, and judged when the code lands ([#148](https://github.com/getmilpa/devtools/issues/148)) ([d6869c0](https://github.com/getmilpa/devtools/commit/d6869c041de5a4b78891ec8d3130cb2685b4f613))
+
 ## [0.44.1](https://github.com/getmilpa/devtools/compare/v0.44.0...v0.44.1) (2026-10-08)
 
 

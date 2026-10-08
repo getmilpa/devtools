@@ -12,6 +12,7 @@ namespace Milpa\DevTools\Operations;
 
 use Milpa\Command\InvocationContext;
 use Milpa\DevTools\Support\RootResolver;
+use Milpa\DevTools\Support\SecretFiles;
 use Milpa\DevTools\Support\SourcePath;
 use Milpa\ToolRuntime\Contracts\ResultBudget;
 use Milpa\ToolRuntime\Contracts\ToolContext;
@@ -48,6 +49,10 @@ final class SourcePageHandler
         $file = $path === '' ? null : SourcePath::inside($root, $path);
         if ($file === null) {
             return ['ok' => false, 'error' => 'path must name a file inside the app root'];
+        }
+        if (SecretFiles::holds($file, $root)) {
+            // A SECRET HAS ONE PLACE TO LIVE (greenhouse evidence/1161).
+            return ['ok' => false, 'error' => 'that file is where this house keeps a secret: it is not read'];
         }
         $path = SourcePath::relative($file, $root);
         $content = file_get_contents($file);

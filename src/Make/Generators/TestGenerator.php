@@ -33,6 +33,14 @@ use Milpa\DevTools\Make\PlannedFile;
  * The judge itself lands through the SAME gate (implement reaches `tests/Plugins/`), and the gate
  * knows a judge never judges itself — otherwise this red would be unlandable.
  *
+ * ── THE JUDGE OF AN OPERATION HOLDS WHAT THE OPERATION WORKS THROUGH (greenhouse evidence/1156) ────
+ *
+ * The house says the judge comes before the body. Three real residents out of three, with their operations
+ * scaffolded, spent their next fourteen to seventeen calls to the model finding out one thing the house knew: how
+ * a test gets the repository `run()` receives. One never found it and filled no body. So when the class judged
+ * is an operation of the plugin, the scaffold already builds that repository —in memory— and shows the call the
+ * house makes. It still fails on purpose: what it must DO is the one thing no scaffold knows.
+ *
  * A name that already ends in `Test` IS the judge. Appending the suffix again invents a class the
  * landing gate cannot find (`TareaServiceTest` → `TareaServiceTestTest`) and the guidance used to
  * teach the resulting cycle: fill that phantom, then land a body that does not exist.
@@ -51,6 +59,18 @@ final class TestGenerator implements GeneratorInterface
         $plugin = $context->plugin;
         [$judge, $target] = $this->judgeAndTarget($context->name);
         $path = "tests/Plugins/{$plugin}/{$judge}.php";
+        $operation = $this->operation($context, $target);
+        if ($operation !== null) {
+            return new GenerationResult(
+                files: [new PlannedFile($path, $this->judgeOfAnOperation($plugin, $judge, $target, $operation))],
+                guidance: "This judge (class {$judge}) will run when {$target} lands. "
+                    . ($operation['entity'] === null ? 'It shows' : "It already holds what {$target}::run() works through — the repository of "
+                        . "{$operation['entity']}, in memory — and shows")
+                    . " the call the house makes: fill it with `implement` declaring what {$target} must do. If it calls "
+                    . "another operation of this plugin, land that one's body first: a judge runs over the house as it "
+                    . 'is, and a scaffold answers ok: false.',
+            );
+        }
 
         $contents = <<<PHP
 <?php
@@ -84,6 +104,156 @@ PHP;
             files: [new PlannedFile($path, $contents)],
             guidance: $this->guidance($context, $judge, $target),
         );
+    }
+
+    /**
+     * What the judge of an operation is scaffolded from, read from the operation's own source and from the entry
+     * that lists it in its plugin — or `null` when the target is not an operation of this plugin.
+     *
+     * Read, never loaded: this runs in a copy of the house whose classes nothing autoloads here.
+     *
+     * @return array{fqcn: string, input: list<string>, optional: list<string>, hands: list<string>, entity: ?string, entityFqcn: ?string, repository: ?string}|null
+     */
+    private function operation(GenerationContext $context, string $target): ?array
+    {
+        $dir = $context->root . '/src/Plugins/' . $context->plugin;
+        $file = $dir . '/Operations/' . $target . '.php';
+        $source = is_file($file) ? (string) file_get_contents($file) : '';
+        if (!str_contains($source, '#[Operation(') || preg_match('/^namespace ([^;]+);/m', $source, $namespace) !== 1) {
+            return null;
+        }
+
+        $parameter = '/(\??[A-Za-z_\\\\][A-Za-z0-9_\\\\|]*)\s+\$(\w+)(\s*=)?/';
+        $input = [];
+        $optional = [];
+        if (preg_match('/function __construct\((.*?)\)\s*\{/s', $source, $constructor) === 1) {
+            preg_match_all($parameter, $constructor[1], $fields, PREG_SET_ORDER);
+            foreach ($fields as $field) {
+                if (($field[3] ?? '') !== '') {
+                    $optional[] = $field[2];
+                    continue;
+                }
+                $input[] = $field[2] . ': ' . self::sample($field[1]);
+            }
+        }
+
+        $pluginFile = $dir . '/' . $context->plugin . '.php';
+        $entityFqcn = is_file($pluginFile) ? OperationGenerator::entityHandedTo((string) file_get_contents($pluginFile), $target) : null;
+        $hands = [];
+        $repository = null;
+        if (preg_match('/function run\((.*?)\)\s*:/s', $source, $run) === 1) {
+            preg_match_all($parameter, $run[1], $takes, PREG_SET_ORDER);
+            foreach ($takes as $taken) {
+                if ($entityFqcn !== null && $repository === null && str_ends_with($taken[1], 'RepositoryInterface')) {
+                    $repository = $taken[2];
+                    $hands[] = '$this->' . $taken[2];
+                    continue;
+                }
+                $hands[] = "/* {$taken[1]} \${$taken[2]} */";
+            }
+        }
+        // The judge holds a repository only when run() takes one AND its plugin says of which entity.
+        if ($repository === null) {
+            $entityFqcn = null;
+        }
+
+        return [
+            'fqcn' => $namespace[1] . '\\' . $target,
+            'input' => $input,
+            'optional' => $optional,
+            'hands' => $hands,
+            'entity' => $entityFqcn === null ? null : substr((string) strrchr('\\' . $entityFqcn, '\\'), 1),
+            'entityFqcn' => $entityFqcn,
+            'repository' => $repository,
+        ];
+    }
+
+    /** A value of an input's type that the call can be made with — the judge's author replaces it. */
+    private static function sample(string $type): string
+    {
+        return match (ltrim($type, '?')) {
+            'string' => "'…'",
+            'int' => '1',
+            'float' => '1.0',
+            'bool' => 'true',
+            'array' => '[]',
+            default => 'null /* ' . ltrim($type, '?') . ' */',
+        };
+    }
+
+    /**
+     * The judge of an operation: it holds what `run()` works through and shows the call the house makes.
+     *
+     * @param array{fqcn: string, input: list<string>, optional: list<string>, hands: list<string>, entity: ?string, entityFqcn: ?string, repository: ?string} $operation
+     */
+    private function judgeOfAnOperation(string $plugin, string $judge, string $target, array $operation): string
+    {
+        $uses = [$operation['fqcn'], 'PHPUnit\\Framework\\TestCase'];
+        $holds = '';
+        $after = '$answer';
+        if ($operation['repository'] !== null && $operation['entityFqcn'] !== null) {
+            array_push($uses, $operation['entityFqcn'], 'Milpa\\Data\\InMemoryRepository', 'Milpa\\Data\\RepositoryInterface');
+            $after = "\$answer, and on what \$this->{$operation['repository']} holds afterwards";
+            $holds = <<<PHP
+    /**
+     * What {$target}::run() works through, as the house hands it — in memory here: a test stores nothing.
+     *
+     * @var RepositoryInterface<{$operation['entity']}>
+     */
+    private RepositoryInterface \${$operation['repository']};
+
+    protected function setUp(): void
+    {
+        \$this->{$operation['repository']} = new InMemoryRepository({$operation['entity']}::class);
+    }
+
+
+PHP;
+        }
+        sort($uses);
+        $uses = implode("\n", array_map(static fn (string $class): string => "use {$class};", $uses));
+        $input = implode(', ', $operation['input']);
+        $hands = implode(', ', $operation['hands']);
+        $optional = $operation['optional'] === [] ? '' : "        // Left out of that call because it is optional: " . implode(', ', $operation['optional']) . ".\n";
+
+        return <<<PHP
+<?php
+
+declare(strict_types=1);
+
+namespace App\\Tests\\Plugins\\{$plugin};
+
+{$uses}
+
+/**
+ * The behavioral judge of {@see {$target}}.
+ *
+ * The landing gate runs this file whenever {$target} lands: red restores the original byte for
+ * byte, green is named in the landing's verdict. Declare here what the class must DO — not what
+ * it looks like; the gate already judges shape.
+ *
+ * It runs over the house as it is when {$target} lands. If it calls another operation of this plugin,
+ * that one's body has to be in the house first: a scaffold answers `ok: false`, and no judge goes green
+ * over that.
+ */
+final class {$judge} extends TestCase
+{
+{$holds}    public function testDeclareWhatItMustDo(): void
+    {
+        // {$target} is called here the way the house calls it — built with its input, and its run()
+        // handed what it works through:
+        //
+        //     \$answer = (new {$target}({$input}))->run({$hands});
+        //
+{$optional}        // Assert on {$after}.
+        //
+        // Replace this with real behavior. It fails ON PURPOSE: a judge that judges nothing must
+        // not green-light anything — until this is real, no body of {$target} lands past the gate.
+        self::fail('this judge does not judge anything yet — declare what {$target} must DO');
+    }
+}
+
+PHP;
     }
 
     /**

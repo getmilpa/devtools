@@ -70,6 +70,9 @@ final class OperationGenerator implements GeneratorInterface
     /** The inputs a scaffold declares, and the PHP type each one is. */
     private const INPUTS = ['string' => 'string', 'text' => 'string', 'int' => 'int', 'bigint' => 'int', 'bool' => 'bool', 'float' => 'float', 'decimal' => 'float'];
 
+    /** How the sentence an unfilled scaffold answers with ends, after its class name: what «unfilled» is read by. */
+    public const UNFILLED = '::run() is a scaffold — fill it with implement';
+
     private const COMMAND_PROVIDER = 'Milpa\\Command\\CommandProvider';
 
     private StubLocator $stubs;
@@ -281,6 +284,40 @@ final class OperationGenerator implements GeneratorInterface
     private static function repositoryParameter(string $entity): string
     {
         return lcfirst($entity) . 's';
+    }
+
+    /**
+     * The operations of a plugin whose body is still the scaffold's, by class name.
+     *
+     * Read from the sentence the scaffold itself answers with: the house wrote it, so the house can tell an unfilled
+     * operation from a filled one without calling either (greenhouse evidence/1156).
+     *
+     * @return list<string>
+     */
+    public static function unfilledIn(string $pluginDir): array
+    {
+        $unfilled = [];
+        foreach (glob($pluginDir . '/Operations/*.php') ?: [] as $file) {
+            $class = basename($file, '.php');
+            if (str_contains((string) file_get_contents($file), $class . self::UNFILLED)) {
+                $unfilled[] = $class;
+            }
+        }
+        sort($unfilled);
+
+        return $unfilled;
+    }
+
+    /**
+     * The entity whose repository a plugin hands the operation's `run()`, read back from the entry {@see entry()}
+     * wrote — or `null` when the entry finds everything by its class.
+     */
+    public static function entityHandedTo(string $pluginSource, string $class): ?string
+    {
+        $entry = '/(?<![A-Za-z0-9_])' . preg_quote($class, '/') . '::class,[^\n]*?\\\\?((?:[A-Za-z_][A-Za-z0-9_]*\\\\)+[A-Za-z_][A-Za-z0-9_]*)'
+            . "::class \\. 'Repository'/";
+
+        return preg_match($entry, $pluginSource, $found) === 1 ? $found[1] : null;
     }
 
     /**

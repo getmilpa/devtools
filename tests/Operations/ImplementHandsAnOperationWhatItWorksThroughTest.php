@@ -176,6 +176,22 @@ final class ImplementHandsAnOperationWhatItWorksThroughTest extends TestCase
         self::assertStringContainsString('run() is handed what it works through', (string) $r['verified']);
     }
 
+    /**
+     * A SILENT GAP READS AS COVERED. An operation whose plugin the house does not boot yet — scaffolded, and not
+     * registered — is in no catalogue, so nothing can be asked for it: it lands, and the result says that what its
+     * run() works through went unjudged, and why.
+     */
+    public function testAnOperationTheBootedHouseDoesNotOfferLandsAndSaysItWentUnjudged(): void
+    {
+        file_put_contents($this->root . '/config/boot.php', "<?php\n\nreturn ['container' => new \\Milpa\\Container\\DIContainer(), 'plugins' => []];\n");
+
+        $r = $this->implement($this->saves());
+
+        self::assertTrue($r['ok'], (string) ($r['error'] ?? ''));
+        self::assertStringContainsString('what run() works through unjudged — no operation the booted house offers is this class', (string) $r['verified']);
+        self::assertStringNotContainsString('is handed what it works through', (string) $r['verified']);
+    }
+
     /** A class no operation of the house is: nothing is asked of it here, and nothing is said. */
     public function testAClassThatIsNoOperationIsNotAsked(): void
     {

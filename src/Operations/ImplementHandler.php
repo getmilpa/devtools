@@ -567,6 +567,11 @@ final class ImplementHandler
         }
         if ($asked !== null) {
             $constructionNote .= ', collaborators (' . $asked['name'] . ': run() is handed what it works through)';
+        } elseif (!isset($built['unjudged']) && str_contains($content, '#[Operation(')) {
+            // A silent gap reads as covered: an operation the booted house does not offer — its plugin is not
+            // registered yet, or does not list it — cannot be asked, and that is said.
+            $constructionNote .= '; what run() works through unjudged — no operation the booted house offers is this class'
+                . ' (its plugin is not registered, or does not list it)';
         }
 
         $verdictNote = '; behavior unjudged — no test declares what this class must do';

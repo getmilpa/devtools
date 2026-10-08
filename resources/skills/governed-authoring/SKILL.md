@@ -80,7 +80,11 @@ unjudged when no test declares what the class must do*. A body with no test is s
 
 3. **Declare the evidence FIRST — `make what=test`.**
    Before you write a line of the body, scaffold the test that says what the code must *do* — the
-   observable criterion, the falsifier. Promote it, then write it.
+   observable criterion, the falsifier. Promote it, then write it. **Scaffold an operation's judge once
+   the operation's own scaffold is in the house**: the judge then already holds what `run()` works
+   through — its entity's repository, in memory — and shows the call the house makes, so you write it
+   from what it gives you. A judge runs over the house as it is: if it calls other operations of the
+   plugin, land their bodies first — a scaffold answers `ok: false`, and no judge goes green over that.
 
 4. **Scaffold the structure — `make`, then promote.**
    `make what=plugin|page|controller|entity|crud|resource|service|operation|tool|test` writes real,

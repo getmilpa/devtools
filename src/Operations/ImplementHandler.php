@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 namespace Milpa\DevTools\Operations;
 
+use Milpa\DevTools\Make\Generators\OperationGenerator;
 use Milpa\DevTools\Support\RootResolver;
 
 /**
@@ -595,10 +596,16 @@ final class ImplementHandler
                         static fn (string $l): bool => trim($l) !== '',
                     )), -10));
 
+                    // A RED JUDGE IS NOT ALWAYS ABOUT THE BODY (greenhouse evidence/1156): a judge runs over the house
+                    // as it is, and a scaffold the judge calls answers `ok: false` whatever this body does. The
+                    // house wrote those scaffolds and can read that they are unfilled, so the refusal names them.
+                    $scaffolds = self::scaffoldsNamedBy($root, $plugin, $class, (string) file_get_contents($testFile));
+
                     return [
                         'ok' => false,
                         'error' => 'refused: the class\'s own test judges this behavior red — '
-                            . basename($testFile, '.php') . " said:\n{$tail}",
+                            . basename($testFile, '.php') . " said:\n{$tail}"
+                            . self::overScaffolds($plugin, $class, basename($testFile, '.php'), $scaffolds),
                         // This is a judgment of the transient proposal, never a positive verification.
                         // Missing counts, timeouts and changed subjects cannot earn diagnostic credit.
                         'diagnostic' => [
@@ -613,6 +620,7 @@ final class ImplementHandler
                             'stable_subject' => $stable,
                             'rolled_back' => $restored,
                             'result' => ['exit' => $verdictCode, ...PhpUnitSummary::counts(implode("\n", $verdictLines))],
+                            'scaffolds' => $scaffolds,
                         ],
                     ];
                 }
@@ -685,6 +693,54 @@ final class ImplementHandler
         }
 
         return hash_file('sha256', $staging) === hash('sha256', $content);
+    }
+
+    /**
+     * The other operations of the plugin that are still scaffolds and that the judge names — by their class, or by
+     * the operation they declare. The class being landed is the proposal, never its own obstacle.
+     *
+     * @return list<string>
+     */
+    private static function scaffoldsNamedBy(string $root, string $plugin, string $class, string $judge): array
+    {
+        $dir = $root . '/src/Plugins/' . $plugin;
+        $named = [];
+        foreach (OperationGenerator::unfilledIn($dir) as $scaffold) {
+            if ($scaffold === $class) {
+                continue;
+            }
+            $declares = preg_match(
+                "/#\\[Operation\\(name: '([^']+)'/",
+                (string) file_get_contents($dir . '/Operations/' . $scaffold . '.php'),
+                $name,
+            ) === 1 ? $name[1] : null;
+            if (preg_match('/(?<![A-Za-z0-9_])' . preg_quote($scaffold, '/') . '(?![A-Za-z0-9_])/', $judge) === 1
+                || ($declares !== null && str_contains($judge, $declares))) {
+                $named[] = $scaffold;
+            }
+        }
+
+        return $named;
+    }
+
+    /**
+     * What a red judge is told when it names scaffolds: that they are, and the order that gets past them.
+     *
+     * @param list<string> $scaffolds
+     */
+    private static function overScaffolds(string $plugin, string $class, string $judge, array $scaffolds): string
+    {
+        if ($scaffolds === []) {
+            return '';
+        }
+        $one = \count($scaffolds) === 1;
+
+        return "\n{$judge} names " . implode(', ', $scaffolds) . ', and in this copy of the house '
+            . ($one ? 'it is still a scaffold: its run() answers' : 'they are still scaffolds: their run() answers')
+            . " «not implemented», and no judge goes green over that. Whatever else this body needs, in this order:\n"
+            . "1. implement plugin={$plugin} class={$scaffolds[0]}, and promote it"
+            . ($one ? '.' : '; then the same for ' . implode(', ', \array_slice($scaffolds, 1)) . '.') . "\n"
+            . "2. Then send this same implement plugin={$plugin} class={$class} again.";
     }
 
     /** The class's behavioral test under `tests/Plugins/<plugin>/`, or `null` when none declares it. */

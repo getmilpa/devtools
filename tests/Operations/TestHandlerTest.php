@@ -239,6 +239,27 @@ final class TestHandlerTest extends TestCase
     }
 
     /**
+     * A HARDLINK UNDER tests/ TO A SECRET IS NOT RUN (greenhouse decisions/0618, F3). `test` includes the path
+     * through PHPUnit, which would echo a non-PHP secret; it asks the same identity question the readers ask
+     * ({@see SecretFiles}), so a `.php`-named hardlink to the house's `.env` is refused and never handed to PHPUnit.
+     */
+    public function testAHardlinkUnderTestsToASecretIsNotRun(): void
+    {
+        file_put_contents($this->raiz . '/.env', "SECRET=canary\n");
+        if (!@link($this->raiz . '/.env', $this->raiz . '/tests/Sneaky.php')) {
+            self::markTestSkipped('the filesystem does not support hardlinks');
+        }
+        $doble = $this->doble(['exit' => 0, 'output' => 'OK (1 test, 1 assertion)']);
+
+        $r = (new TestHandler($this->roots(), $doble))->handle(['path' => 'tests/Sneaky.php']);
+
+        self::assertFalse($r['ok']);
+        self::assertFalse($r['ran']);
+        self::assertNull($doble->comando, 'the secret is never handed to PHPUnit');
+        self::assertStringNotContainsString('canary', (string) $r['error']);
+    }
+
+    /**
      * La salida se recorta conservando el FINAL, y se dice que se recortó.
      *
      * El resumen y los fallos viven al final. Y un reporte truncado en silencio es peor que uno
@@ -268,5 +289,60 @@ final class TestHandlerTest extends TestCase
 
         $handler->handle([]);
         self::assertSame(300, $doble->plazo, 'sin decir nada, cinco minutos');
+    }
+
+    /**
+     * `test` RUNS TESTS, AND RETURNS NOTHING THAT IS NOT ONE (greenhouse decisions/0618, D22).
+     *
+     * PHPUnit includes the path, so a non-PHP file would be echoed and its bytes handed back. A path that is not
+     * a test — the env file, the envelope, a store under `var/`/`storage/`, any other source — is refused BEFORE
+     * the command is armed; a real test (the house's, or a trial copy's) still runs.
+     *
+     * @param string $path a path that is not a test
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('nonTestPaths')]
+    public function testANonTestPathIsRefusedBeforeTheCommand(string $path): void
+    {
+        $full = $this->raiz . '/' . $path;
+        @mkdir(\dirname($full), 0o777, true);
+        file_put_contents($full, "SECRET=canary\n");
+
+        $doble = $this->doble(['exit' => 0, 'output' => 'OK (1 test, 1 assertion)']);
+        $r = (new TestHandler($this->roots(), $doble))->handle(['path' => $path]);
+
+        self::assertFalse($r['ok'], $path);
+        self::assertFalse($r['ran'], $path);
+        self::assertNull($doble->comando, 'nothing was ever run, so nothing was echoed');
+        self::assertStringContainsString('must be a test under tests/', (string) $r['error']);
+        self::assertStringNotContainsString('canary', (string) $r['error'], 'the refusal never carries the value');
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function nonTestPaths(): iterable
+    {
+        yield 'the env file'        => ['.env'];
+        yield 'the envelope'        => ['.milpa/secrets.json'];
+        yield 'the confirm tokens'  => ['storage/confirm-tokens.json'];
+        yield 'the session store'   => ['var/passkey/sessions.json'];
+        yield 'ordinary source'     => ['src/Http/Thing.php'];
+        yield 'a trial copy env'    => ['var/trials/w1/copy/.env'];
+        yield 'a trial copy source' => ['var/trials/w1/copy/src/Sample.php'];
+        // D22/F2: a non-.php file left under tests/ is not a test — PHPUnit must not be handed it to include.
+        yield 'a non-php file under tests' => ['tests/notphp.txt'];
+    }
+
+    /** A real test runs — the house's own, and a trial copy's (greenhouse decisions/0618, D20/D22). */
+    public function testARealTestRunsEvenInsideATrialCopy(): void
+    {
+        $copyTest = $this->raiz . '/var/trials/w1/copy/tests/Plugins/Hello/CopyTest.php';
+        @mkdir(\dirname($copyTest), 0o777, true);
+        file_put_contents($copyTest, '<?php');
+
+        foreach (['tests/UnaPrueba.php', 'var/trials/w1/copy/tests/Plugins/Hello/CopyTest.php'] as $path) {
+            $doble = $this->doble(['exit' => 0, 'output' => 'OK (1 test, 1 assertion)']);
+            $r = (new TestHandler($this->roots(), $doble))->handle(['path' => $path]);
+            self::assertTrue($r['ran'], $path);
+            self::assertContains($this->raiz . '/' . $path, (array) $doble->comando, $path);
+        }
     }
 }

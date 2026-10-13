@@ -15,6 +15,8 @@ declare(strict_types=1);
 namespace Milpa\DevTools\Operations;
 
 use Milpa\DevTools\Support\ProcessRunner;
+use Milpa\DevTools\Support\SecretFiles;
+use Milpa\DevTools\Support\SourcePath;
 use Milpa\DevTools\Test\HouseWrites;
 use Milpa\DevTools\Test\TemporaryCache;
 use Milpa\DevTools\Support\RootResolver;
@@ -109,6 +111,17 @@ final class TestHandler
             $absoluta = $this->dentroDe($root, $ruta);
             if ($absoluta === null) {
                 return $this->falla("«path» must exist and stay inside {$root} — received: {$ruta}");
+            }
+            // `test` RUNS ONLY A TEST (greenhouse decisions/0618, D22): a `.php` file or a directory under the
+            // house's — or a trial copy's — `tests/`. Any other path is refused, through the same question
+            // `source:read` asks ({@see SourcePath}): which house is this path from, and is it that house's test?
+            if (!SourcePath::isTest($absoluta, $root)) {
+                return $this->falla("«path» must be a test under tests/ — «{$ruta}» is not one");
+            }
+            // A path that is, by identity, one of the house's secret files (an operator hardlink under tests/) is
+            // not run: the same rule the readers ask ({@see SecretFiles}, greenhouse decisions/0618, F3).
+            if (SecretFiles::holds($absoluta, $root)) {
+                return $this->falla("«path» must be a test under tests/ — «{$ruta}» is not one");
             }
             $comando[] = $absoluta;
         }

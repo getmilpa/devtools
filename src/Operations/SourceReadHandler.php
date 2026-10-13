@@ -29,8 +29,11 @@ use Milpa\DevTools\Support\SourcePath;
  *
  * The path discipline is {@see TestHandler}'s: a path that resolves outside the root is refused
  * before anything is opened, because once this is an operation the input no longer comes only from
- * a person typing on their own machine. Truncation is declared, never silent, and the default slice
- * is small on purpose — ask again with `from` rather than paging a whole file into the context.
+ * a person typing on their own machine. Two things inside the root are refused too: a file the house
+ * keeps a secret in ({@see SecretFiles}), and the running house's STATE under `var/`/`storage/`
+ * ({@see SourcePath::isHouseState()}, greenhouse decisions/0618) — this reads SOURCE to edit it, not
+ * the sessions, tokens and ledgers the house writes as it runs. Truncation is declared, never silent,
+ * and the default slice is small on purpose — ask again with `from` rather than paging a whole file.
  *
  * Not found is `ok:false` with a reason, never an exception (same contract as {@see ValidateHandler}).
  */
@@ -70,6 +73,13 @@ final class SourceReadHandler
             // A SECRET HAS ONE PLACE TO LIVE (greenhouse evidence/1161): the files the house keeps a secret in
             // are inside the root and real, but a read does not hand them back. The refusal names the path only.
             return ['ok' => false, 'error' => "{$path} is where this house keeps a secret: it is not read"];
+        }
+        if (SourcePath::isHouseState($file, $root)) {
+            // SOURCE:READ READS SOURCE, NOT THE RUNNING HOUSE'S STATE (greenhouse decisions/0618). `var/` and
+            // `storage/` are what the house writes as it runs — sessions, tokens, enrollments, the agent's
+            // log, trial copies — and some of it is a live bearer credential (the passkey session store). A
+            // read of source is not the door to any of it. The refusal names the path only.
+            return ['ok' => false, 'error' => "{$path} is the running house's state, not its source: it is not read"];
         }
 
         $from = \is_int($input['from'] ?? null) ? max(1, $input['from']) : 1;

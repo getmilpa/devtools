@@ -54,6 +54,11 @@ final class SourcePageHandler
             // A SECRET HAS ONE PLACE TO LIVE (greenhouse evidence/1161).
             return ['ok' => false, 'error' => 'that file is where this house keeps a secret: it is not read'];
         }
+        if (SourcePath::isHouseState($file, $root)) {
+            // SOURCE READS SOURCE, NOT THE RUNNING HOUSE'S STATE (greenhouse decisions/0618): `var/` and
+            // `storage/` are what the house writes as it runs, some of it a live bearer credential.
+            return ['ok' => false, 'error' => 'that path is the running house\'s state, not its source: it is not read'];
+        }
         $path = SourcePath::relative($file, $root);
         $content = file_get_contents($file);
         if ($content === false || !mb_check_encoding($content, 'UTF-8')) {

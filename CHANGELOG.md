@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.44.3](https://github.com/getmilpa/devtools/compare/v0.44.2...v0.44.3) (2026-10-13)
+
+
+### Bug Fixes
+
+* source:read, source:page and test judge a path by which house it belongs to ([#154](https://github.com/getmilpa/devtools/issues/154)) ([3eaec4f](https://github.com/getmilpa/devtools/commit/3eaec4f4accdb8a4b61d7a6c670c65860babb957))
+
 ## [0.44.2](https://github.com/getmilpa/devtools/compare/v0.44.1...v0.44.2) (2026-10-08)
 
 

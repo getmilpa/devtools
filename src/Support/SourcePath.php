@@ -125,6 +125,27 @@ final class SourcePath
         return is_dir($file) || str_ends_with(strtolower($canonical), '.php');
     }
 
+    /**
+     * Whether a file lies inside a COPY of the house at `$root` — a trial's, an exercise's, a boot candidate — judged
+     * over its canonical path. What a copy holds is code nobody applied: a reader may show it, but nothing run as the
+     * house process may run it (greenhouse decisions/0632). A copy asked from inside itself (its own root) is not
+     * "inside a copy" of that root. A path that cannot be canonicalised counts as inside one (the safe direction).
+     */
+    public static function inACopy(string $file, string $root): bool
+    {
+        $canonical = self::canonical($file, $root);
+        if ($canonical === null) {
+            return true;
+        }
+        foreach (self::COPY_ROOTS as $pattern) {
+            if (preg_match($pattern, $canonical) === 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** The first path segment of a canonical path, relative to the house it belongs to (the real house, or the copy that contains it). */
     private static function firstSegment(string $canonical): string
     {

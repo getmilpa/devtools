@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.44.4](https://github.com/getmilpa/devtools/compare/v0.44.3...v0.44.4) (2026-11-12)
+
+
+### Bug Fixes
+
+* the dev tools run and load only the house's own code (greenhouse decisions/0632) ([#160](https://github.com/getmilpa/devtools/issues/160)) ([ceddd76](https://github.com/getmilpa/devtools/commit/ceddd7615fef4716fffda5df2641a5c4bda5c778))
+
 ## [0.44.3](https://github.com/getmilpa/devtools/compare/v0.44.2...v0.44.3) (2026-10-13)
 
 

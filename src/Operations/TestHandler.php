@@ -113,10 +113,15 @@ final class TestHandler
                 return $this->falla("«path» must exist and stay inside {$root} — received: {$ruta}");
             }
             // `test` RUNS ONLY A TEST (greenhouse decisions/0618, D22): a `.php` file or a directory under the
-            // house's — or a trial copy's — `tests/`. Any other path is refused, through the same question
+            // house's `tests/` (a copy's tests are refused below, decisions/0632). Any other path is refused, through the same question
             // `source:read` asks ({@see SourcePath}): which house is this path from, and is it that house's test?
             if (!SourcePath::isTest($absoluta, $root)) {
                 return $this->falla("«path» must be a test under tests/ — «{$ruta}» is not one");
+            }
+            // A test only a COPY of the house holds is code nobody applied: it runs in its trial, confined, never here as
+            // the house process with the house's environment and files (greenhouse decisions/0632).
+            if (SourcePath::inACopy($absoluta, $root)) {
+                return $this->falla("«path» is a test only a copy of the house holds — «{$ruta}» runs in its trial, or once it is promoted");
             }
             // A path that is, by identity, one of the house's secret files (an operator hardlink under tests/) is
             // not run: the same rule the readers ask ({@see SecretFiles}, greenhouse decisions/0618, F3).

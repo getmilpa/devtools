@@ -85,9 +85,9 @@ final class TestHandlerTest extends TestCase
         return new TestHandler($this->roots(), $this->doble($respuesta));
     }
 
-    private function roots(): RootResolver
+    private function roots(?string $root = null): RootResolver
     {
-        return new RootResolver($this->raiz);
+        return new RootResolver($root ?? $this->raiz);
     }
 
     /** Una suite verde: el veredicto es el código de salida, y los conteos salen del resumen. */
@@ -331,18 +331,63 @@ final class TestHandlerTest extends TestCase
         yield 'a non-php file under tests' => ['tests/notphp.txt'];
     }
 
-    /** A real test runs — the house's own, and a trial copy's (greenhouse decisions/0618, D20/D22). */
-    public function testARealTestRunsEvenInsideATrialCopy(): void
+    /** A real test of the house runs (greenhouse decisions/0618, D20/D22). */
+    public function testARealTestOfTheHouseRuns(): void
     {
-        $copyTest = $this->raiz . '/var/trials/w1/copy/tests/Plugins/Hello/CopyTest.php';
-        @mkdir(\dirname($copyTest), 0o777, true);
-        file_put_contents($copyTest, '<?php');
+        $doble = $this->doble(['exit' => 0, 'output' => 'OK (1 test, 1 assertion)']);
+        $r = (new TestHandler($this->roots(), $doble))->handle(['path' => 'tests/UnaPrueba.php']);
 
-        foreach (['tests/UnaPrueba.php', 'var/trials/w1/copy/tests/Plugins/Hello/CopyTest.php'] as $path) {
-            $doble = $this->doble(['exit' => 0, 'output' => 'OK (1 test, 1 assertion)']);
-            $r = (new TestHandler($this->roots(), $doble))->handle(['path' => $path]);
-            self::assertTrue($r['ran'], $path);
-            self::assertContains($this->raiz . '/' . $path, (array) $doble->comando, $path);
+        self::assertTrue($r['ran']);
+        self::assertContains($this->raiz . '/tests/UnaPrueba.php', (array) $doble->comando);
+    }
+
+    /**
+     * A TEST ONLY A COPY OF THE HOUSE HOLDS IS NOT RUN AS THE HOUSE (greenhouse decisions/0632): a trial's, an
+     * exercise's or a boot candidate's test is code nobody applied, and this door runs it as the house process. It is
+     * refused before the command is armed; asked from inside the copy (its own root), the same test runs.
+     *
+     * @param string $path a test that only a copy holds
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('whatOnlyACopyHolds')]
+    public function testATestOnlyACopyHoldsIsNotRunAsTheHouse(string $path): void
+    {
+        if (str_ends_with($path, '.php')) {
+            @mkdir(\dirname($this->raiz . '/' . $path), 0o777, true);
+            file_put_contents($this->raiz . '/' . $path, '<?php');
+        } else {
+            @mkdir($this->raiz . '/' . $path, 0o777, true);
         }
+
+        $doble = $this->doble(['exit' => 0, 'output' => 'OK (1 test, 1 assertion)']);
+        $r = (new TestHandler($this->roots(), $doble))->handle(['path' => $path]);
+
+        self::assertFalse($r['ok'], $path);
+        self::assertFalse($r['ran'], $path);
+        self::assertNull($doble->comando, 'nothing was run');
+        self::assertStringContainsString('a test only a copy of the house holds', (string) $r['error']);
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function whatOnlyACopyHolds(): iterable
+    {
+        yield 'a trial copy'         => ['var/trials/w1/copy/tests/Plugins/Hello/CopyTest.php'];
+        yield 'a trial copy, folder' => ['var/trials/w1/copy/tests'];
+        yield 'an exercise copy'     => ['var/exercises/e1/copy/tests/CopyTest.php'];
+        yield 'a boot candidate'     => ['var/boot-candidates/abc123/tests/CopyTest.php'];
+        yield 'another case'         => ['VAR/Trials/w1/copy/tests/CopyTest.php'];
+    }
+
+    public function testTheSameTestAskedFromInsideItsCopyRuns(): void
+    {
+        $copy = $this->raiz . '/var/trials/w1/copy';
+        @mkdir($copy . '/tests', 0o777, true);
+        file_put_contents($copy . '/tests/CopyTest.php', '<?php');
+        @mkdir($copy . '/vendor/bin', 0o777, true);
+        file_put_contents($copy . '/vendor/bin/phpunit', '<?php');
+
+        $doble = $this->doble(['exit' => 0, 'output' => 'OK (1 test, 1 assertion)']);
+        $r = (new TestHandler($this->roots($copy), $doble))->handle(['path' => 'tests/CopyTest.php']);
+
+        self::assertTrue($r['ran'], (string) ($r['error'] ?? ''));
     }
 }

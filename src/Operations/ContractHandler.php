@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 namespace Milpa\DevTools\Operations;
 
+use Milpa\DevTools\Support\SourcePath;
 use Milpa\DevTools\Support\ComposerAutoload;
 use Milpa\DevTools\Support\RootResolver;
 
@@ -40,6 +41,8 @@ use Milpa\DevTools\Support\RootResolver;
  */
 final class ContractHandler
 {
+    private const IDENTIFIER = '/\A[A-Za-z_][A-Za-z0-9_]*\z/';
+
     public function __construct(private readonly RootResolver $roots = new RootResolver())
     {
     }
@@ -76,6 +79,12 @@ final class ContractHandler
         }
 
         $plugin = \is_string($input['plugin'] ?? null) ? trim($input['plugin']) : '';
+        // A NAME, NOT A PATH (greenhouse decisions/0632): the artifact and its plugin are identifiers, so the search
+        // stays in the house's own plugins and never reaches a file elsewhere — a copy's above all, which this
+        // process would load as the house.
+        if (preg_match(self::IDENTIFIER, $name) !== 1 || ($plugin !== '' && preg_match(self::IDENTIFIER, $plugin) !== 1)) {
+            return ['ok' => false, 'error' => 'artifact:contract takes names, not paths: «name» and «plugin» are PHP identifiers'];
+        }
 
         $root = $this->roots->resolve();
         [, $appDir] = ComposerAutoload::primaryNamespace($root) ?? ['App', 'src'];
@@ -94,6 +103,12 @@ final class ContractHandler
         }
 
         $file = $matches[0];
+        // What is loaded is a file of the house's own plugins, by where it really is, and never one only a copy holds.
+        $plugins = realpath($root . '/' . $appDir . '/Plugins');
+        $real = realpath($file);
+        if ($plugins === false || $real === false || !str_starts_with($real, $plugins . '/') || SourcePath::inACopy($real, $root)) {
+            return ['ok' => false, 'error' => "«{$name}» is not a file of this house's plugins — nothing was loaded"];
+        }
         $source = (string) file_get_contents($file);
         if (preg_match('/^namespace\s+([^;]+);/m', $source, $m) !== 1) {
             return ['ok' => false, 'error' => "«{$name}» has no namespace at {$file}"];

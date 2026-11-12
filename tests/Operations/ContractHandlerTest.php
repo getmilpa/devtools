@@ -202,6 +202,53 @@ final class ContractHandlerTest extends TestCase
     }
 
     /** Writes one service class with a constructor, two public methods, and a private one. */
+    /**
+     * A NAME, NOT A PATH (greenhouse decisions/0632): an artifact or plugin name that walks out of the house's own
+     * plugins loads nothing — a copy's file least of all, which this process would run as the house. The file is a
+     * probe: loaded, it would leave a mark.
+     *
+     * @param array{name: string, plugin?: string} $input
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('namesThatAreReallyPaths')]
+    public function testANameThatIsReallyAPathLoadsNothing(array $input): void
+    {
+        $mark = $this->root . '/loaded.mark';
+        $copy = $this->root . '/var/trials/w1/copy/src/Plugins/Tareas';
+        mkdir($copy, 0o775, true);
+        file_put_contents($copy . '/Probe.php', "<?php\nnamespace App\\Plugins\\Tareas;\nfile_put_contents(" . var_export($mark, true) . ", 'x');\nfinal class Probe {}\n");
+        // The house's own plugins exist, as in any house: a `..` resolves through them.
+        mkdir($this->root . '/src/Plugins/Tareas', 0o775, true);
+
+        $result = (new ContractHandler(new RootResolver($this->root)))->handle($input);
+
+        self::assertFalse($result['ok'], (string) json_encode($input));
+        self::assertFileDoesNotExist($mark, 'a file outside the house\'s plugins was loaded');
+    }
+
+    /** @return iterable<string, array{array{name: string, plugin?: string}}> */
+    public static function namesThatAreReallyPaths(): iterable
+    {
+        yield 'a plugin that climbs to a copy' => [['name' => 'Probe', 'plugin' => '../../var/trials/w1/copy/src/Plugins/Tareas']];
+        yield 'a name that climbs to a copy'   => [['name' => '../../../var/trials/w1/copy/src/Plugins/Tareas/Probe']];
+        yield 'a glob in the plugin'           => [['name' => 'Probe', 'plugin' => '*/../../../var/trials/w1/copy/src/Plugins/Tareas']];
+        yield 'a glob in the name'             => [['name' => 'Pro*']];
+    }
+
+    public function testAPluginDirectoryThatLinksIntoACopyLoadsNothing(): void
+    {
+        $mark = $this->root . '/loaded.mark';
+        $copy = $this->root . '/var/trials/w1/copy/src/Plugins/Tareas';
+        mkdir($copy, 0o775, true);
+        file_put_contents($copy . '/Probe.php', "<?php\nnamespace App\\Plugins\\Tareas;\nfile_put_contents(" . var_export($mark, true) . ", 'x');\nfinal class Probe {}\n");
+        mkdir($this->root . '/src/Plugins', 0o775, true);
+        symlink($copy, $this->root . '/src/Plugins/Linked');
+
+        $result = (new ContractHandler(new RootResolver($this->root)))->handle(['name' => 'Probe', 'plugin' => 'Linked']);
+
+        self::assertFalse($result['ok']);
+        self::assertFileDoesNotExist($mark);
+    }
+
     private function writeServiceFixture(): string
     {
         $class = 'Svc' . substr(md5(uniqid()), 0, 8);
@@ -239,7 +286,7 @@ final class ContractHandlerTest extends TestCase
                 continue;
             }
             $path = $dir . '/' . $item;
-            is_dir($path) ? $this->removeDirectory($path) : unlink($path);
+            is_dir($path) && !is_link($path) ? $this->removeDirectory($path) : unlink($path);
         }
         rmdir($dir);
     }
